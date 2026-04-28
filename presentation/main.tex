@@ -464,12 +464,14 @@
 \end{frame}
 
 \begin{frame}{FSQ-VAE: Training}
+  \vspace{-0.3em}
   \begin{itemize}
-    \item $\sim$252K frame pairs ($\sim$\naugeps{} episodes), batch 32
-    \item AdamW, LR $4\cdot 10^{-3}$, 200 epochs
+    \item $\sim$252K frame pairs ($\sim$\naugeps{} episodes), batch 32; AdamW, LR $4\cdot 10^{-3}$, 200 epochs
     \item GRWM weights: $\alpha_{\text{slow}}=0.1$, $\alpha_{\text{uniform}}=0.01$
-    \item TODO: here put the training curves
   \end{itemize}
+  \begin{center}
+    \includegraphics[width=\textwidth]{fsq_curves.png}
+  \end{center}
 \end{frame}
 
 \begin{frame}{FSQ-VAE: Reconstructions}
@@ -520,14 +522,15 @@
 \end{frame}
 
 \begin{frame}{Transformer: Training}
+  \vspace{-0.3em}
   \begin{itemize}
-    \item AdamW, LR $10^{-3}$, weight decay $0.05$, dropout $0.1$, batch 256, 200 epochs
-    \item Cosine LR + linear warmup, early stopping on val loss
-    \item Death oversampling $15\times$
-    \item Token noise: 5\% random + 5\% FSQ-neighbour substitution
-    \item Weight tying between input embedding and output head
+    \item AdamW, LR $10^{-3}$, dropout $0.1$, batch 256, 200 epochs, cosine LR + warmup
+    \item Death oversampling $15\times$; token noise: 5\% random + 5\% FSQ-neighbour
     \item Best epoch 146, val acc 35.6\%, death F1 0.78
   \end{itemize}
+  \begin{center}
+    \includegraphics[width=\textwidth]{transformer_curves.png}
+  \end{center}
 \end{frame}
 
 % ==========================================================
@@ -568,6 +571,18 @@
   \end{center}
 \end{frame}
 
+\begin{frame}{Controller: Training Curves}
+  \vspace{-0.3em}
+  \begin{center}
+    \includegraphics[width=\textwidth]{controller_curves.png}
+  \end{center}
+  \vspace{-0.4em}
+  \begin{center}
+    \small
+    BC: train/val loss \& accuracy. PPO: dream survival (train) and real-game eval survival.
+  \end{center}
+\end{frame}
+
 % ==========================================================
 \section{Analysis}
 % ==========================================================
@@ -583,24 +598,6 @@
   \end{itemize}
 \end{frame}
 
-\begin{frame}{Tried After V3 -- Did Not Outperform Yet}
-  \vspace{0.3em}
-  More elegant, faster to train, but less stable / less precise on the real game:
-
-  \vspace{0.5em}
-  \begin{itemize}
-    \item \textbf{End-to-end V+M training} (JEPA way) -- V and M trained jointly with only \emph{two} losses (MSE on pixels + CE on tokens). Stable, but the resulting FSQ is harder to act on than V3's separately-trained FSQ.
-    \item \textbf{AdaLN-Zero action conditioning}: actions removed from the sequence, injected via AdaLN. Best CPC ever, but 5 runs diverged before QK-norm and gate-bias-1 init unblocked it.
-    \item \textbf{MLPPolicy on $\mathbf{h}_t$ only}: 2$\times$ faster convergence, smallest train/eval gap, but the V3 CNN still wins on real-game with the V3 FSQ.
-  \end{itemize}
-
-  \vspace{0.3em}
-  \begin{center}
-    \small
-    Net: V3 stays the best deployment despite V4--V6 being more elegant on paper.
-  \end{center}
-\end{frame}
-
 % ==========================================================
 \section{Limitations}
 % ==========================================================
@@ -610,6 +607,7 @@
     \item \textbf{Sample efficiency}: trained on only 2h20 of gameplay -- world models make this tractable
     \item \textbf{Dream horizon}: dreams stay coherent for tens to hundreds of frames, then hallucinate -- repeated obstacles, impassable sections, or empty levels
     \item \textbf{Scope}: trained on simple mechanics (portals, jump pads, orbs, standard gravity). Complex levels with noisy backgrounds and harder dynamics are the natural next step.
+    \item \textbf{Inelegant pipeline}: too many losses, encoder still trained with a pixel reconstruction objective, sequential trainings with frozen stages. JEPA is the principled fix -- we tried it, but it didn't work in our discrete offline setup (see Appendix).
   \end{itemize}
 \end{frame}
 
@@ -640,6 +638,24 @@
 \appendix
 \section{Appendix}
 % ==========================================================
+
+\begin{frame}{Tried After V3 -- Did Not Outperform Yet}
+  \vspace{0.3em}
+  More elegant, faster to train, but less stable / less precise on the real game:
+
+  \vspace{0.5em}
+  \begin{itemize}
+    \item \textbf{End-to-end V+M training} (JEPA way) -- V and M trained jointly with only \emph{two} losses (MSE on pixels + CE on tokens). Stable, but the resulting FSQ is harder to act on than V3's separately-trained FSQ.
+    \item \textbf{AdaLN-Zero action conditioning}: actions removed from the sequence, injected via AdaLN. Best CPC ever, but 5 runs diverged before QK-norm and gate-bias-1 init unblocked it.
+    \item \textbf{MLPPolicy on $\mathbf{h}_t$ only}: 2$\times$ faster convergence, smallest train/eval gap, but the V3 CNN still wins on real-game with the V3 FSQ.
+  \end{itemize}
+
+  \vspace{0.3em}
+  \begin{center}
+    \small
+    Net: V3 stays the best deployment despite V4--V6 being more elegant on paper.
+  \end{center}
+\end{frame}
 
 \begin{frame}{Transformer: Architecture}
   \vspace{0.4em}
