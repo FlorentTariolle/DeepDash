@@ -66,11 +66,11 @@
 \begin{frame}{Why World Models?}
   \vfill
   \begin{itemize}
+    \item \textbf{Geometry Dash}: deterministic, binary action, precision timing
+    \item \textbf{Goal}: master unseen levels, trained \emph{entirely} in imagination
+    \item \textbf{Real-time}: 30 FPS $\to$ reaction in $<$33ms
     \item Model-free RL $\to$ \textbf{millions of interactions}
     \item World Models: learned environment, training \textbf{in imagination}
-    \item \textbf{Geometry Dash}: deterministic, binary action, precision timing
-    \item \textbf{Real-time}: 30 FPS $\to$ reaction in $<$33ms
-    \item \textbf{Goal}: master unseen levels, trained \emph{entirely} in imagination
   \end{itemize}
   \vfill
 \end{frame}
@@ -292,18 +292,26 @@
 % ==========================================================
 
 \begin{frame}{Vision Model: $\beta$-VAE $\to$ VQ-VAE $\to$ FSQ-VAE}
+  \vspace{0.1em}
   \begin{itemize}
-    \item \textbf{$\beta$-VAE}: Gaussian posterior $\Rightarrow$ always blurry. No spatial structure.
+    \item \textbf{$\beta$-VAE}: Gaussian posterior. No spatial structure.
     \item \textbf{VQ-VAE}: discrete, spatially localized tokens $\Rightarrow$ sharp. But codebook collapse, commitment cost tuning.
     \item \textbf{FSQ-VAE} (Mentzer et al., 2023): round to $L$ fixed levels. No codebook collapse, no auxiliary losses, 100\% utilization by construction.
   \end{itemize}
 
-  \vspace{0.3em}
-  \begin{center}
-    Levels $[8,5,5,5]$ $\Rightarrow$ \fsqcodes{} codes\\
-    $\spatialres\times\spatialres$ grid $=$ \textbf{\ntokens{} tokens/frame}
-  \end{center}
-  % TODO: add before/after reconstruction comparison
+  \vspace{-0.4em}
+  \begin{columns}[T]
+    \column{0.49\textwidth}
+    \begin{center}
+      \includegraphics[width=0.52\textwidth]{beta.png}\\[-0.2em]
+      {\scriptsize $\beta$-VAE: blurry}
+    \end{center}
+    \column{0.49\textwidth}
+    \begin{center}
+      \includegraphics[width=0.52\textwidth]{fsq.png}\\[-0.2em]
+      {\scriptsize FSQ-VAE: sharp}
+    \end{center}
+  \end{columns}
 \end{frame}
 
 \begin{frame}{FSQ-VAE: Architecture}
@@ -363,6 +371,11 @@
     \node[above=0.3cm of dc2, font=\scriptsize, vcolor] {Decoder};
   \end{tikzpicture}%
   }
+  \end{center}
+  \vspace{-0.2em}
+  \begin{center}
+    \small Levels $[8,5,5,5]$ $\Rightarrow$ \fsqcodes{} codes\\
+    $\spatialres\times\spatialres$ grid $=$ \textbf{\ntokens{} tokens/frame}
   \end{center}
 \end{frame}
 
