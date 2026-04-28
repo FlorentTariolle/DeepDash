@@ -2,8 +2,8 @@
 #SBATCH -J "train_beta_vae"
 #SBATCH -o slurm/logs/train_beta_vae.out
 #SBATCH -e slurm/logs/train_beta_vae.err
-#SBATCH -p ar_h200
-#SBATCH --gres=gpu:h200:1
+#SBATCH -p ar_a100
+#SBATCH --gres=gpu:a100:1
 #SBATCH -n 1
 #SBATCH --cpus-per-gpu 8
 #SBATCH --mem 64G
