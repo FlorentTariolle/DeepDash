@@ -4,10 +4,11 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[2]
-FSQ_LOG = ROOT / "experiments/beta_vae_vs_fsq/fsq_v3deploy_log.csv"
-TFM_LOG = ROOT / "checkpoints_e6.10/transformer_log.csv"
-BC_LOG = ROOT / "checkpoints_e6.10/controller_bc_log.csv"
-PPO_LOG = ROOT / "checkpoints_e6.10/controller_ppo_log.csv"
+V3 = ROOT / "experiments/v3_deploy"
+FSQ_LOG = V3 / "fsq_log.csv"
+TFM_LOG = V3 / "transformer_log.csv"
+BC_LOG = V3 / "controller_bc_log.csv"
+PPO_LOG = V3 / "controller_ppo_log.csv"
 OUT = Path(__file__).parent
 
 plt.rcParams.update({
@@ -53,7 +54,6 @@ def fsq_curves():
     ax.plot(df.epoch, df.lr, color=LR_C)
     ax.set_title("Learning rate")
     ax.set_xlabel("epoch")
-    ax.set_yscale("log")
 
     fig.savefig(OUT / "fsq_curves.png", bbox_inches="tight")
     plt.close(fig)
@@ -61,7 +61,7 @@ def fsq_curves():
 
 def transformer_curves():
     df = pd.read_csv(TFM_LOG)
-    fig, axes = plt.subplots(1, 4, figsize=(13, 2.7), constrained_layout=True)
+    fig, axes = plt.subplots(1, 5, figsize=(15.5, 2.7), constrained_layout=True)
 
     ax = axes[0]
     ax.plot(df.epoch, df.train_loss, color=TRAIN_C, label="train")
@@ -85,10 +85,16 @@ def transformer_curves():
     ax.legend()
 
     ax = axes[3]
+    ax.plot(df.epoch, df.train_cpc, color=TRAIN_C, label="train")
+    ax.plot(df.epoch, df.val_cpc, color=VAL_C, label="val")
+    ax.set_title("AC-CPC loss")
+    ax.set_xlabel("epoch")
+    ax.legend()
+
+    ax = axes[4]
     ax.plot(df.epoch, df.lr, color=LR_C)
     ax.set_title("Learning rate")
     ax.set_xlabel("epoch")
-    ax.set_yscale("log")
 
     fig.savefig(OUT / "transformer_curves.png", bbox_inches="tight")
     plt.close(fig)
@@ -128,7 +134,6 @@ def controller_curves():
         ax.plot(ppo.iteration, ppo.lr, color=LR_C, label="PPO lr")
     ax.set_title("PPO learning rate")
     ax.set_xlabel("iteration")
-    ax.set_yscale("log")
 
     fig.savefig(OUT / "controller_curves.png", bbox_inches="tight")
     plt.close(fig)
