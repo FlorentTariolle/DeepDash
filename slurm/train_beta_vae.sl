@@ -25,6 +25,4 @@ python -u scripts/train_beta_vae.py \
     --batch-size 32 \
     --lr 4e-3 \
     --beta 1.0 \
-    --amp \
-    --compile \
-    --compile-mode reduce-overhead
+    --amp

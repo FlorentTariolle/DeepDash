@@ -468,7 +468,6 @@
     \item $\sim$252K frame pairs ($\sim$\naugeps{} episodes), batch 32
     \item AdamW, LR $4\cdot 10^{-3}$, 200 epochs
     \item GRWM weights: $\alpha_{\text{slow}}=0.1$, $\alpha_{\text{uniform}}=0.01$
-    \item Vertical-shift augmentation applied per pair
     \item TODO: here put the training curves
   \end{itemize}
 \end{frame}
@@ -492,7 +491,7 @@
   \textbf{Problem}: standard CE assigns zero mass to every non-target token: a near-miss neighbour is penalised as harshly as a random code.
 
   \vspace{0.5em}
-  \textbf{SLS}: replace the one-hot target with a narrow Gaussian centered on the correct code in FSQ coordinate space ($\sigma = 1.0$). Near neighbours get small positive mass; distant codes get none.
+  \textbf{SLS}: replace the one-hot target with a narrow Gaussian centered on the correct code in FSQ coordinate space. Near neighbours get small positive mass; distant codes get none.
 
   \vspace{0.5em}
   Rewards near-misses without diluting confidence in the correct code.
@@ -573,28 +572,14 @@
 \section{Analysis}
 % ==========================================================
 
-\begin{frame}{What Worked}
-  \vspace{0.5em}
-  \begin{itemize}
-    \item \textbf{FSQ-VAE}: sharp, 100\% utilization, no tuning
-    \item \textbf{Sobel}: filters visual noise $\to$ structural perception
-    \item \textbf{Vertical shifts}: massively reduced overfitting, physically valid
-    \item \textbf{Structured label smoothing}: narrow Gaussian on FSQ lattice distance
-    \item \textbf{Action tokens in the sequence}: simple, stable, no special init tricks
-    \item \textbf{Scaling to 384d}: visible jump on every metric (acc, death F1, BC, real-game)
-    \item \textbf{AC-CPC} ($w=0.1$): better dream quality at no cost
-  \end{itemize}
-\end{frame}
-
 \begin{frame}{What Didn't Work (or Didn't Help)}
   \vspace{0.5em}
   \begin{itemize}
     \item \textbf{$\beta$-VAE}: blurry, large grid search $\to$ abandoned
-    \item \textbf{Pure RL (CMA-ES)}: $\sim$12 steps (local optimum) $\to$ BC required
     \item \textbf{MaskGIT}: degraded on 64 tokens, parallel single-step better
-    \item \textbf{Mask scheduling during training}: train/inference mismatch, fixed in V2
     \item \textbf{Soft continuation gating}: agent gamed airtime
     \item \textbf{PMPO}: oscillated with binary action space
+    \item \textbf{Scaling to 512d}: bigger, slower, no real-game gain on the new latents.
   \end{itemize}
 \end{frame}
 
@@ -606,9 +591,7 @@
   \begin{itemize}
     \item \textbf{End-to-end V+M training} (JEPA way) -- V and M trained jointly with only \emph{two} losses (MSE on pixels + CE on tokens). Stable, but the resulting FSQ is harder to act on than V3's separately-trained FSQ.
     \item \textbf{AdaLN-Zero action conditioning}: actions removed from the sequence, injected via AdaLN. Best CPC ever, but 5 runs diverged before QK-norm and gate-bias-1 init unblocked it.
-    \item \textbf{Scaling to 512d}: bigger, slower, no real-game gain on the new latents.
     \item \textbf{MLPPolicy on $\mathbf{h}_t$ only}: 2$\times$ faster convergence, smallest train/eval gap, but the V3 CNN still wins on real-game with the V3 FSQ.
-    \item \textbf{Multi-token prediction}: had a silent off-by-one bug, dropped in V4.
   \end{itemize}
 
   \vspace{0.3em}
