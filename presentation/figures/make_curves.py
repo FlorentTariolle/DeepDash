@@ -1,7 +1,9 @@
 """Generate V3-deploy training curves for the presentation."""
 from pathlib import Path
+import math
 import matplotlib.pyplot as plt
 import pandas as pd
+from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[2]
 V3 = ROOT / "experiments/v3_deploy"
@@ -25,6 +27,52 @@ plt.rcParams.update({
 TRAIN_C = "#2E86AB"
 VAL_C = "#E51F13"
 LR_C = "#7FB069"
+SLIDE_BG = "#FAFAFA"
+WHITE_THRESHOLD = 235
+
+
+def savefig_slide_bg(fig, path):
+    """Save and replace white/near-white pixels with Metropolis background."""
+    fig.savefig(path, bbox_inches="tight")
+    image = Image.open(path).convert("RGBA")
+    pixels = image.load()
+    replacement = tuple(int(SLIDE_BG[i:i + 2], 16) for i in (1, 3, 5))
+
+    for y in range(image.height):
+        for x in range(image.width):
+            r, g, b, a = pixels[x, y]
+            if a > 0 and r >= WHITE_THRESHOLD and g >= WHITE_THRESHOLD and b >= WHITE_THRESHOLD:
+                pixels[x, y] = (*replacement, a)
+    image.save(path)
+
+
+def cosine_lr_schedule(epochs, peak_lr=1e-3, min_lr=1e-5, total_epochs=200):
+    """Reconstruct CosineAnnealingLR values; CSV LR is rounded."""
+    values = []
+    for epoch in epochs:
+        progress = min(max(epoch / total_epochs, 0.0), 1.0)
+        cos = 0.5 * (1.0 + math.cos(math.pi * progress))
+        values.append(min_lr + (peak_lr - min_lr) * cos)
+    return values
+
+
+def transformer_lr_schedule(epochs, peak_lr=2e-3, min_lr=5e-5,
+                            total_epochs=200, warmup_epochs=5):
+    """Reconstruct the warmup+cosine schedule; CSV LR is rounded."""
+    start_factor = 1e-2
+    cosine_length = max(1, total_epochs - warmup_epochs)
+    final_ratio = min_lr / peak_lr
+    values = []
+    for epoch in epochs:
+        if epoch < warmup_epochs:
+            factor = start_factor + (1.0 - start_factor) * epoch / warmup_epochs
+        else:
+            progress = (epoch - warmup_epochs) / cosine_length
+            progress = min(max(progress, 0.0), 1.0)
+            cos = 0.5 * (1.0 + math.cos(math.pi * progress))
+            factor = final_ratio + (1.0 - final_ratio) * cos
+        values.append(peak_lr * factor)
+    return values
 
 
 def fsq_curves():
@@ -51,11 +99,11 @@ def fsq_curves():
     ax.legend()
 
     ax = axes[3]
-    ax.plot(df.epoch, df.lr, color=LR_C)
+    ax.plot(df.epoch, cosine_lr_schedule(df.epoch), color=LR_C)
     ax.set_title("Learning rate")
     ax.set_xlabel("epoch")
 
-    fig.savefig(OUT / "fsq_curves.png", bbox_inches="tight")
+    savefig_slide_bg(fig, OUT / "fsq_curves.png")
     plt.close(fig)
 
 
@@ -92,17 +140,20 @@ def transformer_curves():
     ax.legend()
 
     ax = axes[4]
-    ax.plot(df.epoch, df.lr, color=LR_C)
+    ax.plot(df.epoch, transformer_lr_schedule(df.epoch), color=LR_C)
     ax.set_title("Learning rate")
     ax.set_xlabel("epoch")
 
-    fig.savefig(OUT / "transformer_curves.png", bbox_inches="tight")
+    savefig_slide_bg(fig, OUT / "transformer_curves.png")
     plt.close(fig)
 
 
 def controller_curves():
     bc = pd.read_csv(BC_LOG)
     ppo = pd.read_csv(PPO_LOG)
+    ppo_x = range(len(ppo))
+    ppo_eval = ppo[ppo.eval_survival.notna()] if "eval_survival" in ppo.columns else None
+    ppo_eval_x = ppo_eval.index if ppo_eval is not None else None
 
     fig, axes = plt.subplots(1, 4, figsize=(13, 2.7), constrained_layout=True)
 
@@ -121,21 +172,25 @@ def controller_curves():
     ax.legend()
 
     ax = axes[2]
-    if "eval_survival" in ppo.columns:
-        ax.plot(ppo.iteration, ppo.eval_survival, color=VAL_C, label="eval survival")
     if "mean_survival" in ppo.columns:
-        ax.plot(ppo.iteration, ppo.mean_survival, color=TRAIN_C, alpha=0.6, label="train survival")
+        train_survival = pd.to_numeric(ppo.mean_survival, errors="coerce")
+        train_ema = train_survival.ewm(alpha=1 - 0.99, adjust=False).mean()
+        ax.plot(ppo_x, train_ema, color=TRAIN_C, alpha=0.85, label="train EMA 0.99")
+    if ppo_eval is not None:
+        eval_survival = pd.to_numeric(ppo_eval.eval_survival, errors="coerce")
+        eval_ema = eval_survival.ewm(alpha=1 - 0.99, adjust=False).mean()
+        ax.plot(ppo_eval_x, eval_ema, color=VAL_C, label="eval EMA 0.99")
     ax.set_title("PPO survival")
     ax.set_xlabel("iteration")
     ax.legend()
 
     ax = axes[3]
     if "lr" in ppo.columns:
-        ax.plot(ppo.iteration, ppo.lr, color=LR_C, label="PPO lr")
+        ax.plot(ppo_x, ppo.lr, color=LR_C, label="PPO lr")
     ax.set_title("PPO learning rate")
     ax.set_xlabel("iteration")
 
-    fig.savefig(OUT / "controller_curves.png", bbox_inches="tight")
+    savefig_slide_bg(fig, OUT / "controller_curves.png")
     plt.close(fig)
 
 
