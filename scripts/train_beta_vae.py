@@ -25,6 +25,16 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
 
+# Disable Inductor's auto channels-last layout reordering. The Ha-Schmidhuber
+# decoder starts with ConvTranspose2d(1024, 128, 5), and Inductor's layout
+# optimizer rewrites its weight-gradient buffer as channels-last while the
+# actual backward returns it contiguous -- triggers an assert_size_stride
+# failure under cudagraphs (`reduce-overhead`). Keeping this off costs nothing
+# here (only 1 input channel, so channels-last is not a tensor-core win) and
+# preserves the ~2x compile+cudagraphs speedup for the rest of the model.
+import torch._inductor.config as _inductor_cfg
+_inductor_cfg.layout_optimization = False
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from deepdash.beta_vae import BetaVAE, beta_vae_loss
 from deepdash.wandb_utils import wandb_init, wandb_log, wandb_finish
