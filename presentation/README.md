@@ -4,9 +4,12 @@ Slides delivered on **2026-04-29** for the INSA Rouen Representation Learning co
 
 ## What this deck represents
 
-The **final Geometry Dash architecture** (V3-deploy / V7), centred on V3-deploy as the strongest model at the presentation deadline. V7, validated the same day, mirrors V3-deploy and is the locked GD instantiation; right after course delivery the project pivoted off GD experimentation entirely to focus on the full paper.
+The **final Geometry Dash architecture**, in two artifacts:
 
-So the deck is a complete description of the GD instantiation, not an interim snapshot of an evolving model. What the deck does **not** cover is the post-pivot work (SLS as a method paper, Atari benchmark evaluation, VQ-VAE generalizability ablation); for that, see the SLS-WM paper, not these slides.
+- **V3-deploy** (commit `75fe40a`, 2026-03-23): the original GD model that produced the strongest play at the presentation deadline. Trained on then-older code which had an FSQ-augmentation-pipeline bug that accidentally inflated FSQ training compute by ~5-15x.
+- **V7** (validated 2026-04-29): the **same architecture** (384d / 8L / 8H transformer + V2-style FSQ + V3 PPO) retrained on **current code**, with the augmentation-pipeline bug fixed and multi-directional shifts restored. Reaches V3-deploy deploy-survival parity reproducibly from HEAD. V7 is the locked GD instantiation.
+
+Right after course delivery the project pivoted off GD experimentation entirely to focus on the full paper. The deck is therefore a complete description of the GD instantiation, not an interim snapshot of an evolving model. What the deck does **not** cover is the post-pivot work (SLS as a method paper, Atari benchmark evaluation, VQ-VAE generalizability ablation); for that, see the SLS-WM paper, not these slides.
 
 ## Why the deck is so dense
 
