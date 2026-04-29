@@ -25,7 +25,6 @@ slurm/logs/
 *.fdb_latexmk
 *.fls
 *.synctex.gz
-presentation/*.pdf
 paper/*.pdf
 paper/figures/
 docs/pipeline.pdf
