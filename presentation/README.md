@@ -4,9 +4,9 @@ Slides delivered on **2026-04-29** for the INSA Rouen Representation Learning co
 
 ## What this deck represents
 
-A **snapshot of the project as of the end of April 2026**, centred on **V3-deploy**, which was the best model available at the presentation deadline.
+The **final Geometry Dash architecture** (V3-deploy / V7), centred on V3-deploy as the strongest model at the presentation deadline. V7, validated the same day, mirrors V3-deploy and is the locked GD instantiation; right after course delivery the project pivoted off GD experimentation entirely to focus on the full paper.
 
-The project keeps evolving after this date: architecture, hyperparameters, training recipe, ablations, and headline numbers. For the current state, see the repository code and (when published) the SLS-WM paper, not these slides.
+So the deck is a complete description of the GD instantiation, not an interim snapshot of an evolving model. What the deck does **not** cover is the post-pivot work (SLS as a method paper, Atari benchmark evaluation, VQ-VAE generalizability ablation); for that, see the SLS-WM paper, not these slides.
 
 ## Why the deck is so dense
 

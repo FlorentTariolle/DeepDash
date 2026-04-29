@@ -13,7 +13,15 @@
   <img src="docs/static/images/pipeline.png" width="80%">
 </p>
 
-> **Status:** Pre-freeze research code. Model freeze target **2026-05-31**, NeurIPS 2026 workshop submission. Numerical results and ablation tables will land with the final model; this repository currently describes the method and architecture, not outcomes.
+> **Project status (updated 2026-04-29).**
+>
+> **Why SLS exists.** During transformer training we observed an anomaly: predicted frames matched ground truth almost perfectly, yet next-token accuracy stayed below 30%. Investigation revealed that FSQ's coordinate structure makes neighbor codes semantically near-identical, so standard CE was actively penalizing semantically-correct near-miss predictions as if they were gross errors. Structured Label Smoothing (SLS) is the principled fix: replace one-hot targets with a kernel over codebook coordinate distance, so the loss reflects the geometry the quantizer has already learned.
+>
+> **Why we are pivoting evaluation.** Once SLS was identified, it had to be measured properly. Geometry Dash's deploy metric (% of level reached) is a serial-difficulty cut: a model that is globally worse but lucky on the early section scores higher than a globally better model that dies at one tough obstacle. The SNR is too low to detect SLS effect sizes; even if SLS works, GD cannot tell us. A standard benchmark gives parallel-counted metrics (returns, achievements), statistical signal across seeds, and comparable baselines (DreamerV3, IRIS, TWISTER). The pivot is methodological, not aesthetic.
+>
+> **What stays, what changes.** V7, the locked Geometry Dash instantiation, is retained as a real-time application showcase: the full pipeline measures **~15 ms total inference per frame on RTX 2060 SUPER** (~67 FPS achievable; deployed at 30 FPS conservatively for capture-rate stability). Primary evaluation moves to a reactive subset of Atari 100k. Two paper questions guide ongoing work: **(Q1)** does SLS improve over standard CE on a standard benchmark? **(Q2)** is SLS FSQ-specific, or principle-level (validated via a VQ-VAE adaptation)?
+
+> **Status:** V7 (Geometry Dash) is frozen as the application showcase, no further iteration. Benchmark instantiation is pre-freeze and the active research track. NeurIPS 2026 workshop submission target. Numerical results and ablation tables will land with the benchmark freeze; this repository currently describes the method and architecture, not outcomes.
 
 ## Using the code
 
