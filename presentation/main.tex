@@ -107,7 +107,7 @@
   }
   \end{center}
 
-  \vspace{0.4em}
+  \vspace{0.2em}
   \begin{center}
     \scriptsize
     \begin{tabular}{c@{\hspace{2em}}c@{\hspace{2em}}c@{\hspace{2em}}c}
@@ -118,6 +118,7 @@
       Sobel frame & discrete tokens & hidden state & jump/idle
     \end{tabular}
   \end{center}
+
 \end{frame}
 
 \begin{frame}{Dream Rollout}
@@ -425,10 +426,9 @@
   }
   \end{center}
 
-  \vspace{0.4em}
+  \vspace{0.5em}
   \begin{center}
     \small
-    PPO clip $0.2$, GAE $\lambda=0.95$, $\gamma=0.995$, $\sim$5K iterations.\\
     Zero-shot deployment on the real game after PPO.
   \end{center}
 \end{frame}
@@ -446,20 +446,44 @@
 \end{frame}
 
 % ==========================================================
-\section{Demo}
+\section{Pipeline Timing}
 % ==========================================================
 
-\begin{frame}{Demo}
-  \vspace{1.2em}
+\begin{frame}{Pipeline Timing}
+  \vspace{0.5em}
   \begin{center}
-    \href{https://www.youtube.com/watch?v=LkUIyeEwPEs}{%
-      \includegraphics[width=0.85\textwidth]{thumbnail.jpg}}\\[0.4em]
-    {\small\href{https://www.youtube.com/watch?v=LkUIyeEwPEs}{youtube.com/watch?v=LkUIyeEwPEs}}
+    Mean per-stage inference time on RTX 2060 ($n\approx 5\text{K}$ frames).
+  \end{center}
+
+  \vspace{-0.2em}
+  \begin{center}
+    \begin{tabular}{lr}
+      \toprule
+      \textbf{Stage} & \textbf{Mean (ms)} \\
+      \midrule
+      Screen capture & 2.4 \\
+      Crop           & 0.5 \\
+      Grayscale      & 0.5 \\
+      Sobel          & 2.6 \\
+      Downscale      & 2.1 \\
+      FSQ encode     & 1.4 \\
+      Transformer    & 4.2 \\
+      Controller     & 1.1 \\
+      \midrule
+      \textbf{Total} & \textbf{15.0} \\
+      \bottomrule
+    \end{tabular}
+  \end{center}
+
+  \vspace{0.5em}
+  \begin{center}
+    \small
+    Comfortably under the 33\,ms budget for 30\,FPS real-time play.
   \end{center}
 \end{frame}
 
 % ==========================================================
-\section{Limitations}
+\section{Limitations \& Future Work}
 % ==========================================================
 
 \begin{frame}{Limitations \& Future Work}
@@ -470,6 +494,19 @@
     \item \textbf{Scope}: trained on simple mechanics (portals, jump pads, orbs, standard gravity). Complex levels with noisy backgrounds and harder dynamics are the next step.
     \item \textbf{Inelegant pipeline}: too many losses, encoder still trained with a pixel reconstruction objective, sequential trainings with frozen stages. JEPA is the principled fix -- our adaptation did not outperform V3, but we cannot tell whether we mis-adapted it or whether discrete offline setups are less amenable to it than continuous ones.
   \end{itemize}
+\end{frame}
+
+% ==========================================================
+\section{Demo}
+% ==========================================================
+
+\begin{frame}{Demo}
+  \vspace{1.2em}
+  \begin{center}
+    \href{https://www.youtube.com/watch?v=LkUIyeEwPEs}{%
+      \includegraphics[width=0.85\textwidth]{thumbnail.jpg}}\\[0.4em]
+    {\small\href{https://www.youtube.com/watch?v=LkUIyeEwPEs}{youtube.com/watch?v=LkUIyeEwPEs}}
+  \end{center}
 \end{frame}
 
 % ==========================================================
@@ -571,7 +608,7 @@
     \end{itemize}
 
     \column{0.45\textwidth}
-    \vspace{-1.7em}
+    \vspace{-2.5em}
     \begin{center}
       \includegraphics[width=0.80\textwidth]{fsq_neighbors.png}
     \end{center}
