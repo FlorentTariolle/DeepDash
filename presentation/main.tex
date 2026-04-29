@@ -67,10 +67,10 @@
   \vfill
   \begin{itemize}
     \item \textbf{Geometry Dash}: deterministic, binary action, precision timing
-    \item \textbf{Goal}: master unseen levels, trained \emph{entirely} in imagination
     \item \textbf{Real-time}: 30 FPS $\to$ reaction in $<$33ms
-    \item Model-free RL $\to$ \textbf{millions of interactions}
-    \item World Models: learned environment, training \textbf{in imagination}
+    \item \textbf{Model-free RL}: needs millions of game interactions $\to$ infeasible
+    \item \textbf{World Models}: learn the environment, train the policy \emph{entirely in imagination}
+    \item \textbf{Goal}: master unseen levels with a tiny real-game footprint
   \end{itemize}
   \vfill
 \end{frame}
@@ -80,79 +80,44 @@
 % ==========================================================
 
 \begin{frame}{Inference Pipeline}
-  \vspace{1em}
   \begin{center}
   \resizebox{\textwidth}{!}{%
   \begin{tikzpicture}[
-    block/.style={rectangle, draw, rounded corners, minimum height=1.2cm, minimum width=2.2cm, align=center, font=\small, line width=0.8pt},
+    block/.style={rectangle, draw, rounded corners, minimum height=1cm, align=center, font=\small, line width=0.8pt},
     arr/.style={-{Stealth[length=3mm]}, thick},
     lbl/.style={font=\scriptsize, align=center},
+    ghost/.style={rectangle, draw=gray!40, fill=gray!5, rounded corners, minimum height=0.8cm, align=center, font=\scriptsize, dashed},
   ]
-    \node[block, fill=vcolor!20, draw=vcolor] (V) {\textbf{V}\\\scriptsize FSQ-VAE};
-    \node[block, fill=mcolor!20, draw=mcolor, right=1.5cm of V] (M) {\textbf{M}\\\scriptsize Transformer};
-    \node[block, fill=ccolor!20, draw=ccolor, right=1.5cm of M] (C) {\textbf{C}\\\scriptsize CNN};
+    \node[block, fill=gray!10, draw=gray, minimum width=1.6cm] (pre) {Sobel\\$\downarrow$ 64$\times$64};
+    \node[block, fill=vcolor!20, draw=vcolor, right=1.2cm of pre, minimum width=1.6cm] (enc) {\textbf{V}};
+    \node[block, fill=mcolor!20, draw=mcolor, right=1.2cm of enc, minimum width=1.6cm] (tfm) {\textbf{M}};
+    \node[block, fill=ccolor!20, draw=ccolor, right=1.2cm of tfm, minimum width=1.6cm] (ctrl) {\textbf{C}};
+    \node[lbl, right=1.6cm of ctrl] (act) {$a_t$};
 
-    \node[left=1.2cm of V, lbl] (input) {$\mathbf{x}_t$\\{\tiny 64$\times$64$\times$1}};
-    \node[right=1.2cm of C, lbl] (output) {$a_t$};
+    \node[ghost, above=0.3cm of tfm] (pred) {Pred. Head\\{\tiny pruned}};
+    \draw[gray!40, dashed] (tfm) -- (pred);
 
-    \draw[arr] (input) -- (V);
-    \draw[arr] (V) -- node[above, lbl] {$\mathbf{z}_t$} node[below, lbl] {\tiny 8$\times$8} (M);
-    \draw[arr] (M) -- node[above, lbl] {$\mathbf{z}_t,\,\mathbf{h}_t$} node[below, lbl] {\tiny 8$\times$8,\;\hdim} (C);
-    \draw[arr] (C) -- (output);
+    \draw[arr] (pre) -- node[above, lbl] {$\mathbf{x}_t$} (enc);
+    \draw[arr] (enc) -- node[above, lbl] {$\mathbf{z}_t$} (tfm);
+    \draw[arr] (tfm) -- node[above, lbl] {$\mathbf{z}_t,\,\mathbf{h}_t$} (ctrl);
+    \draw[arr] (ctrl) -- (act);
 
-    \draw[arr] (C.south) -- ++(0,-0.6) -| node[below, lbl, pos=0.25] {$a_t$} (M.south);
+    % previous-step action feeds back to M for the next step
+    \draw[arr] (ctrl.south) -- ++(0,-0.6) -| node[below, lbl, pos=0.25] {$a_{t-1}$} (tfm.south);
   \end{tikzpicture}%
   }
   \end{center}
 
-  \vspace{0.5em}
+  \vspace{0.4em}
   \begin{center}
-    \small
-    \begin{tabular}{c@{\hspace{3em}}c}
-      $\mathbf{x}_t \in \mathbb{R}^{\framesize \times \framesize}$: grayscale Sobel frame &
-      $\mathbf{z}_t \in \{0,\ldots,999\}^{\ntokens}$: discrete tokens \\[0.3em]
-      $\mathbf{h}_t \in \mathbb{R}^{\hdim}$: hidden state &
-      $a_t \in \{0, 1\}$: jump/idle
+    \scriptsize
+    \begin{tabular}{c@{\hspace{2em}}c@{\hspace{2em}}c@{\hspace{2em}}c}
+      $\mathbf{x}_t \in \mathbb{R}^{\framesize \times \framesize}$ &
+      $\mathbf{z}_t \in \{0,\ldots,999\}^{\ntokens}$ &
+      $\mathbf{h}_t \in \mathbb{R}^{\hdim}$ &
+      $a_t \in \{0, 1\}$ \\
+      Sobel frame & discrete tokens & hidden state & jump/idle
     \end{tabular}
-  \end{center}
-\end{frame}
-
-\begin{frame}{Training: Three Sequential Stages}
-  \vspace{1em}
-  \begin{center}
-  \resizebox{\textwidth}{!}{%
-  \begin{tikzpicture}[
-    phase/.style={rectangle, draw, rounded corners, minimum height=2.2cm, minimum width=3.6cm, align=center, font=\small, line width=1.2pt},
-    arr/.style={-{Stealth[length=4mm]}, thick},
-    lbl/.style={font=\scriptsize, align=center},
-  ]
-    \node[phase, fill=vcolor!15, draw=vcolor!60] (v) {
-      \textbf{Stage 1 -- V}\\[0.3em]
-      \scriptsize FSQ-VAE\\
-      \scriptsize MSE + GRWM regularizers
-    };
-    \node[phase, fill=mcolor!15, draw=mcolor!60, right=1.3cm of v] (m) {
-      \textbf{Stage 2 -- M}\\[0.3em]
-      \scriptsize Transformer on tokens\\
-      \scriptsize CE + SLS + AC-CPC
-    };
-    \node[phase, fill=ccolor!15, draw=ccolor!60, right=1.3cm of m] (c) {
-      \textbf{Stage 3 -- C}\\[0.3em]
-      \scriptsize BC pretraining\\
-      \scriptsize $\to$ PPO in dreams
-    };
-
-    \draw[arr] (v) -- node[above, lbl] {$\mathbf{z}_t$} (m);
-    \draw[arr] (m) -- node[above, lbl] {$\mathbf{z}_t,\,\mathbf{h}_t$} (c);
-  \end{tikzpicture}%
-  }
-  \end{center}
-
-  \vspace{0.5em}
-  \begin{center}
-    \small
-    Each stage is trained in isolation on the frozen output of the previous one.\\
-    C is trained entirely in imagination on WM rollouts.
   \end{center}
 \end{frame}
 
@@ -216,45 +181,6 @@
   \end{itemize}
 \end{frame}
 
-\begin{frame}{Inference: Assembling the Pipeline}
-  \vspace{0.5em}
-  At inference, the prediction head is pruned.
-
-  \vspace{0.5em}
-  \begin{center}
-  \resizebox{\textwidth}{!}{%
-  \begin{tikzpicture}[
-    block/.style={rectangle, draw, rounded corners, minimum height=1cm, align=center, font=\small, line width=0.8pt},
-    arr/.style={-{Stealth[length=3mm]}, thick},
-    lbl/.style={font=\scriptsize, align=center},
-    ghost/.style={rectangle, draw=gray!40, fill=gray!5, rounded corners, minimum height=0.8cm, align=center, font=\scriptsize, dashed},
-  ]
-    \node[block, fill=gray!10, draw=gray, minimum width=1.6cm] (pre) {Sobel\\$\downarrow$ 64$\times$64};
-    \node[block, fill=vcolor!20, draw=vcolor, right=1.2cm of pre, minimum width=1.6cm] (enc) {\textbf{V}};
-    \node[block, fill=mcolor!20, draw=mcolor, right=1.2cm of enc, minimum width=1.6cm] (tfm) {\textbf{M}};
-    \node[block, fill=ccolor!20, draw=ccolor, right=1.2cm of tfm, minimum width=1.6cm] (ctrl) {\textbf{C}};
-    \node[lbl, right=1.6cm of ctrl] (act) {$a_t$};
-
-    \node[ghost, above=0.3cm of tfm] (pred) {Pred. Head\\{\tiny pruned}};
-    \draw[gray!40, dashed] (tfm) -- (pred);
-
-    \draw[arr] (pre) -- node[above, lbl] {$\mathbf{x}_t$} (enc);
-    \draw[arr] (enc) -- node[above, lbl] {$\mathbf{z}_t$} (tfm);
-    \draw[arr] (tfm) -- node[above, lbl] {$\mathbf{z}_t,\,\mathbf{h}_t$} (ctrl);
-    \draw[arr] (ctrl) -- (act);
-
-    % a_t feedback loop: routed below to re-enter M for next step
-    \draw[arr] (ctrl.south) -- ++(0,-0.6) -| node[below, lbl, pos=0.25] {$a_t$} (tfm.south);
-  \end{tikzpicture}%
-  }
-  \end{center}
-
-  \begin{center}
-    \small
-    Full pipeline must complete in $<$33ms to maintain 30 FPS real-time play
-  \end{center}
-\end{frame}
-
 % ==========================================================
 \section{Data Collection}
 % ==========================================================
@@ -291,7 +217,7 @@
 \section{Phase 1: Vision}
 % ==========================================================
 
-\begin{frame}{Vision Model: $\beta$-VAE $\to$ VQ-VAE $\to$ FSQ-VAE}
+\begin{frame}{Vision Model: $\beta$-VAE $\to$ FSQ-VAE}
   \vspace{0.1em}
   \begin{itemize}
     \item \textbf{$\beta$-VAE}: Gaussian posterior. No spatial structure.
@@ -379,6 +305,198 @@
   \end{center}
 \end{frame}
 
+\begin{frame}{FSQ-VAE: Training Losses}
+  \vspace{0.7em}
+  \begin{center}
+  \resizebox{0.95\textwidth}{!}{%
+  \begin{tikzpicture}[
+    block/.style={rectangle, draw, rounded corners, minimum height=1.0cm, minimum width=1.8cm, align=center, font=\scriptsize, line width=0.7pt},
+    loss/.style={rectangle, draw=insared, fill=insared!10, rounded corners, minimum height=0.8cm, minimum width=1.8cm, align=center, font=\scriptsize, line width=0.7pt},
+    arr/.style={-{Stealth[length=2.5mm]}, thick},
+    darr/.style={-{Stealth[length=2.5mm]}, thick, dashed, insared},
+    lbl/.style={font=\tiny, align=center},
+  ]
+    \node[lbl] (in) {$\mathbf{x}_t,\,\mathbf{x}_{t+1}$};
+    \node[block, fill=vcolor!20, draw=vcolor, right=0.6cm of in] (enc) {Encoder};
+    \node[block, fill=vcolor!35, draw=vcolor, right=0.5cm of enc] (fsq) {FSQ};
+    \node[block, fill=vcolor!15, draw=vcolor, right=0.5cm of fsq] (dec) {Decoder};
+    \node[loss, above right=0.1cm and 0.5cm of dec] (mse) {MSE recon};
+    \node[loss, right=0.5cm of dec] (slow) {GRWM slow};
+    \node[loss, below right=0.1cm and 0.5cm of dec] (uni) {GRWM unif};
+
+    \draw[arr] (in) -- (enc);
+    \draw[arr] (enc) -- (fsq);
+    \draw[arr] (fsq) -- (dec);
+    \draw[arr] (dec.east) -- (mse.west);
+    \draw[arr] (dec.east) -- (slow.west);
+    \draw[arr] (dec.east) -- (uni.west);
+  \end{tikzpicture}%
+  }
+  \end{center}
+
+  \vspace{0.3em}
+  \begin{itemize}
+    \item \textbf{MSE} reconstruction on $(\mathbf{x}_t, \mathbf{x}_{t+1})$ pairs (STE through quantizer)
+    \item \textbf{GRWM slowness}: penalizes large $\|\mathbf{z}_e^{t+1}-\mathbf{z}_e^t\|^2$ -- temporally smooth latents
+    \item \textbf{GRWM uniformity}: spreads $\mathbf{z}_e$ across the FSQ hypercube
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{FSQ-VAE: Training}
+  \vspace{-0.3em}
+  \begin{itemize}
+    \item $\sim$252K frame pairs ($\sim$\naugeps{} episodes), batch 32; AdamW, LR $4\cdot 10^{-3}$, 200 epochs
+    \item GRWM weights: $\alpha_{\text{slow}}=0.1$, $\alpha_{\text{unif}}=0.01$
+  \end{itemize}
+  \begin{center}
+    \includegraphics[width=\textwidth]{fsq_curves.png}
+  \end{center}
+\end{frame}
+
+\begin{frame}{FSQ-VAE: Reconstructions}
+  \begin{center}
+    \includegraphics[width=\textwidth]{fsq_reconstructions.png}
+  \end{center}
+  \vspace{-0.3em}
+  \begin{center}
+    \small{\textbf{51$\times$} compression}: $32{,}768 \to 638$ bits/frame
+  \end{center}
+\end{frame}
+
+% ==========================================================
+\section{Phase 2: Memory}
+% ==========================================================
+
+\begin{frame}{Structured Label Smoothing (SLS)}
+  \vspace{0.2em}
+  \footnotesize\textbf{Problem}: CE penalises a near-miss neighbour as harshly as a random code.\\
+  \footnotesize\textbf{SLS}: one-hot $\to$ Gaussian over FSQ coordinates.
+
+  \vspace{0.2em}
+  \begin{center}
+    \includegraphics[width=0.88\textwidth]{sls_kernel.png}
+  \end{center}
+
+  \vspace{-0.8em}
+  \begin{center}
+    \scriptsize
+    (a) Gaussian decay over lattice distance.\\
+    (b) SLS concentrates mass on near-misses, vs.\ uniform's flat smear.
+  \end{center}
+\end{frame}
+
+\begin{frame}{Transformer: Training}
+  \vspace{-0.3em}
+  \begin{itemize}
+    \item AdamW, LR $10^{-3}$, dropout $0.1$, batch 256, 200 epochs, cosine LR + warmup
+    \item Death oversampling $15\times$; token noise: 5\% random + 5\% FSQ-neighbour
+  \end{itemize}
+  \begin{center}
+    \includegraphics[width=\textwidth]{transformer_curves.png}
+  \end{center}
+\end{frame}
+
+% ==========================================================
+\section{Phase 3: Controller}
+% ==========================================================
+
+\begin{frame}{Controller: Training}
+  \vspace{1em}
+  \begin{center}
+  \resizebox{\textwidth}{!}{%
+  \begin{tikzpicture}[
+    phase/.style={rectangle, draw, rounded corners, minimum height=2.2cm, minimum width=4.5cm, align=center, font=\small, line width=1.2pt},
+    arr/.style={-{Stealth[length=4mm]}, thick},
+    lbl/.style={font=\scriptsize, align=center},
+  ]
+    \node[phase, fill=ccolor!10, draw=ccolor!60] (bc) {
+      \textbf{Stage 1 -- BC}\\[0.4em]
+      \scriptsize Imitate expert on\\
+      \scriptsize $(\mathbf{z}_t,\mathbf{h}_t)$ from frozen WM
+    };
+    \node[phase, fill=mcolor!10, draw=mcolor!60, right=2.5cm of bc] (ppo) {
+      \textbf{Stage 2 -- PPO}\\[0.4em]
+      \scriptsize Train in imagination\\
+      \scriptsize 45-step dream rollouts\\
+      \scriptsize jump penalty $-0.2$/jump
+    };
+
+    \draw[arr] (bc) -- node[above, lbl] {warm init} (ppo);
+  \end{tikzpicture}%
+  }
+  \end{center}
+
+  \vspace{0.4em}
+  \begin{center}
+    \small
+    PPO clip $0.2$, GAE $\lambda=0.95$, $\gamma=0.995$, $\sim$5K iterations.\\
+    Zero-shot deployment on the real game after PPO.
+  \end{center}
+\end{frame}
+
+\begin{frame}{Controller: Training Curves}
+  \vspace{-0.3em}
+  \begin{center}
+    \includegraphics[width=\textwidth]{controller_curves.png}
+  \end{center}
+  \vspace{-0.4em}
+  \begin{center}
+    \small
+    BC: train/val loss \& accuracy. PPO: dream survival (train) and real-game eval survival.
+  \end{center}
+\end{frame}
+
+% ==========================================================
+\section{Demo}
+% ==========================================================
+
+\begin{frame}{Demo}
+  \begin{center}
+    \href{https://www.youtube.com/watch?v=LkUIyeEwPEs}{%
+      \includegraphics[width=0.85\textwidth]{thumbnail.jpg}}\\[0.4em]
+    {\small\href{https://www.youtube.com/watch?v=LkUIyeEwPEs}{youtube.com/watch?v=LkUIyeEwPEs}}
+  \end{center}
+\end{frame}
+
+% ==========================================================
+\section{Limitations}
+% ==========================================================
+
+\begin{frame}{Limitations \& Future Work}
+  \begin{itemize}
+    \item \textbf{Sample efficiency}: trained on only 2h20 of gameplay -- world models make this tractable
+    \item \textbf{Dream horizon}: dreams stay coherent for tens to hundreds of frames, then hallucinate -- repeated obstacles, impassable sections, or empty levels
+    \item \textbf{Scope}: trained on simple mechanics (portals, jump pads, orbs, standard gravity). Complex levels with noisy backgrounds and harder dynamics are the natural next step.
+    \item \textbf{Inelegant pipeline}: too many losses, encoder still trained with a pixel reconstruction objective, sequential trainings with frozen stages. JEPA is the principled fix -- we tried it, but it didn't work in our discrete offline setup (see Appendix).
+  \end{itemize}
+\end{frame}
+
+% ==========================================================
+\section{References}
+% ==========================================================
+
+\begin{frame}[allowframebreaks]{References}
+  \small
+  \begin{itemize}
+    \item Micheli, V. et al. (2023). \href{https://arxiv.org/abs/2209.00588}{\textit{Transformers are Sample-Efficient World Models}} (IRIS). ICLR
+    \item Mentzer, F. et al. (2024). \href{https://arxiv.org/abs/2309.15505}{\textit{Finite Scalar Quantization: VQ-VAE Made Simple}}. ICLR
+    \item Burchi, M. \& Timofte, R. (2025). \href{https://arxiv.org/abs/2503.04416}{\textit{TWISTER: Transformer-based World Models with AC-CPC}}. ICLR
+    \item Su, J. et al. (2024). \href{https://arxiv.org/abs/2104.09864}{\textit{RoFormer: Enhanced Transformer with Rotary Position Embedding}}. Neurocomputing
+    \item Schulman, J. et al. (2017). \href{https://arxiv.org/abs/1707.06347}{\textit{Proximal Policy Optimization Algorithms}}. Preprint
+    \item Ha, D. \& Schmidhuber, J. (2018). \href{https://arxiv.org/abs/1803.10122}{\textit{World Models}}. NeurIPS
+    \item Hafner, D. et al. (2025). \href{https://arxiv.org/abs/2301.04104}{\textit{Mastering Diverse Control Tasks through World Models}} (DreamerV3). Nature
+    \item Vali, M. et al. (2026). \href{https://arxiv.org/abs/2601.17124}{\textit{iFSQ: Improving FSQ for Image Generation}}. ICLR
+    \item Lin, T.-Y. et al. (2017). \href{https://arxiv.org/abs/1708.02002}{\textit{Focal Loss for Dense Object Detection}}. ICCV
+    \item Maes, L. et al. (2026). \href{https://arxiv.org/abs/2603.19312}{\textit{LeWorldModel: Stable End-to-End JEPA from Pixels}}. Preprint
+    \item Xia, Z. et al. (2025). \href{https://arxiv.org/abs/2510.26782}{\textit{Clone Deterministic 3D Worlds with Geometrically-Regularized World Models}} (GRWM). Preprint
+  \end{itemize}
+\end{frame}
+
+% ==========================================================
+\appendix
+\section{Appendix}
+% ==========================================================
+
 \begin{frame}{FSQ-VAE: Inside an Encoder Block}
   Each encoder level:
   \begin{center}
@@ -438,92 +556,17 @@
 
 \end{frame}
 
-\begin{frame}{FSQ-VAE: Training Losses}
-  \vspace{0.5em}
-  \begin{center}
-  \resizebox{0.95\textwidth}{!}{%
-  \begin{tikzpicture}[
-    block/.style={rectangle, draw, rounded corners, minimum height=1.0cm, minimum width=1.8cm, align=center, font=\scriptsize, line width=0.7pt},
-    loss/.style={rectangle, draw=insared, fill=insared!10, rounded corners, minimum height=0.8cm, minimum width=1.8cm, align=center, font=\scriptsize, line width=0.7pt},
-    arr/.style={-{Stealth[length=2.5mm]}, thick},
-    darr/.style={-{Stealth[length=2.5mm]}, thick, dashed, insared},
-    lbl/.style={font=\tiny, align=center},
-  ]
-    \node[lbl] (in) {$\mathbf{x}_t,\,\mathbf{x}_{t+1}$};
-    \node[block, fill=vcolor!20, draw=vcolor, right=0.6cm of in] (enc) {Encoder};
-    \node[block, fill=vcolor!35, draw=vcolor, right=0.5cm of enc] (fsq) {FSQ};
-    \node[block, fill=vcolor!15, draw=vcolor, right=0.5cm of fsq] (dec) {Decoder};
-    \node[loss, above right=0.1cm and 0.5cm of dec] (mse) {MSE recon};
-    \node[loss, right=0.5cm of dec] (slow) {GRWM slow};
-    \node[loss, below right=0.1cm and 0.5cm of dec] (uni) {GRWM uniform};
-
-    \draw[arr] (in) -- (enc);
-    \draw[arr] (enc) -- (fsq);
-    \draw[arr] (fsq) -- (dec);
-    \draw[arr] (dec.east) -- (mse.west);
-    \draw[arr] (dec.east) -- (slow.west);
-    \draw[arr] (dec.east) -- (uni.west);
-  \end{tikzpicture}%
-  }
-  \end{center}
-
-  \vspace{0.3em}
-  \begin{itemize}
-    \item \textbf{MSE} reconstruction on $(\mathbf{x}_t, \mathbf{x}_{t+1})$ pairs (STE through quantizer)
-    \item \textbf{GRWM slowness}: penalizes large $\|\mathbf{z}_e^{t+1}-\mathbf{z}_e^t\|^2$ -- temporally smooth latents
-    \item \textbf{GRWM uniformity}: spreads $\mathbf{z}_e$ across the FSQ hypercube -- avoids dead codes
-    \item Trained \emph{independently} of M -- frozen tokens fed to the transformer afterwards
-  \end{itemize}
-\end{frame}
-
-\begin{frame}{FSQ-VAE: Training}
-  \vspace{-0.3em}
-  \begin{itemize}
-    \item $\sim$252K frame pairs ($\sim$\naugeps{} episodes), batch 32; AdamW, LR $4\cdot 10^{-3}$, 200 epochs
-    \item GRWM weights: $\alpha_{\text{slow}}=0.1$, $\alpha_{\text{uniform}}=0.01$
-  \end{itemize}
-  \begin{center}
-    \includegraphics[width=\textwidth]{fsq_curves.png}
-  \end{center}
-\end{frame}
-
-\begin{frame}{FSQ-VAE: Reconstructions}
-  \begin{center}
-    \includegraphics[width=\textwidth]{fsq_reconstructions.png}
-  \end{center}
-  \vspace{-0.1em}
-  \begin{center}
-    \small{\textbf{51$\times$} compression}: $32{,}768 \to 638$ bits/frame
-  \end{center}
-\end{frame}
-
-% ==========================================================
-\section{Phase 2: Memory}
-% ==========================================================
-
-\begin{frame}{FSQ-Structured Label Smoothing}
-  \vspace{0.5em}
-  \textbf{Problem}: standard CE assigns zero mass to every non-target token: a near-miss neighbour is penalised as harshly as a random code.
-
-  \vspace{0.5em}
-  \textbf{SLS}: replace the one-hot target with a narrow Gaussian centered on the correct code in FSQ coordinate space. Near neighbours get small positive mass; distant codes get none.
-
-  \vspace{0.5em}
-  Rewards near-misses without diluting confidence in the correct code.
-
-\end{frame}
-
 \begin{frame}{Training: FSQ-Neighbor Token Noise}
-  \vspace{1.2em}
+  \vspace{1.4em}
   \begin{columns}[T]
     \column{0.55\textwidth}
-    Noise on context tokens during training: with probability 5\% per token, replace it by a $\pm 1$ neighbour in one FSQ dimension.
+    5\% per context token: replace by a $\pm 1$ neighbour in one FSQ dimension.
 
     \vspace{0.5em}
     \begin{itemize}
-      \item Visually near-identical patches (one quantization step)
-      \item Forces the transformer to treat near-miss codes as equivalent context
-      \item Matches the SLS assumption that near-miss is almost-right: consistent signal on both sides of the loss
+      \item Visually near-identical
+      \item Treat near-miss codes as equivalent
+      \item Mirrors SLS on the input side
     \end{itemize}
 
     \column{0.45\textwidth}
@@ -533,124 +576,6 @@
     \end{center}
   \end{columns}
 \end{frame}
-
-\begin{frame}{Transformer: Training}
-  \vspace{-0.3em}
-  \begin{itemize}
-    \item AdamW, LR $10^{-3}$, dropout $0.1$, batch 256, 200 epochs, cosine LR + warmup
-    \item Death oversampling $15\times$; token noise: 5\% random + 5\% FSQ-neighbour
-    \item Best epoch 146, val acc 35.6\%, death F1 0.78
-  \end{itemize}
-  \begin{center}
-    \includegraphics[width=\textwidth]{transformer_curves.png}
-  \end{center}
-\end{frame}
-
-% ==========================================================
-\section{Phase 3: Controller}
-% ==========================================================
-
-\begin{frame}{Controller: Training}
-  \vspace{1em}
-  \begin{center}
-  \resizebox{\textwidth}{!}{%
-  \begin{tikzpicture}[
-    phase/.style={rectangle, draw, rounded corners, minimum height=2.2cm, minimum width=4.5cm, align=center, font=\small, line width=1.2pt},
-    arr/.style={-{Stealth[length=4mm]}, thick},
-    lbl/.style={font=\scriptsize, align=center},
-  ]
-    \node[phase, fill=ccolor!10, draw=ccolor!60] (bc) {
-      \textbf{Stage 1 -- BC}\\[0.4em]
-      \scriptsize Imitate expert on\\
-      \scriptsize $(\mathbf{z}_t,\mathbf{h}_t)$ from frozen WM
-    };
-    \node[phase, fill=mcolor!10, draw=mcolor!60, right=2.5cm of bc] (ppo) {
-      \textbf{Stage 2 -- PPO}\\[0.4em]
-      \scriptsize Train in imagination\\
-      \scriptsize 45-step dream rollouts\\
-      \scriptsize jump penalty $-0.2$/jump
-    };
-
-    \draw[arr] (bc) -- node[above, lbl] {warm init} (ppo);
-  \end{tikzpicture}%
-  }
-  \end{center}
-
-  \vspace{0.4em}
-  \begin{center}
-    \small
-    PPO clip $0.2$, GAE $\lambda=0.95$, $\gamma=0.995$, $\sim$5K iterations.\\
-    Zero-shot deployment on the real game after PPO.
-  \end{center}
-\end{frame}
-
-\begin{frame}{Controller: Training Curves}
-  \vspace{-0.3em}
-  \begin{center}
-    \includegraphics[width=\textwidth]{controller_curves.png}
-  \end{center}
-  \vspace{-0.4em}
-  \begin{center}
-    \small
-    BC: train/val loss \& accuracy. PPO: dream survival (train) and real-game eval survival.
-  \end{center}
-\end{frame}
-
-% ==========================================================
-\section{Analysis}
-% ==========================================================
-
-\begin{frame}{What Didn't Work (or Didn't Help)}
-  \vspace{0.5em}
-  \begin{itemize}
-    \item \textbf{$\beta$-VAE}: blurry, large grid search $\to$ abandoned
-    \item \textbf{MaskGIT}: degraded on 64 tokens, parallel single-step better
-    \item \textbf{Soft continuation gating}: agent gamed airtime
-    \item \textbf{PMPO}: oscillated with binary action space
-    \item \textbf{Scaling to 512d}: bigger, slower, no real-game gain on the new latents.
-  \end{itemize}
-\end{frame}
-
-% ==========================================================
-\section{Limitations}
-% ==========================================================
-
-\begin{frame}{Limitations \& Future Work}
-  \begin{itemize}
-    \item \textbf{Sample efficiency}: trained on only 2h20 of gameplay -- world models make this tractable
-    \item \textbf{Dream horizon}: dreams stay coherent for tens to hundreds of frames, then hallucinate -- repeated obstacles, impassable sections, or empty levels
-    \item \textbf{Scope}: trained on simple mechanics (portals, jump pads, orbs, standard gravity). Complex levels with noisy backgrounds and harder dynamics are the natural next step.
-    \item \textbf{Inelegant pipeline}: too many losses, encoder still trained with a pixel reconstruction objective, sequential trainings with frozen stages. JEPA is the principled fix -- we tried it, but it didn't work in our discrete offline setup (see Appendix).
-  \end{itemize}
-\end{frame}
-
-% ==========================================================
-\section{References}
-% ==========================================================
-
-\begin{frame}[allowframebreaks]{References}
-  \small
-  \begin{itemize}
-    \item Micheli, V. et al. (2023). \href{https://arxiv.org/abs/2209.00588}{\textit{Transformers are Sample-Efficient World Models}} (IRIS). ICLR
-    \item Mentzer, F. et al. (2024). \href{https://arxiv.org/abs/2309.15505}{\textit{Finite Scalar Quantization: VQ-VAE Made Simple}}. ICLR
-    \item Burchi, M. \& Timofte, R. (2025). \href{https://arxiv.org/abs/2503.04416}{\textit{TWISTER: Transformer-based World Models with AC-CPC}}. ICLR
-    \item Su, J. et al. (2024). \href{https://arxiv.org/abs/2104.09864}{\textit{RoFormer: Enhanced Transformer with Rotary Position Embedding}}. Neurocomputing
-    \item Schulman, J. et al. (2017). \href{https://arxiv.org/abs/1707.06347}{\textit{Proximal Policy Optimization Algorithms}}. Preprint
-    \item Ha, D. \& Schmidhuber, J. (2018). \href{https://arxiv.org/abs/1803.10122}{\textit{World Models}}. NeurIPS
-    \item Hafner, D. et al. (2025). \href{https://arxiv.org/abs/2301.04104}{\textit{Mastering Diverse Control Tasks through World Models}} (DreamerV3). Nature
-    \item Vali, M. et al. (2026). \href{https://arxiv.org/abs/2601.17124}{\textit{iFSQ: Improving FSQ for Image Generation}}. ICLR
-    \item Szegedy, C. et al. (2016). \href{https://arxiv.org/abs/1512.00567}{\textit{Rethinking the Inception Architecture}}. CVPR
-    \item Lin, T.-Y. et al. (2017). \href{https://arxiv.org/abs/1708.02002}{\textit{Focal Loss for Dense Object Detection}}. ICCV
-    \item Peebles, W. \& Xie, S. (2023). \href{https://arxiv.org/abs/2212.09748}{\textit{Scalable Diffusion Models with Transformers}} (DiT). ICCV
-    \item Esser, P. et al. (2024). \href{https://arxiv.org/abs/2403.03206}{\textit{Scaling Rectified Flow Transformers}} (SD3). ICML
-    \item Maes, L. et al. (2026). \href{https://arxiv.org/abs/2603.19312}{\textit{LeWorldModel: Stable End-to-End JEPA from Pixels}}. Preprint
-  \end{itemize}
-\end{frame}
-
-% ==========================================================
-\appendix
-\section{Appendix}
-% ==========================================================
 
 \begin{frame}{Tried After V3 -- Did Not Outperform Yet}
   \vspace{0.3em}
@@ -668,6 +593,17 @@
     \small
     Net: V3 stays the best deployment despite V4--V6 being more elegant on paper.
   \end{center}
+\end{frame}
+
+\begin{frame}{What Didn't Work (or Didn't Help)}
+  \vspace{0.5em}
+  \begin{itemize}
+    \item \textbf{$\beta$-VAE}: blurry, large grid search $\to$ abandoned
+    \item \textbf{MaskGIT}: degraded on 64 tokens, parallel single-step better
+    \item \textbf{Soft continuation gating}: agent gamed airtime
+    \item \textbf{PMPO}: oscillated with binary action space
+    \item \textbf{Scaling to 512d}: bigger, slower, no real-game gain on the new latents.
+  \end{itemize}
 \end{frame}
 
 \begin{frame}{Transformer: Architecture}
