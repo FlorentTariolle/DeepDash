@@ -171,7 +171,7 @@ The three components are trained sequentially -- each on the frozen output of th
 We encode $\imgsize$ grayscale Sobel edge maps using an FSQ-VAE with levels $\fsqlevels$, producing $\vocabsize$ implicit codes.
 The encoder applies three stride-2 convolutional stages with residual blocks, projecting to a 4-channel latent map of size $\gridsize$.
 Each spatial position is independently quantized using the iFSQ bounding function~\citep{vali2026ifsq}, $2\sigma(1.6z) - 1$ in place of $\tanh(z)$, scaled to half-levels and rounded, yielding $\ntokens$ tokens per frame.
-The encoder is trained on consecutive frame pairs with a pixel-MSE reconstruction loss and two regularizers in the spirit of geometric regularization: a temporal slowness term that penalizes large $\| \mathbf{z}_e^{t+1} - \mathbf{z}_e^t \|^2$ between adjacent frames, and a uniformity term that spreads pre-quantization features across the FSQ hypercube. The decoder mirrors the encoder with transposed convolutions and is discarded after training.
+The encoder is trained on consecutive frame pairs with a pixel-MSE reconstruction loss and the two geometric regularizers from GRWM~\citep{xia2025grwm}: a temporal slowness term that penalizes large $\| \mathbf{z}_e^{t+1} - \mathbf{z}_e^t \|^2$ between adjacent frames, and a uniformity term that spreads pre-quantization features across the FSQ hypercube. The decoder mirrors the encoder with transposed convolutions and is discarded after training.
 
 % ---------------------------------------------------------------------------
 \subsection{Structured Label Smoothing}
