@@ -21,6 +21,24 @@ import math
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from PIL import Image
+
+SLIDE_BG = "#FAFAFA"
+WHITE_THRESHOLD = 235
+
+
+def save_slide_bg_png(fig, path):
+    """Save fig as PNG and replace near-white pixels with the Metropolis bg."""
+    fig.savefig(path, bbox_inches="tight", dpi=200)
+    image = Image.open(path).convert("RGBA")
+    pixels = image.load()
+    replacement = tuple(int(SLIDE_BG[i:i + 2], 16) for i in (1, 3, 5))
+    for y in range(image.height):
+        for x in range(image.width):
+            r, g, b, a = pixels[x, y]
+            if a > 0 and r >= WHITE_THRESHOLD and g >= WHITE_THRESHOLD and b >= WHITE_THRESHOLD:
+                pixels[x, y] = (*replacement, a)
+    image.save(path)
 
 
 def build_sls_row(levels, target_idx, sigma=0.7, smoothing=0.1, dim_weights=None):
@@ -66,6 +84,10 @@ def build_sls_row(levels, target_idx, sigma=0.7, smoothing=0.1, dim_weights=None
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", default="paper/figures/sls_kernel.pdf")
+    parser.add_argument("--slide-output",
+                        default="presentation/figures/sls_kernel.png",
+                        help="Slide-bg PNG variant for the presentation. "
+                             "Empty string disables.")
     parser.add_argument("--levels", type=int, nargs="+", default=[8, 5, 5, 5],
                         help="FSQ codebook levels (default: [8,5,5,5])")
     parser.add_argument("--sigma", type=float, default=0.7,
@@ -177,6 +199,10 @@ def main():
     plt.tight_layout()
     plt.savefig(args.output, bbox_inches="tight")
     print(f"Saved {args.output}")
+
+    if args.slide_output:
+        save_slide_bg_png(fig, args.slide_output)
+        print(f"Saved {args.slide_output}")
 
 
 if __name__ == "__main__":
