@@ -10,6 +10,7 @@ data/videos/
 eval_output/
 data/death_episodes/*_s*/
 data/expert_episodes/*_s*/
+data/atari/
 slurm/logs/
 
 # LaTeX build artifacts
@@ -34,4 +35,5 @@ plots/
 checkpoints/*_final.pt
 checkpoints/transformer_state.pt
 checkpoints/transformer_state.pt
+checkpoints_atari_*/
 wandb/

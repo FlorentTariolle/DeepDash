@@ -69,14 +69,21 @@ class FramePairDataset(Dataset):
     def __init__(self, episode_dirs, device=None):
         pairs_t, pairs_t1 = [], []
         for ep_dir in episode_dirs:
-            frames = np.load(ep_dir / "frames.npy")  # (T, 64, 64) uint8
+            frames = np.load(ep_dir / "frames.npy")  # (T, H, W) grayscale OR (T, H, W, C) RGB
             for i in range(len(frames) - 1):
                 pairs_t.append(frames[i])
                 pairs_t1.append(frames[i + 1])
         t_data = np.stack(pairs_t)
         t1_data = np.stack(pairs_t1)
-        self.frames_t = torch.from_numpy(t_data).float().unsqueeze(1) / 255.0
-        self.frames_t1 = torch.from_numpy(t1_data).float().unsqueeze(1) / 255.0
+        # Grayscale (T, H, W) -> add channel dim. RGB (T, H, W, C) -> permute to channels-first.
+        if t_data.ndim == 3:
+            self.frames_t = torch.from_numpy(t_data).float().unsqueeze(1) / 255.0
+            self.frames_t1 = torch.from_numpy(t1_data).float().unsqueeze(1) / 255.0
+        elif t_data.ndim == 4:
+            self.frames_t = torch.from_numpy(t_data).float().permute(0, 3, 1, 2) / 255.0
+            self.frames_t1 = torch.from_numpy(t1_data).float().permute(0, 3, 1, 2) / 255.0
+        else:
+            raise ValueError(f"frames.npy must be (T, H, W) or (T, H, W, C); got shape {t_data.shape}")
         if device and device.type == "cuda":
             self.frames_t = self.frames_t.to(device)
             self.frames_t1 = self.frames_t1.to(device)
@@ -159,8 +166,8 @@ def val_epoch(model, loader, codebook_size, amp_dtype=None, device=None):
 def main():
     parser = argparse.ArgumentParser(description="Train FSQ-VAE on Geometry Dash frames")
     parser.add_argument("--config", default=None, help="YAML config path")
-    parser.add_argument("--episodes-dir", default="data/death_episodes")
-    parser.add_argument("--expert-episodes-dir", default="data/expert_episodes")
+    parser.add_argument("--episodes-dir", default=None)
+    parser.add_argument("--expert-episodes-dir", default=None)
     parser.add_argument("--epochs", type=int, default=None)
     parser.add_argument("--batch-size", type=int, default=None)
     parser.add_argument("--lr", type=float, default=None)
@@ -168,6 +175,8 @@ def main():
     parser.add_argument("--checkpoint-dir", default=None)
     parser.add_argument("--resume", default=None, help="Path to checkpoint to resume from")
     parser.add_argument("--levels", type=int, nargs="+", default=None)
+    parser.add_argument("--img-channels", type=int, default=None,
+                        help="1 for grayscale (V7 / GD default), 3 for RGB (Atari).")
     parser.add_argument("--alpha-slow", type=float, default=None)
     parser.add_argument("--alpha-uniform", type=float, default=None)
     parser.add_argument("--val-ratio", type=float, default=0.1)
@@ -200,6 +209,10 @@ def main():
     args.lr_min = args.lr_min if args.lr_min is not None else 1e-5
     args.checkpoint_dir = args.checkpoint_dir or "checkpoints"
     args.levels = args.levels or [8, 5, 5, 5]
+    args.img_channels = args.img_channels if args.img_channels is not None else 1
+    # Backward compat: GD defaults if neither YAML nor CLI provided paths.
+    args.episodes_dir = args.episodes_dir or "data/death_episodes"
+    args.expert_episodes_dir = args.expert_episodes_dir or "data/expert_episodes"
     args.alpha_slow = args.alpha_slow if args.alpha_slow is not None else 0.1
     args.alpha_uniform = args.alpha_uniform if args.alpha_uniform is not None else 0.01
     args.amp_dtype = args.amp_dtype or "bfloat16"
@@ -250,7 +263,7 @@ def main():
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size,
                             shuffle=False, num_workers=0, pin_memory=False)
 
-    model = FSQVAE(levels=args.levels).to(device)
+    model = FSQVAE(img_channels=args.img_channels, levels=args.levels).to(device)
     if args.resume:
         state = torch.load(args.resume, map_location=device, weights_only=True)
         state = {k.removeprefix("_orig_mod."): v for k, v in state.items()}
