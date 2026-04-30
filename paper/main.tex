@@ -91,6 +91,7 @@ Once SLS was identified as the principled fix, evaluating it properly required m
 The pivot is methodological, not aesthetic.
 Geometry Dash is retained as a real-time application showcase: the full pipeline measures $\sim$15\,ms total inference per frame on RTX 2060 SUPER ($\sim$67\,FPS achievable; deployed at 30\,FPS conservatively for capture-rate stability).
 Primary evaluation is moving to a reactive subset of Atari 100k; two open questions guide ongoing experiments: (Q1) does SLS improve over standard CE on a standard benchmark? (Q2) is SLS FSQ-specific, or principle-level (cross-validated on a VQ-VAE codebook)?
+Both environments sit in the same data-scarce regime: roughly two hours of gameplay per environment (Geometry Dash: $\sim$250K recorded frames at 30\,FPS $\approx$ 2h19; Atari 100k: 100k environment steps with 4-frame skip at 60\,Hz $\approx$ 1h51), aligning the cross-environment evaluation budget with published sample-efficient world-model baselines (DreamerV3, IRIS, TWISTER) on Atari 100k.
 Updated experimental tables and intro framing will land progressively as the benchmark instantiation matures.
 
 % ===========================================================================
