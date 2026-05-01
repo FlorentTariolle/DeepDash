@@ -1,0 +1,42 @@
+# Atari Pong v0 tokenizer baseline.
+# IRIS-style tokenizer reconstruction recipe: L1 + pretrained VGG LPIPS.
+
+model:
+  vocab_size: 1000
+  embed_dim: 384
+  n_heads: 8
+  n_layers: 8
+  tokens_per_frame: 256
+  context_frames: 4
+  levels: [8, 5, 5, 5]
+  dropout: 0.1
+  adaln: false
+  img_channels: 3
+
+fsq:
+  episodes_dir: data/atari/Pong/episodes
+  replay_dir: data/atari/Pong/replay
+  expert_episodes_dir: data/atari/Pong/_no_expert  # graceful skip if missing
+  img_channels: 3
+  norm_type: group
+  levels: [8, 5, 5, 5]
+  latent_grid: 16
+  epochs: 200  # local tokenizer sanity run; shorten from CLI for smoke tests
+  batch_size: 64
+  lr: 0.0001
+  lr_min: 0.000001
+  alpha_slow: 0.0
+  alpha_uniform: 0.1
+  recon_loss_type: l1
+  recon_reduction: mean
+  recon_weight_mode: none
+  foreground_weight: 0.0
+  foreground_weight_max: 25.0
+  perceptual_loss: lpips
+  perceptual_weight: 1.0
+  augment_shift: false
+  val_interval: 5
+  seed: 42
+  amp_dtype: float16
+  compile_mode: reduce-overhead
+  checkpoint_dir: checkpoints_atari_pong_v0

@@ -1,6 +1,7 @@
 *.json
 __pycache__/
 .venv/
+.codex_tmp/
 data/deepdash/frames/
 data/deepdash/train/
 data/deepdash/val/

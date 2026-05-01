@@ -2,7 +2,7 @@
 
 Replaces VQ-VAE's codebook lookup with simple rounding to fixed levels.
 No codebook, no EMA, no dead entries, no commitment loss tuning.
-8x8 spatial grid (64 tokens/frame), padding=1 encoder.
+Configurable spatial grid (default 8x8 = 64 tokens/frame), padding=1 encoder.
 
 FSQ levels [8,5,5,5] → 1000 implicit codes with 4d latent per spatial position.
 
@@ -111,15 +111,26 @@ class FSQQuantizer(nn.Module):
         return z_q - half
 
 
+def make_norm(channels, norm_type="batch"):
+    if norm_type == "batch":
+        return nn.BatchNorm2d(channels)
+    if norm_type == "group":
+        groups = min(8, channels)
+        while channels % groups != 0:
+            groups -= 1
+        return nn.GroupNorm(groups, channels)
+    raise ValueError(f"unknown norm_type: {norm_type}")
+
+
 class ResBlock(nn.Module):
-    def __init__(self, channels):
+    def __init__(self, channels, norm_type="batch"):
         super().__init__()
         self.block = nn.Sequential(
             nn.Conv2d(channels, channels, 3, padding=1),
-            nn.BatchNorm2d(channels),
+            make_norm(channels, norm_type),
             nn.SiLU(inplace=True),
             nn.Conv2d(channels, channels, 3, padding=1),
-            nn.BatchNorm2d(channels),
+            make_norm(channels, norm_type),
         )
 
     def forward(self, x):
@@ -127,70 +138,95 @@ class ResBlock(nn.Module):
 
 
 class Encoder(nn.Module):
-    def __init__(self, img_channels=1, latent_dim=5):
+    def __init__(self, img_channels=1, latent_dim=5, norm_type="batch",
+                 latent_grid=8):
         super().__init__()
-        # Padded convs: 64 -> 32 -> 16 -> 8
+        if latent_grid not in (8, 16):
+            raise ValueError(f"FSQ encoder supports latent_grid 8 or 16, got {latent_grid}")
+        self.latent_grid = int(latent_grid)
+        # Padded convs: 64 -> 32 -> 16 -> optionally 8
         self.conv1 = nn.Conv2d(img_channels, 32, 4, stride=2, padding=1)
-        self.res1 = nn.Sequential(ResBlock(32), ResBlock(32))
+        self.res1 = nn.Sequential(ResBlock(32, norm_type), ResBlock(32, norm_type))
         self.conv2 = nn.Conv2d(32, 64, 4, stride=2, padding=1)
-        self.res2 = nn.Sequential(ResBlock(64), ResBlock(64))
-        self.conv3 = nn.Conv2d(64, 128, 4, stride=2, padding=1)
-        self.res3 = nn.Sequential(ResBlock(128), ResBlock(128))
-        self.proj = nn.Conv2d(128, latent_dim, 1)
+        self.res2 = nn.Sequential(ResBlock(64, norm_type), ResBlock(64, norm_type))
+        if self.latent_grid == 8:
+            self.conv3 = nn.Conv2d(64, 128, 4, stride=2, padding=1)
+            self.res3 = nn.Sequential(ResBlock(128, norm_type), ResBlock(128, norm_type))
+            proj_channels = 128
+        else:
+            self.conv3 = None
+            self.res3 = None
+            proj_channels = 64
+        self.proj = nn.Conv2d(proj_channels, latent_dim, 1)
 
     def forward(self, x):
         x = F.silu(self.conv1(x))
         x = self.res1(x)
         x = F.silu(self.conv2(x))
         x = self.res2(x)
-        x = F.silu(self.conv3(x))
-        x = self.res3(x)
-        return self.proj(x)  # (B, latent_dim, 8, 8)
+        if self.latent_grid == 8:
+            x = F.silu(self.conv3(x))
+            x = self.res3(x)
+        return self.proj(x)  # (B, latent_dim, latent_grid, latent_grid)
 
 
 class Decoder(nn.Module):
-    def __init__(self, img_channels=1, latent_dim=5):
+    def __init__(self, img_channels=1, latent_dim=5, norm_type="batch",
+                 latent_grid=8):
         super().__init__()
-        self.proj = nn.Conv2d(latent_dim, 128, 1)
-        self.res1 = nn.Sequential(ResBlock(128), ResBlock(128))
-        # 8 -> 16 -> 32 -> 64
-        self.deconv1 = nn.ConvTranspose2d(128, 64, 4, stride=2, padding=1)
-        self.res2 = nn.Sequential(ResBlock(64), ResBlock(64))
+        if latent_grid not in (8, 16):
+            raise ValueError(f"FSQ decoder supports latent_grid 8 or 16, got {latent_grid}")
+        self.latent_grid = int(latent_grid)
+        start_channels = 128 if self.latent_grid == 8 else 64
+        self.proj = nn.Conv2d(latent_dim, start_channels, 1)
+        self.res1 = nn.Sequential(ResBlock(start_channels, norm_type),
+                                  ResBlock(start_channels, norm_type))
+        if self.latent_grid == 8:
+            # 8 -> 16
+            self.deconv1 = nn.ConvTranspose2d(128, 64, 4, stride=2, padding=1)
+            self.res2 = nn.Sequential(ResBlock(64, norm_type), ResBlock(64, norm_type))
+        else:
+            self.deconv1 = None
+            self.res2 = None
+        # 16 -> 32 -> 64
         self.deconv2 = nn.ConvTranspose2d(64, 32, 4, stride=2, padding=1)
-        self.res3 = nn.Sequential(ResBlock(32), ResBlock(32))
+        self.res3 = nn.Sequential(ResBlock(32, norm_type), ResBlock(32, norm_type))
         self.deconv3 = nn.ConvTranspose2d(32, img_channels, 4, stride=2, padding=1)
 
     def forward(self, z_q):
         x = F.silu(self.proj(z_q))
         x = self.res1(x)
-        x = F.silu(self.deconv1(x))
-        x = self.res2(x)
+        if self.latent_grid == 8:
+            x = F.silu(self.deconv1(x))
+            x = self.res2(x)
         x = F.silu(self.deconv2(x))
         x = self.res3(x)
         return torch.sigmoid(self.deconv3(x))
 
 
 class FSQVAE(nn.Module):
-    def __init__(self, img_channels=1, levels=None):
+    def __init__(self, img_channels=1, levels=None, norm_type="batch",
+                 latent_grid=8):
         super().__init__()
         levels = levels or DEFAULT_LEVELS
         latent_dim = len(levels)
-        self.encoder = Encoder(img_channels, latent_dim)
+        self.latent_grid = int(latent_grid)
+        self.encoder = Encoder(img_channels, latent_dim, norm_type, self.latent_grid)
         self.fsq = FSQQuantizer(levels)
-        self.decoder = Decoder(img_channels, latent_dim)
+        self.decoder = Decoder(img_channels, latent_dim, norm_type, self.latent_grid)
 
     @property
     def codebook_size(self):
         return self.fsq.codebook_size
 
     def forward(self, x):
-        z_e = self.encoder(x)       # (B, D, 8, 8)
-        z_q, indices = self.fsq(z_e)  # z_q: (B, D, 8, 8), indices: (B, 8, 8)
-        recon = self.decoder(z_q)    # (B, 1, 64, 64)
+        z_e = self.encoder(x)       # (B, D, G, G)
+        z_q, indices = self.fsq(z_e)  # z_q: (B, D, G, G), indices: (B, G, G)
+        recon = self.decoder(z_q)    # (B, C, 64, 64)
         return recon, z_e, indices
 
     def encode(self, x):
-        """Encode to flat token indices (B, 8, 8)."""
+        """Encode to token indices (B, G, G)."""
         z_e = self.encoder(x)
         _, indices = self.fsq(z_e)
         return indices
@@ -201,17 +237,26 @@ class FSQVAE(nn.Module):
         return self.decoder(z_q)
 
 
-def fsqvae_loss(recon_x, x, loss_type='mse'):
+def fsqvae_loss(recon_x, x, loss_type='mse', reduction='sum'):
     """Reconstruction loss only. FSQ has no codebook loss.
 
-    loss_type='mse': sum of squared errors per sample (legacy default).
-    loss_type='l1': sum of absolute errors per sample. Sharper output
+    loss_type='mse': squared error.
+    loss_type='l1': absolute error. Sharper output
         under uncertainty (median vs L2's mean), but ~30x larger absolute
         magnitude at convergence -- recon_weight must be calibrated.
+    reduction='sum': sum per sample, averaged over batch (legacy default).
+    reduction='mean': mean over batch, channels, and pixels.
     """
+    if reduction not in ("sum", "mean"):
+        raise ValueError(f"unknown reduction: {reduction}")
+    torch_reduction = "mean" if reduction == "mean" else "sum"
     if loss_type == 'l1':
-        return F.l1_loss(recon_x, x, reduction='sum') / x.size(0)
-    return F.mse_loss(recon_x, x, reduction='sum') / x.size(0)
+        loss = F.l1_loss(recon_x, x, reduction=torch_reduction)
+    else:
+        loss = F.mse_loss(recon_x, x, reduction=torch_reduction)
+    if reduction == "sum":
+        loss = loss / x.size(0)
+    return loss
 
 
 def grwm_slowness(z_e_t, z_e_t1):
