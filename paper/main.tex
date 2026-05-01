@@ -107,6 +107,11 @@ A key property of FSQ, largely unexploited in downstream tasks, is that its code
 Each code maps to a point on a $D$-dimensional integer lattice, and the distance between two codes in this space is semantically meaningful: codes that differ by one step in one dimension represent visually similar patches.
 Yet discrete WMs supervise next-token prediction with one-hot cross-entropy on tokenizer indices~\citep{micheli2023iris}, which exploits no coordinate metric on the latent space and treats a near-miss (one lattice step from the target) and a gross error (opposite corner of the codebook) as equally informative training signals.
 
+This places SLS-WM in contrast with diffusion-based generative latent prediction (GLP) methods.
+Discrete latent spaces have proven effective for sample-efficient Atari world models, most notably in IRIS~\citep{micheli2023iris}, but discreteness removes the continuous latent geometry that diffusion-style denoising uses to express smooth predictive uncertainty.
+SLS-WM preserves the discrete classification formulation while recovering a notion of smooth prediction from the FSQ lattice itself: instead of assigning all probability mass to a single token or denoising in continuous space, it distributes target probability over nearby lattice states.
+In this sense, SLS capitalizes on the discreteness that makes tokenized Atari WMs effective while avoiding the structureless penalty imposed by one-hot supervision.
+
 We propose \emph{Structured Label Smoothing} (SLS), a soft-target objective whose target distribution is a kernel over FSQ coordinate distances, so the supervision signal reflects the geometry the quantizer has already learned.
 Classical uniform label smoothing~\citep{szegedy2016rethinking} is the structureless limit of this construction and a natural ablation, not the baseline SLS improves over.
 
