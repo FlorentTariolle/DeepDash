@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--video", default="data/videos/Standard/level_2.mp4")
+    parser.add_argument("--video", default="data/deepdash/videos/Standard/level_2.mp4")
     parser.add_argument("--frame", type=int, default=2104, help="Frame index to extract")
     parser.add_argument("--crop-x", type=int, default=220)
     parser.add_argument("--crop-y", type=int, default=16)

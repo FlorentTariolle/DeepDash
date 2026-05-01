@@ -12,8 +12,8 @@ model:
   adaln: true
 
 transformer:
-  episodes_dir: data/death_episodes
-  expert_episodes_dir: data/expert_episodes
+  episodes_dir: data/deepdash/death_episodes
+  expert_episodes_dir: data/deepdash/expert_episodes
   epochs: 200
   batch_size: 896
   lr: 0.004
@@ -36,7 +36,7 @@ transformer:
   learnable_gamma: false
 
 controller_bc:
-  expert_episodes_dir: data/expert_episodes
+  expert_episodes_dir: data/deepdash/expert_episodes
   transformer_checkpoint: checkpoints_e6.4/transformer_best.pt
   epochs: 50
   batch_size: 512

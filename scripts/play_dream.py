@@ -126,8 +126,8 @@ def main():
                         default="checkpoints/transformer_best.pt")
     parser.add_argument("--controller-checkpoint",
                         default="checkpoints/controller_ppo_best.pt")
-    parser.add_argument("--episodes-dir", default="data/death_episodes")
-    parser.add_argument("--expert-episodes-dir", default="data/expert_episodes")
+    parser.add_argument("--episodes-dir", default="data/deepdash/death_episodes")
+    parser.add_argument("--expert-episodes-dir", default="data/deepdash/expert_episodes")
     parser.add_argument("--context-frames", type=int, default=4)
     parser.add_argument("--fps", type=float, default=30)
     parser.add_argument("--scale", type=int, default=6,

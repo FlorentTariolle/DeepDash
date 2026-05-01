@@ -33,13 +33,13 @@ def seed():
 class TestDataSplit:
     def test_deterministic(self):
         from deepdash.data_split import get_val_episodes
-        val1 = get_val_episodes("data/death_episodes", "data/expert_episodes")
-        val2 = get_val_episodes("data/death_episodes", "data/expert_episodes")
+        val1 = get_val_episodes("data/deepdash/death_episodes", "data/deepdash/expert_episodes")
+        val2 = get_val_episodes("data/deepdash/death_episodes", "data/deepdash/expert_episodes")
         assert val1 == val2, "Data split not deterministic"
 
     def test_nonempty(self):
         from deepdash.data_split import get_val_episodes
-        val = get_val_episodes("data/death_episodes", "data/expert_episodes")
+        val = get_val_episodes("data/deepdash/death_episodes", "data/deepdash/expert_episodes")
         assert len(val) > 0, "Val set is empty"
 
 

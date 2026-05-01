@@ -7,7 +7,7 @@ held out: no model ever trains on their data.
 Usage:
     from deepdash.data_split import get_val_episodes, is_val_episode
 
-    val_set = get_val_episodes("data/death_episodes", "data/expert_episodes")
+    val_set = get_val_episodes("data/deepdash/death_episodes", "data/deepdash/expert_episodes")
     if is_val_episode(ep_name, val_set):
         ...
 """
@@ -21,8 +21,8 @@ SPLIT_SEED = 42
 VAL_RATIO = 0.1
 
 
-def get_val_episodes(death_dir="data/death_episodes",
-                     expert_dir="data/expert_episodes"):
+def get_val_episodes(death_dir="data/deepdash/death_episodes",
+                     expert_dir="data/deepdash/expert_episodes"):
     """Compute the global val episode set.
 
     Stratified: 10% of death episodes + 10% of expert episodes.

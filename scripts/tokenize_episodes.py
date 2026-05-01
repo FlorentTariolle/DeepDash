@@ -65,7 +65,7 @@ SHIFT_AUG_RE = re.compile(r"_s[+-]\d+_[+-]\d+$")
 
 def main():
     parser = argparse.ArgumentParser(description="Tokenize episodes with frozen FSQ")
-    parser.add_argument("--episodes-dir", default="data/death_episodes")
+    parser.add_argument("--episodes-dir", default="data/deepdash/death_episodes")
     parser.add_argument("--checkpoint", default="checkpoints/fsq_best.pt")
     parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--levels", type=int, nargs="+", default=[8, 5, 5, 5])

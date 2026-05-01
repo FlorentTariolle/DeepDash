@@ -39,7 +39,7 @@ def tokenize_episode(vae, ep_dir, device, batch_size=64):
     return tokens
 
 
-def compute_val_set(death_dir, expert_dir="data/expert_episodes"):
+def compute_val_set(death_dir, expert_dir="data/deepdash/expert_episodes"):
     """Get global val set (shared across all models)."""
     from deepdash.data_split import get_val_episodes
     return get_val_episodes(death_dir, expert_dir)
@@ -224,8 +224,8 @@ def main():
     parser.add_argument("--transformer-checkpoint",
                         default="checkpoints/transformer_best.pt")
     parser.add_argument("--vae-checkpoint", default="checkpoints/fsq_best.pt")
-    parser.add_argument("--episodes-dir", default="data/death_episodes")
-    parser.add_argument("--expert-episodes-dir", default="data/expert_episodes")
+    parser.add_argument("--episodes-dir", default="data/deepdash/death_episodes")
+    parser.add_argument("--expert-episodes-dir", default="data/deepdash/expert_episodes")
     parser.add_argument("--output-dir", default="outputs/ppo_dreams")
     parser.add_argument("--n-episodes", type=int, default=40,
                         help="Number of dream rollouts to visualize")

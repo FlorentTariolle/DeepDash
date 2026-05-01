@@ -61,7 +61,7 @@ def main():
     parser.add_argument("--tokenizer", choices=["fsq", "vqvae"], default="fsq")
     parser.add_argument("--tokenizer-checkpoint", default=None,
                         help="Default: checkpoints/{tokenizer}_best.pt")
-    parser.add_argument("--episodes-dir", default="data/death_episodes")
+    parser.add_argument("--episodes-dir", default="data/deepdash/death_episodes")
     parser.add_argument("--num-samples", type=int, default=4)
     parser.add_argument("--rollout-steps", type=int, default=20)
     parser.add_argument("--config", default=None)

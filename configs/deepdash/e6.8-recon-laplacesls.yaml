@@ -12,8 +12,8 @@ model:
   adaln: true
 
 transformer:
-  episodes_dir: data/death_episodes
-  expert_episodes_dir: data/expert_episodes
+  episodes_dir: data/deepdash/death_episodes
+  expert_episodes_dir: data/deepdash/expert_episodes
   epochs: 100
   batch_size: 1024
   lr: 0.004
@@ -48,7 +48,7 @@ posthoc_decoder:
   checkpoint_dir: checkpoints_e6.8
 
 controller_bc:
-  expert_episodes_dir: data/expert_episodes
+  expert_episodes_dir: data/deepdash/expert_episodes
   transformer_checkpoint: checkpoints_e6.8/transformer_best.pt
   epochs: 50
   batch_size: 512

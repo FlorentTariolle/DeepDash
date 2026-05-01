@@ -438,8 +438,8 @@ def main():
     parser.add_argument("--fsq-checkpoint", default=None,
                         help="Re-encode frames through this FSQ instead of "
                              "using on-disk tokens.npy.")
-    parser.add_argument("--episodes-dir", default="data/death_episodes")
-    parser.add_argument("--expert-episodes-dir", default="data/expert_episodes")
+    parser.add_argument("--episodes-dir", default="data/deepdash/death_episodes")
+    parser.add_argument("--expert-episodes-dir", default="data/deepdash/expert_episodes")
     # PPO
     parser.add_argument("--lr", type=float, default=None)
     parser.add_argument("--lr-warmup-iters", type=int, default=None)

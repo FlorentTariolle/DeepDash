@@ -25,13 +25,13 @@ corresponding navigation.
 
 Usage:
     python scripts/compare_dreams.py \
-        --config configs/e6.7-recon-cauchysls.yaml \
+        --config configs/deepdash/e6.7-recon-cauchysls.yaml \
         --vae-checkpoint checkpoints_e6.7/fsq_best.pt \
         --transformer-checkpoint \
             checkpoints_e6.4/transformer_best.pt \
             checkpoints_e6.7/transformer_best.pt \
-        --episodes-dir "C:/Users/Florent/sls-wm-data/death_episodes" \
-        --expert-episodes-dir "C:/Users/Florent/sls-wm-data/expert_episodes"
+        --episodes-dir "C:/Users/Florent/sls-wm-data/deepdash/death_episodes" \
+        --expert-episodes-dir "C:/Users/Florent/sls-wm-data/deepdash/expert_episodes"
 """
 
 import argparse
@@ -163,8 +163,8 @@ def main():
                         help="One or more transformer checkpoints to compare sequentially")
     parser.add_argument("--label", nargs="+", default=None,
                         help="Labels matching --transformer-checkpoint (default: parent dir name)")
-    parser.add_argument("--episodes-dir", default="data/death_episodes")
-    parser.add_argument("--expert-episodes-dir", default="data/expert_episodes")
+    parser.add_argument("--episodes-dir", default="data/deepdash/death_episodes")
+    parser.add_argument("--expert-episodes-dir", default="data/deepdash/expert_episodes")
     parser.add_argument("--context-frames", type=int, default=4)
     parser.add_argument("--fps", type=float, default=30)
     parser.add_argument("--scale", type=int, default=6)

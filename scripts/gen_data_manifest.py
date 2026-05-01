@@ -42,8 +42,8 @@ def generate(data_dirs):
 
 def main():
     parser = argparse.ArgumentParser(description="Generate/verify data manifest")
-    parser.add_argument("--death-dir", default="data/death_episodes")
-    parser.add_argument("--expert-dir", default="data/expert_episodes")
+    parser.add_argument("--death-dir", default="data/deepdash/death_episodes")
+    parser.add_argument("--expert-dir", default="data/deepdash/expert_episodes")
     parser.add_argument("--output", default="data/manifest.json")
     parser.add_argument("--verify", action="store_true",
                         help="Verify existing manifest instead of generating")

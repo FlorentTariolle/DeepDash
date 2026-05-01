@@ -117,8 +117,8 @@ def compute_hidden_states(model, ctx_tokens, ctx_actions, device, batch_size=256
 def main():
     parser = argparse.ArgumentParser(
         description="Behavioral cloning for controller")
-    parser.add_argument("--episodes-dir", default="data/death_episodes")
-    parser.add_argument("--expert-episodes-dir", default="data/expert_episodes")
+    parser.add_argument("--episodes-dir", default="data/deepdash/death_episodes")
+    parser.add_argument("--expert-episodes-dir", default="data/deepdash/expert_episodes")
     parser.add_argument("--transformer-checkpoint", default=None)
     parser.add_argument("--fsq-checkpoint", default=None,
                         help="Re-encode frames through this FSQ instead of "

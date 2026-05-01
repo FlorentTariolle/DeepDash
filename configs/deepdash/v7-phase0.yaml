@@ -20,8 +20,8 @@ model:
   adaln: false
 
 fsq:
-  episodes_dir: data/death_episodes
-  expert_episodes_dir: data/expert_episodes
+  episodes_dir: data/deepdash/death_episodes
+  expert_episodes_dir: data/deepdash/expert_episodes
   # 5x V3-deploy nominal epochs to recover the compute lost by removing the
   # aug-dir duplication bug. T_max scales with --epochs so per-step LR
   # trajectory matches the bug's effective shape (5 cosines stitched at
@@ -45,8 +45,8 @@ fsq:
   checkpoint_dir: checkpoints_v7
 
 transformer:
-  episodes_dir: data/death_episodes
-  expert_episodes_dir: data/expert_episodes
+  episodes_dir: data/deepdash/death_episodes
+  expert_episodes_dir: data/deepdash/expert_episodes
   epochs: 200
   batch_size: 512
   lr: 0.002
@@ -72,7 +72,7 @@ transformer:
   compile_mode: reduce-overhead
 
 controller_bc:
-  expert_episodes_dir: data/expert_episodes
+  expert_episodes_dir: data/deepdash/expert_episodes
   transformer_checkpoint: checkpoints_v7/transformer_best.pt
   epochs: 50
   batch_size: 512

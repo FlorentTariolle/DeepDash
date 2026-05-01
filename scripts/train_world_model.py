@@ -6,7 +6,7 @@ JointStep / WorldModel.fsq_grad_proj). Without --joint, the Transformer
 trains on pre-tokenised episode data (tokens.npy).
 
 Usage:
-    python scripts/train_world_model.py --config configs/e6.7-recon-cauchysls.yaml
+    python scripts/train_world_model.py --config configs/deepdash/e6.7-recon-cauchysls.yaml
 """
 
 import argparse
@@ -1107,10 +1107,10 @@ def val_epoch_joint(joint_step, loader, device, amp_dtype=torch.bfloat16):
 
 def main():
     parser = argparse.ArgumentParser(description="Train Transformer world model")
-    parser.add_argument("--episodes-dir", default="data/death_episodes")
-    parser.add_argument("--expert-episodes-dir", default="data/expert_episodes",
+    parser.add_argument("--episodes-dir", default="data/deepdash/death_episodes")
+    parser.add_argument("--expert-episodes-dir", default="data/deepdash/expert_episodes",
                         help="Directory with expert episodes (no death on last frame)")
-    parser.add_argument("--config", default=None, help="YAML config path (default: configs/e6.7-recon-cauchysls.yaml)")
+    parser.add_argument("--config", default=None, help="YAML config path (default: configs/deepdash/e6.7-recon-cauchysls.yaml)")
     parser.add_argument("--epochs", type=int, default=None)
     parser.add_argument("--batch-size", type=int, default=None)
     parser.add_argument("--lr", type=float, default=None)

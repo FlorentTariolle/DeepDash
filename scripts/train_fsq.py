@@ -211,8 +211,8 @@ def main():
     args.levels = args.levels or [8, 5, 5, 5]
     args.img_channels = args.img_channels if args.img_channels is not None else 1
     # Backward compat: GD defaults if neither YAML nor CLI provided paths.
-    args.episodes_dir = args.episodes_dir or "data/death_episodes"
-    args.expert_episodes_dir = args.expert_episodes_dir or "data/expert_episodes"
+    args.episodes_dir = args.episodes_dir or "data/deepdash/death_episodes"
+    args.expert_episodes_dir = args.expert_episodes_dir or "data/deepdash/expert_episodes"
     args.alpha_slow = args.alpha_slow if args.alpha_slow is not None else 0.1
     args.alpha_uniform = args.alpha_uniform if args.alpha_uniform is not None else 0.01
     args.amp_dtype = args.amp_dtype or "bfloat16"

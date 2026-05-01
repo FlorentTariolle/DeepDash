@@ -65,8 +65,8 @@ def extract_frames(video_dir: str, output_dir: str, every_n: int = 5,
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Extract frames from gameplay videos")
-    parser.add_argument("--video-dir", default="data/videos/Standard", help="Directory with .mp4 files")
-    parser.add_argument("--output-dir", default="data/frames", help="Output directory for frames")
+    parser.add_argument("--video-dir", default="data/deepdash/videos/Standard", help="Directory with .mp4 files")
+    parser.add_argument("--output-dir", default="data/deepdash/frames", help="Output directory for frames")
     parser.add_argument("--every-n", type=int, default=5, help="Sample every Nth frame (default: 5)")
     parser.add_argument("--levels", type=int, nargs="+", default=None, help="Level numbers to extract (e.g. --levels 1 2 3)")
     args = parser.parse_args()

@@ -6,7 +6,7 @@ encoder + quantizer, re-inits decoder, trains on MSE(decoder(z_q), frame).
 Output is a drop-in replacement for fsq_best.pt.
 
 Usage:
-    python scripts/train_posthoc_decoder.py --config configs/e6.7-recon-cauchysls.yaml
+    python scripts/train_posthoc_decoder.py --config configs/deepdash/e6.7-recon-cauchysls.yaml
 """
 
 import argparse
@@ -73,8 +73,8 @@ def main():
     parser.add_argument("--config", default=None)
     parser.add_argument("--fsq-checkpoint", default=None)
     parser.add_argument("--checkpoint-dir", default=None)
-    parser.add_argument("--episodes-dir", default="data/death_episodes")
-    parser.add_argument("--expert-episodes-dir", default="data/expert_episodes")
+    parser.add_argument("--episodes-dir", default="data/deepdash/death_episodes")
+    parser.add_argument("--expert-episodes-dir", default="data/deepdash/expert_episodes")
     parser.add_argument("--epochs", type=int, default=None)
     parser.add_argument("--batch-size", type=int, default=None)
     parser.add_argument("--lr", type=float, default=None)

@@ -14,7 +14,7 @@ Controls:
     F10 — quit (saves current episode if recording)
 
 Output:
-    data/death_episodes/ep_NNNN/
+    data/deepdash/death_episodes/ep_NNNN/
         frames.npy     (T, 64, 64) uint8 — Sobel edge maps
         actions.npy    (T,) uint8 — 0=idle, 1=jump
         metadata.json  {fps_target, fps_actual, timestamp, num_frames}
@@ -149,8 +149,8 @@ def main():
                                   "(for custom/community levels)")
     level_group.add_argument("--perfect-run", type=int, metavar="LEVEL_ID",
                              help="Record a perfect run (no deaths) for given level. "
-                                  "Auto-deletes on death. Saved to data/expert_episodes/")
-    parser.add_argument("--output-dir", default="data/death_episodes",
+                                  "Auto-deletes on death. Saved to data/deepdash/expert_episodes/")
+    parser.add_argument("--output-dir", default="data/deepdash/death_episodes",
                         help="Output directory for episodes")
     parser.add_argument("--respawn-delay", type=float, default=0.75,
                         help="Seconds to wait after respawn before recording "
@@ -164,7 +164,7 @@ def main():
     perfect_run_mode = args.perfect_run is not None
     if perfect_run_mode:
         args.level = args.perfect_run
-        args.output_dir = "data/expert_episodes"
+        args.output_dir = "data/deepdash/expert_episodes"
         print(f"Perfect run mode: level {args.perfect_run} "
               f"(recording deleted on death)")
     elif args.custom:

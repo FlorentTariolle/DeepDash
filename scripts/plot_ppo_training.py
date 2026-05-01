@@ -92,8 +92,8 @@ def main():
     # Model/eval args (only used with --bc-checkpoint)
     parser.add_argument("--transformer-checkpoint",
                         default="checkpoints/transformer_best.pt")
-    parser.add_argument("--episodes-dir", default="data/death_episodes")
-    parser.add_argument("--expert-episodes-dir", default="data/expert_episodes")
+    parser.add_argument("--episodes-dir", default="data/deepdash/death_episodes")
+    parser.add_argument("--expert-episodes-dir", default="data/deepdash/expert_episodes")
     parser.add_argument("--config", default=None)
     parser.add_argument("--vocab-size", type=int, default=None)
     parser.add_argument("--embed-dim", type=int, default=None)

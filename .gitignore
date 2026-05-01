@@ -1,15 +1,15 @@
 *.json
 __pycache__/
 .venv/
-data/frames/
-data/train/
-data/val/
-data/death_episodes/*/tokens.npy
-data/expert_episodes/*/tokens.npy
-data/videos/
+data/deepdash/frames/
+data/deepdash/train/
+data/deepdash/val/
+data/deepdash/death_episodes/*/tokens.npy
+data/deepdash/expert_episodes/*/tokens.npy
+data/deepdash/videos/
 eval_output/
-data/death_episodes/*_s*/
-data/expert_episodes/*_s*/
+data/deepdash/death_episodes/*_s*/
+data/deepdash/expert_episodes/*_s*/
 data/atari/
 slurm/logs/
 
