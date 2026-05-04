@@ -37,6 +37,32 @@ fsq:
   augment_shift: false
   val_interval: 5
   seed: 42
+  # Local RTX 2060 SUPER: native float16 + GradScaler.
+  # Supercomputer configs should explicitly override this to bfloat16.
   amp_dtype: float16
   compile_mode: reduce-overhead
   checkpoint_dir: checkpoints_atari_pong_v0
+
+predictor:
+  replay_dir: data/atari/Pong/replay
+  fsq_checkpoint: checkpoints_atari_pong_v0/fsq_best.pt
+  tokenizer_config: configs/atari/atari_pong_v0.yaml
+  n_actions: 6
+  epochs: 50
+  batch_size: 32
+  lr: 0.0002
+  lr_min: 0.00001
+  weight_decay: 0.01
+  val_ratio: 0.2
+  eval_horizons: [1, 5, 10, 15]
+  label_smoothing: 0.0
+  fsq_kernel: gaussian
+  fsq_sigma: 0.9
+  focal_gamma: 0.0
+  # Local RTX 2060 SUPER: native float16 + GradScaler.
+  # Supercomputer configs should explicitly override this to bfloat16.
+  amp_dtype: float16
+  compile_mode: reduce-overhead
+  val_interval: 1
+  seed: 42
+  checkpoint_dir: checkpoints_atari_pong_v0_predictor_ce

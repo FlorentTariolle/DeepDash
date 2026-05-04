@@ -69,6 +69,7 @@ class WorldModel(nn.Module):
         dropout: float = 0.1,
         tokens_per_frame: int = 64,
         adaln: bool = False,
+        use_status_token: bool = True,
         fsq_dim: int | None = None,
         sls_gamma_init: torch.Tensor | None = None,
         use_cpc: bool = False,
@@ -90,6 +91,7 @@ class WorldModel(nn.Module):
         self.context_frames = context_frames
         self.tokens_per_frame = tokens_per_frame
         self.adaln = adaln
+        self.use_status_token = bool(use_status_token)
         self.use_cpc = use_cpc
         self.cpc_dim = cpc_dim
         if use_cpc and adaln:
@@ -100,13 +102,18 @@ class WorldModel(nn.Module):
                 "use_cpc=True, adaln=False."
             )
 
-        # Death token indices (appended as 65th position per frame)
-        self.ALIVE_TOKEN = vocab_size      # index for alive status
-        self.DEATH_TOKEN = vocab_size + 1  # index for death status
-        self.full_vocab_size = vocab_size + 2  # visual tokens + ALIVE + DEATH
+        if self.use_status_token:
+            # Death token indices (appended as 65th position per frame)
+            self.ALIVE_TOKEN = vocab_size      # index for alive status
+            self.DEATH_TOKEN = vocab_size + 1  # index for death status
+            self.full_vocab_size = vocab_size + 2  # visual tokens + ALIVE + DEATH
+        else:
+            self.ALIVE_TOKEN = None
+            self.DEATH_TOKEN = None
+            self.full_vocab_size = vocab_size
 
-        # Tokens per frame block: visual tokens + 1 status token
-        self.block_size = tokens_per_frame + 1
+        # Tokens per frame block: visual tokens + optional status token
+        self.block_size = tokens_per_frame + (1 if self.use_status_token else 0)
 
         if adaln:
             # No action tokens in sequence — actions injected via AdaLN
@@ -226,10 +233,11 @@ class WorldModel(nn.Module):
                 rows[pos + j] = j // G
                 cols[pos + j] = j % G
                 frames[pos + j] = i
-            # Status token
-            rows[pos + self.tokens_per_frame] = center
-            cols[pos + self.tokens_per_frame] = center
-            frames[pos + self.tokens_per_frame] = i
+            if self.use_status_token:
+                # Status token
+                rows[pos + self.tokens_per_frame] = center
+                cols[pos + self.tokens_per_frame] = center
+                frames[pos + self.tokens_per_frame] = i
             pos += BS
             if not self.adaln:
                 # Action token (not present in AdaLN mode)
@@ -243,9 +251,10 @@ class WorldModel(nn.Module):
             rows[pos + j] = j // G
             cols[pos + j] = j % G
             frames[pos + j] = K
-        rows[pos + self.tokens_per_frame] = center
-        cols[pos + self.tokens_per_frame] = center
-        frames[pos + self.tokens_per_frame] = K
+        if self.use_status_token:
+            rows[pos + self.tokens_per_frame] = center
+            cols[pos + self.tokens_per_frame] = center
+            frames[pos + self.tokens_per_frame] = K
 
         return rows, cols, frames
 
@@ -300,7 +309,7 @@ class WorldModel(nn.Module):
         """
         S = self.seq_len
         K = self.context_frames
-        BS = self.block_size  # tokens_per_frame + 1 (status token)
+        BS = self.block_size
 
         # Assign block index to each position
         block_idx = torch.zeros(S, dtype=torch.long)
@@ -383,8 +392,9 @@ class WorldModel(nn.Module):
         leakage). This matches inference exactly.
 
         Args:
-            frame_tokens: (B, K+1, tokens_per_frame+1) long — K context + 1 target.
-                          Last column is the status token (ALIVE or DEATH).
+            frame_tokens: (B, K+1, block_size) long — K context + 1 target.
+                          Last column is the status token only when
+                          use_status_token=True.
             actions: (B, K) long — action for each context frame.
             z_q_ste_context: optional (B, K, tokens_per_frame, fsq_dim) continuous
                 STE-routed FSQ codes for context frames' VISUAL positions only.
@@ -421,7 +431,7 @@ class WorldModel(nn.Module):
 
         def embed_ctx_frame(i):
             """Embed context frame i with optional zero-sum STE correction
-            on visual positions. Status (last) position is unchanged."""
+            on visual positions. Optional status position is unchanged."""
             hard = self.token_embed(frame_tokens[:, i])  # (B, TPF+1, D)
             if not use_ste:
                 return hard
@@ -429,10 +439,13 @@ class WorldModel(nn.Module):
             corr_vis = self.fsq_grad_proj(z)              # (B, TPF, D)
             # Zero-sum: forward value = 0, backward grad routes through z
             corr_vis = corr_vis - corr_vis.detach()
-            # Pad the status position with zeros (no z for that position)
-            pad = torch.zeros(B, 1, self.embed_dim,
-                              device=hard.device, dtype=hard.dtype)
-            corr = torch.cat([corr_vis, pad], dim=1)      # (B, TPF+1, D)
+            if self.use_status_token:
+                # Pad the status position with zeros (no z for that position)
+                pad = torch.zeros(B, 1, self.embed_dim,
+                                  device=hard.device, dtype=hard.dtype)
+                corr = torch.cat([corr_vis, pad], dim=1)  # (B, TPF+1, D)
+            else:
+                corr = corr_vis
             return hard + corr
 
         parts = []
@@ -526,8 +539,7 @@ class WorldModel(nn.Module):
         when we only need h_t for the controller, not predicted tokens.
 
         Args:
-            frame_tokens: (B, K, tokens_per_frame+1) long -- K context frames
-                          with status tokens.
+            frame_tokens: (B, K, block_size) long -- K context frames.
             actions: (B, K) long -- actions for context frames.
 
         Returns:
@@ -571,8 +583,7 @@ class WorldModel(nn.Module):
         Phase 2: Predict all target tokens in parallel (single forward pass).
 
         Args:
-            frame_tokens: (B, K, tokens_per_frame+1) long -- K context frames
-                          with status tokens.
+            frame_tokens: (B, K, block_size) long -- K context frames.
             actions: (B, K) long -- actions for context frames.
             temperature: Sampling temperature. 0 = greedy (default).
             top_k: Keep only top-k logits. 0 = disabled.
@@ -633,20 +644,24 @@ class WorldModel(nn.Module):
         h = self.ln_f(h)
         logits = self.head(h)  # (B, 65, vocab)
 
-        # Visual positions (0-63): mask out status tokens so they can't be sampled
-        logits[:, :TPF, self.ALIVE_TOKEN] = -float('inf')
-        logits[:, :TPF, self.DEATH_TOKEN] = -float('inf')
+        if self.use_status_token:
+            # Visual positions (0-63): mask out status tokens so they can't be sampled
+            logits[:, :TPF, self.ALIVE_TOKEN] = -float('inf')
+            logits[:, :TPF, self.DEATH_TOKEN] = -float('inf')
 
         predicted = self._sample_token(
             logits.reshape(-1, logits.size(-1)),
             temperature, top_k, top_p,
         ).reshape(B, n_tokens)
 
-        # Death probability from status token (position 64). Restrict the
-        # softmax to {ALIVE, DEATH}: any leakage of mass to visual codes at
-        # the status row would otherwise underestimate P(DEATH).
-        status_logits = logits[:, -1, [self.ALIVE_TOKEN, self.DEATH_TOKEN]]
-        death_prob = F.softmax(status_logits, dim=-1)[:, 1]
+        if self.use_status_token:
+            # Death probability from status token (position 64). Restrict the
+            # softmax to {ALIVE, DEATH}: any leakage of mass to visual codes at
+            # the status row would otherwise underestimate P(DEATH).
+            status_logits = logits[:, -1, [self.ALIVE_TOKEN, self.DEATH_TOKEN]]
+            death_prob = F.softmax(status_logits, dim=-1)[:, 1]
+        else:
+            death_prob = torch.zeros(B, device=device)
 
         if return_hidden:
             return predicted[:, :TPF], death_prob, h_t

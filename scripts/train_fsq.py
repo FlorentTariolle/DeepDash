@@ -380,7 +380,8 @@ def main():
                              "per-step LR shape and best-selection signal "
                              "while spending much less compute on val.")
     parser.add_argument("--amp-dtype", choices=["bfloat16", "float16", "none"],
-                        default=None, help="Default bfloat16 (A100).")
+                        default=None,
+                        help="Use float16 locally on RTX 2060 SUPER; bfloat16 on BF16-capable supercomputer GPUs.")
     parser.add_argument("--compile-mode",
                         choices=["reduce-overhead", "default", "none"],
                         default=None, help="torch.compile mode. Default reduce-overhead.")
@@ -413,7 +414,7 @@ def main():
         args.foreground_weight_max if args.foreground_weight_max is not None else 25.0)
     args.perceptual_loss = args.perceptual_loss or "none"
     args.perceptual_weight = args.perceptual_weight if args.perceptual_weight is not None else 0.0
-    args.amp_dtype = args.amp_dtype or "bfloat16"
+    args.amp_dtype = args.amp_dtype or "float16"
     args.compile_mode = args.compile_mode or "reduce-overhead"
     args.val_interval = args.val_interval if args.val_interval is not None else 10
 
