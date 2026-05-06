@@ -30,6 +30,15 @@ atari:
   repeat_action_probability: 0.0
   seed: 42
 
+full_cycle:
+  run_dir: runs/atari_pong_h200_full
+  warmup_steps: 10000
+  cycle_steps: 10000
+  total_budget_steps: 100000
+  final_mode: evaluation_clean  # evaluation_clean or max_performance
+  skip_real_actor_cycle0: true
+  phase_overrides: {}
+
 fsq:
   episodes_dir: data/atari/Pong/episodes
   replay_dir: data/atari/Pong/replay
@@ -74,6 +83,8 @@ predictor:
   fsq_kernel: gaussian
   fsq_sigma: 0.9
   focal_gamma: 0.0
+  reward_loss_weight: 1.0
+  done_loss_weight: 1.0
   amp_dtype: bfloat16
   compile_mode: reduce-overhead
   val_interval: 1
@@ -96,6 +107,8 @@ predictor_sls:
   fsq_kernel: gaussian
   fsq_sigma: 0.9
   focal_gamma: 0.0
+  reward_loss_weight: 1.0
+  done_loss_weight: 1.0
   amp_dtype: bfloat16
   compile_mode: reduce-overhead
   val_interval: 1
@@ -123,3 +136,36 @@ actor_real:
   compile_mode: reduce-overhead
   seed: 42
   checkpoint_dir: checkpoints_atari_pong_h200_actor_real
+
+actor_dream:
+  replay_dir: data/atari/Pong/replay
+  fsq_checkpoint: checkpoints_atari_pong_h200/fsq_best.pt
+  predictor_checkpoint: checkpoints_atari_pong_h200_predictor_sls/predictor_best.pt
+  pretrained: checkpoints_atari_pong_h200_actor_real/actor_real_latest.pt
+  n_iterations: 1000
+  n_episodes: 32
+  max_dream_steps: 50
+  temperature: 0.0
+  done_threshold: 0.5
+  reward_clip_min: -1.0
+  reward_clip_max: 1.0
+  lr: 0.00025
+  gamma: 0.99
+  lam: 0.95
+  clip_eps: 0.2
+  ppo_epochs: 4
+  minibatch_size: 256
+  entropy_coeff: 0.01
+  critic_coeff: 0.5
+  max_grad_norm: 0.5
+  amp_dtype: bfloat16
+  compile_mode: reduce-overhead
+  seed: 42
+  checkpoint_dir: checkpoints_atari_pong_h200_actor_dream
+
+evaluation:
+  n_episodes: 20
+  max_steps_per_episode: 27000
+  actor_checkpoint: checkpoints_atari_pong_h200_actor_dream/actor_dream_final.pt
+  output: runs/atari_pong_h200_full/evaluation.json
+  seed: 10042

@@ -1,0 +1,204 @@
+# Tiny end-to-end full-cycle config for orchestration/resume checks.
+
+model:
+  vocab_size: 1000
+  embed_dim: 64
+  n_heads: 4
+  n_layers: 2
+  tokens_per_frame: 256
+  context_frames: 4
+  levels: [8, 5, 5, 5]
+  dropout: 0.1
+  adaln: false
+  img_channels: 3
+
+atari:
+  game: Pong
+  out_dir: data/atari/Pong_smoke
+  replay_dir: data/atari/Pong_smoke/replay
+  shard_size: 64
+  warmup_steps: 100
+  cycle_steps: 100
+  total_budget_steps: 200
+  frame_skip: 4
+  repeat_action_probability: 0.0
+  seed: 7
+
+full_cycle:
+  run_dir: runs/atari_pong_h200_smoke_full
+  warmup_steps: 100
+  cycle_steps: 100
+  total_budget_steps: 200
+  final_mode: evaluation_clean
+  skip_real_actor_cycle0: true
+  phase_overrides:
+    fsq:
+      epochs: 1
+      batch_size: 16
+      steps_per_epoch: 1
+      val_interval: 1
+      amp_dtype: none
+      compile_mode: none
+      perceptual_loss: none
+      perceptual_weight: 0.0
+    predictor:
+      epochs: 1
+      batch_size: 8
+      steps_per_epoch: 1
+      max_val_batches: 1
+      max_rollout_batches: 1
+      amp_dtype: none
+      compile_mode: none
+    predictor_sls:
+      epochs: 1
+      batch_size: 8
+      steps_per_epoch: 1
+      max_val_batches: 1
+      max_rollout_batches: 1
+      amp_dtype: none
+      compile_mode: none
+    actor_dream:
+      n_iterations: 1
+      n_episodes: 2
+      max_dream_steps: 4
+      minibatch_size: 4
+      ppo_epochs: 1
+      amp_dtype: none
+      compile_mode: none
+    actor_real:
+      n_steps: 100
+      rollout_steps: 32
+      minibatch_size: 16
+      ppo_epochs: 1
+      amp_dtype: none
+      compile_mode: none
+    evaluation:
+      n_episodes: 1
+      max_steps_per_episode: 100
+
+fsq:
+  episodes_dir: data/atari/Pong_smoke/episodes
+  replay_dir: data/atari/Pong_smoke/replay
+  expert_episodes_dir: data/atari/Pong_smoke/_no_expert
+  img_channels: 3
+  norm_type: group
+  levels: [8, 5, 5, 5]
+  latent_grid: 16
+  epochs: 1
+  batch_size: 16
+  lr: 0.0001
+  lr_min: 0.000001
+  alpha_slow: 0.0
+  alpha_uniform: 0.1
+  recon_loss_type: l1
+  recon_reduction: mean
+  recon_weight_mode: none
+  foreground_weight: 0.0
+  perceptual_loss: none
+  perceptual_weight: 0.0
+  augment_shift: false
+  val_interval: 1
+  seed: 7
+  amp_dtype: none
+  compile_mode: none
+  checkpoint_dir: checkpoints_atari_pong_h200_smoke
+
+predictor:
+  replay_dir: data/atari/Pong_smoke/replay
+  fsq_checkpoint: checkpoints_atari_pong_h200_smoke/fsq_best.pt
+  tokenizer_config: configs/atari/atari_pong_h200_smoke.yaml
+  n_actions: 6
+  epochs: 1
+  batch_size: 8
+  lr: 0.0002
+  lr_min: 0.00001
+  weight_decay: 0.01
+  val_ratio: 0.2
+  eval_horizons: [1]
+  label_smoothing: 0.0
+  fsq_kernel: gaussian
+  fsq_sigma: 0.9
+  reward_loss_weight: 1.0
+  done_loss_weight: 1.0
+  amp_dtype: none
+  compile_mode: none
+  val_interval: 1
+  seed: 7
+  checkpoint_dir: checkpoints_atari_pong_h200_smoke_predictor_ce
+
+predictor_sls:
+  replay_dir: data/atari/Pong_smoke/replay
+  fsq_checkpoint: checkpoints_atari_pong_h200_smoke/fsq_best.pt
+  tokenizer_config: configs/atari/atari_pong_h200_smoke.yaml
+  n_actions: 6
+  epochs: 1
+  batch_size: 8
+  lr: 0.0002
+  lr_min: 0.00001
+  weight_decay: 0.01
+  val_ratio: 0.2
+  eval_horizons: [1]
+  label_smoothing: 0.1
+  fsq_kernel: gaussian
+  fsq_sigma: 0.9
+  reward_loss_weight: 1.0
+  done_loss_weight: 1.0
+  amp_dtype: none
+  compile_mode: none
+  val_interval: 1
+  seed: 7
+  checkpoint_dir: checkpoints_atari_pong_h200_smoke_predictor_sls
+
+actor_real:
+  game: Pong
+  replay_dir: data/atari/Pong_smoke/replay
+  fsq_checkpoint: checkpoints_atari_pong_h200_smoke/fsq_best.pt
+  predictor_checkpoint: checkpoints_atari_pong_h200_smoke_predictor_sls/predictor_best.pt
+  n_steps: 100
+  rollout_steps: 32
+  lr: 0.00025
+  gamma: 0.99
+  lam: 0.95
+  clip_eps: 0.2
+  ppo_epochs: 1
+  minibatch_size: 16
+  entropy_coeff: 0.01
+  critic_coeff: 0.5
+  max_grad_norm: 0.5
+  amp_dtype: none
+  compile_mode: none
+  seed: 7
+  checkpoint_dir: checkpoints_atari_pong_h200_smoke_actor_real
+
+actor_dream:
+  replay_dir: data/atari/Pong_smoke/replay
+  fsq_checkpoint: checkpoints_atari_pong_h200_smoke/fsq_best.pt
+  predictor_checkpoint: checkpoints_atari_pong_h200_smoke_predictor_sls/predictor_best.pt
+  pretrained: checkpoints_atari_pong_h200_smoke_actor_real/actor_real_latest.pt
+  n_iterations: 1
+  n_episodes: 2
+  max_dream_steps: 4
+  temperature: 0.0
+  done_threshold: 0.5
+  reward_clip_min: -1.0
+  reward_clip_max: 1.0
+  lr: 0.00025
+  gamma: 0.99
+  lam: 0.95
+  clip_eps: 0.2
+  ppo_epochs: 1
+  minibatch_size: 4
+  entropy_coeff: 0.01
+  critic_coeff: 0.5
+  max_grad_norm: 0.5
+  amp_dtype: none
+  compile_mode: none
+  seed: 7
+  checkpoint_dir: checkpoints_atari_pong_h200_smoke_actor_dream
+
+evaluation:
+  n_episodes: 1
+  max_steps_per_episode: 100
+  actor_checkpoint: checkpoints_atari_pong_h200_smoke_actor_dream/actor_dream_final.pt
+  output: runs/atari_pong_h200_smoke_full/evaluation.json
+  seed: 10007

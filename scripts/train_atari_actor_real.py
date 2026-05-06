@@ -24,6 +24,7 @@ import ale_py
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from atari.predictor import split_atari_predictor_state
 from atari.controller import AtariCNNPolicy
 from atari.replay_buffer import ReplayShardWriter, load_metadata
 from deepdash.config import apply_config, load_config
@@ -127,6 +128,8 @@ def main():
     parser.add_argument("--fsq-checkpoint", default=None)
     parser.add_argument("--predictor-checkpoint", default=None)
     parser.add_argument("--n-steps", type=int, default=None)
+    parser.add_argument("--target-replay-steps", type=int, default=None,
+                        help="Collect only until replay metadata reaches this global step count.")
     parser.add_argument("--rollout-steps", type=int, default=None)
     parser.add_argument("--lr", type=float, default=None)
     parser.add_argument("--gamma", type=float, default=None)
@@ -183,6 +186,17 @@ def main():
     )
     n_actions = int(env.action_space.n)
     metadata = load_metadata(args.replay_dir) or {}
+    before_replay_steps = int((metadata or {}).get("total_steps", 0))
+    if args.target_replay_steps is not None:
+        remaining = int(args.target_replay_steps) - before_replay_steps
+        if remaining <= 0:
+            print(f"Replay already at {before_replay_steps} steps; target={args.target_replay_steps}. Nothing to collect.")
+            env.close()
+            return
+        args.n_steps = min(int(args.n_steps), remaining)
+        print(f"Global replay target enabled: before={before_replay_steps} "
+              f"target={args.target_replay_steps} local_n_steps={args.n_steps}")
+
     writer = ReplayShardWriter(
         args.replay_dir,
         shard_size=int(atari_cfg.get("shard_size", metadata.get("shard_size", 8192))),
@@ -220,7 +234,9 @@ def main():
         use_status_token=False,
         use_cpc=False,
     ).to(device)
-    predictor.load_state_dict(load_clean_state(args.predictor_checkpoint, device))
+    pred_state = load_clean_state(args.predictor_checkpoint, device)
+    pred_state, _ = split_atari_predictor_state(pred_state)
+    predictor.load_state_dict(pred_state)
     predictor.eval()
 
     policy = AtariCNNPolicy(

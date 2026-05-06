@@ -33,6 +33,7 @@ docs/pipeline.pdf
 Formatting_Instructions_For_NeurIPS_2026/
 outputs/
 plots/
+runs/
 checkpoints/*_final.pt
 checkpoints/transformer_state.pt
 checkpoints/transformer_state.pt

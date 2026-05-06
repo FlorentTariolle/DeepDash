@@ -20,11 +20,13 @@ from pathlib import Path
 
 import numpy as np
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from atari.predictor import AtariPredictorWithHeads, split_atari_predictor_state
 from atari.replay_buffer import load_metadata, load_replay_arrays
 from deepdash.config import apply_config, load_config
 from deepdash.fsq import FSQVAE
@@ -73,10 +75,13 @@ def encode_replay_obs(fsq: FSQVAE, obs: np.ndarray, batch_size: int,
 
 class AtariTokenDataset(Dataset):
     def __init__(self, starts: np.ndarray, tokens: torch.Tensor,
-                 actions: np.ndarray, context_frames: int):
+                 actions: np.ndarray, rewards: np.ndarray, dones: np.ndarray,
+                 context_frames: int):
         self.starts = np.asarray(starts, dtype=np.int64)
         self.tokens = tokens
         self.actions = torch.from_numpy(actions.astype(np.int64))
+        self.rewards = torch.from_numpy(rewards.astype(np.float32))
+        self.dones = torch.from_numpy(dones.astype(np.float32))
         self.context_frames = int(context_frames)
 
     def __len__(self):
@@ -85,7 +90,13 @@ class AtariTokenDataset(Dataset):
     def __getitem__(self, idx):
         i = int(self.starts[idx])
         k = self.context_frames
-        return self.tokens[i:i + k + 1], self.actions[i:i + k]
+        target_transition = i + k - 1
+        return (
+            self.tokens[i:i + k + 1],
+            self.actions[i:i + k],
+            self.rewards[target_transition],
+            self.dones[target_transition],
+        )
 
 
 class AtariRolloutDataset(Dataset):
@@ -170,17 +181,33 @@ def compute_loss(logits, targets, vocab_size, soft_target_matrix,
     )
 
 
+def clean_state_dict(module: nn.Module):
+    return {k.removeprefix("_orig_mod."): v for k, v in module.state_dict().items()}
+
+
+def predictor_state_for_world_model(predictor: nn.Module):
+    state = clean_state_dict(predictor)
+    return {
+        k.removeprefix("world_model."): v
+        for k, v in state.items()
+        if k.startswith("world_model.")
+    }
+
+
 @torch.no_grad()
 def eval_next_step(model, loader, device, vocab_size, soft_target_matrix,
                    label_smoothing, focal_gamma, coords, amp_dtype,
                    max_batches=0):
     model.eval()
     total_loss = total_acc = total_dist = total_tokens = 0.0
-    for batch_idx, (frame_tokens, actions) in enumerate(loader, start=1):
+    total_reward_mae = total_done_correct = total_aux = 0.0
+    for batch_idx, (frame_tokens, actions, rewards, dones) in enumerate(loader, start=1):
         frame_tokens = frame_tokens.to(device)
         actions = actions.to(device)
+        rewards = rewards.to(device)
+        dones = dones.to(device)
         with torch.amp.autocast("cuda", enabled=amp_dtype is not None, dtype=amp_dtype):
-            logits = model(frame_tokens, actions)
+            logits, pred_reward, done_logit = model(frame_tokens, actions, return_aux=True)
             loss = compute_loss(logits, frame_tokens[:, -1], vocab_size, soft_target_matrix,
                                 label_smoothing, focal_gamma)
         pred = logits[:, :, :vocab_size].argmax(dim=-1)
@@ -190,12 +217,17 @@ def eval_next_step(model, loader, device, vocab_size, soft_target_matrix,
         total_acc += float((pred == tgt).sum().item())
         total_dist += float((coords[pred.reshape(-1)] - coords[tgt.reshape(-1)]).abs().sum(dim=-1).sum().item())
         total_tokens += n_tok
+        total_reward_mae += float((pred_reward.float() - rewards).abs().sum().item())
+        total_done_correct += float(((done_logit.float().sigmoid() >= 0.5) == (dones >= 0.5)).sum().item())
+        total_aux += float(rewards.numel())
         if max_batches and batch_idx >= max_batches:
             break
     return {
         "nll": total_loss / max(total_tokens, 1),
         "acc": total_acc / max(total_tokens, 1),
         "fsq_l1_dist": total_dist / max(total_tokens, 1),
+        "reward_mae": total_reward_mae / max(total_aux, 1),
+        "done_acc": total_done_correct / max(total_aux, 1),
     }
 
 
@@ -257,6 +289,8 @@ def main():
     parser.add_argument("--fsq-kernel", default=None)
     parser.add_argument("--fsq-sigma", type=float, default=None)
     parser.add_argument("--focal-gamma", type=float, default=None)
+    parser.add_argument("--reward-loss-weight", type=float, default=None)
+    parser.add_argument("--done-loss-weight", type=float, default=None)
     parser.add_argument("--compile-mode", choices=["none", "default", "reduce-overhead"], default=None)
     parser.add_argument("--amp-dtype", choices=["none", "float16", "bfloat16"], default=None)
     parser.add_argument("--val-interval", type=int, default=None)
@@ -280,6 +314,8 @@ def main():
     args.fsq_kernel = args.fsq_kernel or "gaussian"
     args.fsq_sigma = args.fsq_sigma if args.fsq_sigma is not None else 0.9
     args.focal_gamma = args.focal_gamma if args.focal_gamma is not None else 0.0
+    args.reward_loss_weight = args.reward_loss_weight if args.reward_loss_weight is not None else 1.0
+    args.done_loss_weight = args.done_loss_weight if args.done_loss_weight is not None else 1.0
     args.compile_mode = args.compile_mode or "reduce-overhead"
     args.amp_dtype = args.amp_dtype or "float16"
     args.val_interval = args.val_interval if args.val_interval is not None else 1
@@ -327,8 +363,10 @@ def main():
     print(f"Windows: train={len(train_starts)} val={len(val_starts)} "
           f"rollout_val={len(rollout_val)} episodes={n_eps} val_episodes={n_val_eps}")
 
-    train_ds = AtariTokenDataset(train_starts, tokens, replay.actions, k)
-    val_ds = AtariTokenDataset(val_starts, tokens, replay.actions, k)
+    train_ds = AtariTokenDataset(
+        train_starts, tokens, replay.actions, replay.rewards, replay.dones, k)
+    val_ds = AtariTokenDataset(
+        val_starts, tokens, replay.actions, replay.rewards, replay.dones, k)
     rollout_ds = AtariRolloutDataset(rollout_val, tokens, replay.actions, replay.obs, k, max_horizon)
     train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=0)
     val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False, num_workers=0)
@@ -336,7 +374,7 @@ def main():
 
     levels = list(model_cfg.get("levels", [8, 5, 5, 5]))
     vocab_size = int(model_cfg.get("vocab_size", math.prod(levels)))
-    predictor = WorldModel(
+    world_model = WorldModel(
         vocab_size=vocab_size,
         n_actions=n_actions,
         embed_dim=int(model_cfg.get("embed_dim", 384)),
@@ -349,6 +387,8 @@ def main():
         use_status_token=False,
         use_cpc=False,
     ).to(device)
+    predictor = AtariPredictorWithHeads(
+        world_model, hidden_dim=int(model_cfg.get("embed_dim", 384))).to(device)
     print(f"Predictor parameters: {sum(p.numel() for p in predictor.parameters()):,}")
 
     full_vocab_size = vocab_size
@@ -381,9 +421,17 @@ def main():
         resume_state = torch.load(latest_path, map_location=device, weights_only=False)
         model_state = resume_state.get("model", resume_state)
         model_state = {k.removeprefix("_orig_mod."): v for k, v in model_state.items()}
-        predictor.load_state_dict(model_state)
+        if "world_model.head.weight" in model_state:
+            predictor.load_state_dict(model_state)
+        else:
+            wm_state, aux_state = split_atari_predictor_state(model_state)
+            predictor.world_model.load_state_dict(wm_state)
+            predictor.load_state_dict(aux_state, strict=False)
         if "optimizer" in resume_state:
-            optimizer.load_state_dict(resume_state["optimizer"])
+            try:
+                optimizer.load_state_dict(resume_state["optimizer"])
+            except ValueError as exc:
+                print(f"Skipping optimizer resume after predictor head change: {exc}")
         if "scheduler" in resume_state:
             scheduler.load_state_dict(resume_state["scheduler"])
         if "scaler" in resume_state and scaler.is_enabled():
@@ -403,22 +451,31 @@ def main():
     log_file = open(ckpt_dir / "predictor_log.csv", log_mode, newline="")
     log = csv.writer(log_file)
     if log_mode == "w":
-        log.writerow(["epoch", "train_nll", "val_nll", "val_acc", "val_fsq_l1_dist",
+        log.writerow(["epoch", "train_nll", "train_reward_loss", "train_done_loss",
+                      "val_nll", "val_acc", "val_fsq_l1_dist",
+                      "val_reward_mae", "val_done_acc",
                       *[f"rollout_{h}_l1" for h in horizons], "lr", "time_s"])
 
     max_steps = int(args.steps_per_epoch or 0)
     for epoch in range(start_epoch, args.epochs + 1):
         t0 = time.time()
         predictor.train()
-        total_loss = total_tokens = 0
-        for step, (frame_tokens, actions) in enumerate(train_loader, start=1):
+        total_loss = total_tokens = total_reward_loss = total_done_loss = total_aux = 0
+        for step, (frame_tokens, actions, rewards, dones) in enumerate(train_loader, start=1):
             frame_tokens = frame_tokens.to(device)
             actions = actions.to(device)
+            rewards = rewards.to(device)
+            dones = dones.to(device)
             with torch.amp.autocast("cuda", enabled=amp_dtype is not None, dtype=amp_dtype):
-                logits = predictor(frame_tokens, actions)
-                loss = compute_loss(logits, frame_tokens[:, -1], vocab_size,
-                                    soft_target_matrix, args.label_smoothing,
-                                    args.focal_gamma)
+                logits, pred_reward, done_logit = predictor(
+                    frame_tokens, actions, return_aux=True)
+                token_loss = compute_loss(
+                    logits, frame_tokens[:, -1], vocab_size,
+                    soft_target_matrix, args.label_smoothing, args.focal_gamma)
+                reward_loss = F.mse_loss(pred_reward.float(), rewards)
+                done_loss = F.binary_cross_entropy_with_logits(done_logit.float(), dones)
+                loss = token_loss + float(args.reward_loss_weight) * reward_loss + \
+                    float(args.done_loss_weight) * done_loss
             optimizer.zero_grad(set_to_none=True)
             if scaler.is_enabled():
                 scaler.scale(loss).backward()
@@ -427,8 +484,11 @@ def main():
             else:
                 loss.backward()
                 optimizer.step()
-            total_loss += float(loss.item()) * frame_tokens[:, -1].numel()
+            total_loss += float(token_loss.item()) * frame_tokens[:, -1].numel()
             total_tokens += frame_tokens[:, -1].numel()
+            total_reward_loss += float(reward_loss.item()) * rewards.numel()
+            total_done_loss += float(done_loss.item()) * dones.numel()
+            total_aux += rewards.numel()
             if max_steps and step >= max_steps:
                 break
         scheduler.step()
@@ -446,34 +506,42 @@ def main():
             headline = rollout_metrics[f"rollout_{max_horizon}_l1"]
             if headline < best_rollout:
                 best_rollout = headline
-                clean_state = {k.removeprefix("_orig_mod."): v
-                               for k, v in predictor.state_dict().items()}
-                torch.save(clean_state, ckpt_dir / "predictor_best.pt")
+                torch.save(clean_state_dict(predictor), ckpt_dir / "predictor_best.pt")
+                torch.save(predictor_state_for_world_model(predictor),
+                           ckpt_dir / "predictor_best_world_model.pt")
         else:
-            val_metrics = {"nll": float("nan"), "acc": float("nan"), "fsq_l1_dist": float("nan")}
+            val_metrics = {
+                "nll": float("nan"), "acc": float("nan"),
+                "fsq_l1_dist": float("nan"),
+                "reward_mae": float("nan"), "done_acc": float("nan"),
+            }
 
         dt = time.time() - t0
         train_nll = total_loss / max(total_tokens, 1)
+        train_reward_loss = total_reward_loss / max(total_aux, 1)
+        train_done_loss = total_done_loss / max(total_aux, 1)
         lr = optimizer.param_groups[0]["lr"]
         print(
             f"Epoch {epoch:3d}/{args.epochs} ({dt:.1f}s) | "
-            f"train_nll={train_nll:.4f} | val_nll={val_metrics['nll']:.4f} "
-            f"acc={100*val_metrics['acc']:.2f}% fsq_l1={val_metrics['fsq_l1_dist']:.3f} | "
+            f"train_nll={train_nll:.4f} rloss={train_reward_loss:.4f} "
+            f"dloss={train_done_loss:.4f} | val_nll={val_metrics['nll']:.4f} "
+            f"acc={100*val_metrics['acc']:.2f}% fsq_l1={val_metrics['fsq_l1_dist']:.3f} "
+            f"rmae={val_metrics['reward_mae']:.3f} done={100*val_metrics['done_acc']:.1f}% | "
             + " ".join(f"r{h}={rollout_metrics[f'rollout_{h}_l1']:.4f}" for h in horizons)
             + f" | LR={lr:.1e}"
         )
         log.writerow([
-            epoch, f"{train_nll:.6f}", f"{val_metrics['nll']:.6f}",
+            epoch, f"{train_nll:.6f}", f"{train_reward_loss:.6f}",
+            f"{train_done_loss:.6f}", f"{val_metrics['nll']:.6f}",
             f"{val_metrics['acc']:.6f}", f"{val_metrics['fsq_l1_dist']:.6f}",
+            f"{val_metrics['reward_mae']:.6f}", f"{val_metrics['done_acc']:.6f}",
             *[f"{rollout_metrics[f'rollout_{h}_l1']:.6f}" for h in horizons],
             f"{lr:.1e}", f"{dt:.1f}",
         ])
         log_file.flush()
-        clean_state = {k.removeprefix("_orig_mod."): v
-                       for k, v in predictor.state_dict().items()}
         latest_payload = {
             "epoch": epoch,
-            "model": clean_state,
+            "model": clean_state_dict(predictor),
             "optimizer": optimizer.state_dict(),
             "scheduler": scheduler.state_dict(),
             "best_rollout": best_rollout,
@@ -482,9 +550,9 @@ def main():
             latest_payload["scaler"] = scaler.state_dict()
         torch.save(latest_payload, latest_path)
 
-    clean_state = {k.removeprefix("_orig_mod."): v
-                   for k, v in predictor.state_dict().items()}
-    torch.save(clean_state, ckpt_dir / "predictor_final.pt")
+    torch.save(clean_state_dict(predictor), ckpt_dir / "predictor_final.pt")
+    torch.save(predictor_state_for_world_model(predictor),
+               ckpt_dir / "predictor_final_world_model.pt")
     log_file.close()
     print(f"Training complete. Best rollout_{max_horizon}_l1={best_rollout:.6f}")
     print(f"Checkpoints saved to {ckpt_dir}")

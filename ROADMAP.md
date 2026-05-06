@@ -14,7 +14,7 @@ Source issues: #6, #12, #14.
 
 ## Where We Left Off
 
-The working tree is clean on `main`.
+The working tree now includes the first full-cycle Atari orchestrator implementation.
 
 Recent completed work:
 
@@ -161,8 +161,9 @@ Current status:
 - Supercomputer access is restored. Local training is no longer the target path.
 - H200 Atari prototype config exists at `configs/atari/atari_pong_h200.yaml`.
 - Atari SLURM wrappers exist for random replay collection, FSQ training, CE/SLS predictor training, and real-env actor training.
-- The next paper-critical engineering step is a one-game complete-loop prototype: random 10K warmup, cumulative FSQ/predictor training, then actor policy collection with real PPO updates.
-- Dream actor training is not fully ready yet because the Atari predictor currently predicts next-frame tokens only. It still needs reward and `done`/continue heads before Atari dream PPO is meaningful.
+- The one-game complete-loop prototype now has a single entry point: `sbatch slurm/atari_train_full_cycle.sl configs/atari/atari_pong_h200.yaml`.
+- `scripts/train_atari_full_cycle.py` owns the 100K interaction budget, phase ordering, state/resume markers, replay-step consistency checks, final mode selection, and summary output.
+- `configs/atari/atari_pong_h200_smoke.yaml` is the tiny end-to-end smoke target for validating phase completion, resume skipping, replay-step accounting, and evaluation outside the training budget.
 
 ### Phase 2: Tier 2 Ablations
 
@@ -224,6 +225,7 @@ sbatch slurm/atari_train_fsq.sl configs/atari/atari_pong_h200.yaml
 sbatch slurm/atari_train_predictor.sl configs/atari/atari_pong_h200.yaml predictor
 sbatch slurm/atari_train_predictor.sl configs/atari/atari_pong_h200.yaml predictor_sls
 sbatch slurm/atari_train_actor_real.sl configs/atari/atari_pong_h200.yaml actor_real
+sbatch slurm/atari_train_actor_dream.sl configs/atari/atari_pong_h200.yaml actor_dream
 ```
 
 Cluster assumptions:
@@ -239,8 +241,9 @@ This run validates the first practical Atari cycle:
 2. FSQ trained on replay.
 3. CE and SLS predictors trained from frozen FSQ tokens.
 4. Real-env categorical actor trains from real PPO rollouts while appending replay.
+5. Dream categorical actor trains from imagined rollouts using predictor reward and `done` heads.
 
-The missing step for the full Dyna loop is Atari dream PPO. To add it cleanly, the predictor must also learn reward and `done`/continue predictions from replay.
+The remaining missing step for the full Dyna loop is orchestration: automatically repeat cumulative replay refreshes, FSQ/predictor retraining, real actor collection, and dream actor updates across the full 100K budget.
 
 ## Issue Index
 

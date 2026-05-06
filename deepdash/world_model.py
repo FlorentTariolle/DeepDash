@@ -385,7 +385,7 @@ class WorldModel(nn.Module):
         return total_loss / max(n_pairs, 1)
 
     def forward(self, frame_tokens, actions, z_q_ste_context=None,
-                return_dense_logits=False):
+                return_dense_logits=False, return_hidden=False):
         """Forward pass: predict all target tokens from context.
 
         All target positions are replaced with mask_embed (no ground truth
@@ -409,6 +409,9 @@ class WorldModel(nn.Module):
             return_dense_logits: if True (AdaLN only), also returns logits
                 at every context block position so callers can apply dense
                 next-frame-prediction CE. Ignored in non-AdaLN mode.
+            return_hidden: if True, also returns the hidden state at the last
+                context position. Atari reward/done heads use this for the
+                transition-level auxiliary predictions.
 
         Returns:
             logits: (B, block_size, full_vocab_size) — predictions for the
@@ -473,6 +476,7 @@ class WorldModel(nn.Module):
         x = self.embed_drop(x)
 
         x = self._backbone_forward(x, cond=cond)
+        h_t = x[:, ctx_end - 1]
 
         # No GPT-shift: each target position predicts its own token
         predict_positions = x[:, ctx_end:ctx_end + self.block_size]  # (B, 65, D)
@@ -489,8 +493,12 @@ class WorldModel(nn.Module):
             dense_logits = ctx_logits.view(
                 B, K, self.block_size, -1)  # (B, K, block_size, V)
 
+        if return_dense_logits and return_hidden:
+            return logits, dense_logits, h_t
         if return_dense_logits:
             return logits, dense_logits
+        if return_hidden:
+            return logits, h_t
         if self.use_cpc:
             cpc_loss = self._compute_cpc_loss(x, actions)
             return logits, cpc_loss
