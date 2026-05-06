@@ -35,7 +35,7 @@ trap handle_timeout USR1
 module purge
 module load aidl/pytorch/2.10.0-py3.12-cuda12.6
 export PATH="$HOME/.local/bin:$PATH"
-pip install --user --upgrade wandb "protobuf>=6.32" 2>/dev/null
+pip install --user --upgrade wandb "protobuf>=6.32" "gymnasium[atari,accept-rom-license]>=1.0.0" 2>/dev/null
 
 if [ -f "$RESUME_FLAG" ]; then
     echo "=== Resuming full cycle from $RUN_DIR/state.json ==="

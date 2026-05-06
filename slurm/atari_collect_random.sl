@@ -44,6 +44,7 @@ mkdir -p slurm/logs
 module purge
 module load aidl/pytorch/2.10.0-py3.12-cuda12.6
 export PATH="$HOME/.local/bin:$PATH"
+pip install --user --upgrade "gymnasium[atari,accept-rom-license]>=1.0.0" 2>/dev/null
 
 echo "=== Config: $CONFIG ==="
 echo "=== Collect random Atari replay: game=$GAME steps=$STEPS replay=$REPLAY_DIR ==="

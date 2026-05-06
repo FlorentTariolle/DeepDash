@@ -4,6 +4,7 @@ numpy>=2.0.0
 matplotlib>=3.9.0
 opencv-python>=4.10.0
 Pillow>=10.0.0
+gymnasium[atari,accept-rom-license]>=1.0.0
 keyboard
 mss
 cma
