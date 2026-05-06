@@ -242,6 +242,8 @@ def eval_rollouts(model, fsq, loader, horizons, device, vocab_size, amp_dtype,
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", default="configs/atari/atari_pong_v0.yaml")
+    parser.add_argument("--config-section", default="predictor",
+                        help="YAML section to read; use predictor_sls for the SLS condition.")
     parser.add_argument("--replay-dir", default=None)
     parser.add_argument("--fsq-checkpoint", default=None)
     parser.add_argument("--checkpoint-dir", default=None)
@@ -264,8 +266,10 @@ def main():
                         help="Debug cap for next-step validation batches; 0 = full val set.")
     parser.add_argument("--max-rollout-batches", type=int, default=0,
                         help="Debug cap for rollout validation batches; 0 = full val set.")
+    parser.add_argument("--resume", action="store_true",
+                        help="Resume from predictor_latest.pt in checkpoint-dir.")
     args = parser.parse_args()
-    apply_config(args, section="predictor")
+    apply_config(args, section=args.config_section)
 
     args.epochs = args.epochs or 50
     args.batch_size = args.batch_size or 32
@@ -291,7 +295,7 @@ def main():
     if amp_dtype is not None:
         print(f"AMP enabled with {amp_dtype}")
 
-    cfg = load_config(args.config, section="predictor")
+    cfg = load_config(args.config, section=args.config_section)
     fsq_cfg = load_config(args.config, section="fsq")
     model_cfg = load_config(args.config, section="model")
     horizons = [int(h) for h in cfg.get("eval_horizons", [1, 5, 10, 15])]
@@ -347,10 +351,6 @@ def main():
     ).to(device)
     print(f"Predictor parameters: {sum(p.numel() for p in predictor.parameters()):,}")
 
-    if args.compile_mode != "none":
-        predictor = torch.compile(predictor, mode=args.compile_mode)
-        print(f"torch.compile enabled (mode={args.compile_mode})")
-
     full_vocab_size = vocab_size
     soft_target_matrix = None
     if args.label_smoothing > 0:
@@ -374,14 +374,40 @@ def main():
 
     ckpt_dir = Path(args.checkpoint_dir)
     ckpt_dir.mkdir(parents=True, exist_ok=True)
-    log_file = open(ckpt_dir / "predictor_log.csv", "w", newline="")
-    log = csv.writer(log_file)
-    log.writerow(["epoch", "train_nll", "val_nll", "val_acc", "val_fsq_l1_dist",
-                  *[f"rollout_{h}_l1" for h in horizons], "lr", "time_s"])
-
+    latest_path = ckpt_dir / "predictor_latest.pt"
+    start_epoch = 1
     best_rollout = float("inf")
+    if args.resume and latest_path.exists():
+        resume_state = torch.load(latest_path, map_location=device, weights_only=False)
+        model_state = resume_state.get("model", resume_state)
+        model_state = {k.removeprefix("_orig_mod."): v for k, v in model_state.items()}
+        predictor.load_state_dict(model_state)
+        if "optimizer" in resume_state:
+            optimizer.load_state_dict(resume_state["optimizer"])
+        if "scheduler" in resume_state:
+            scheduler.load_state_dict(resume_state["scheduler"])
+        if "scaler" in resume_state and scaler.is_enabled():
+            scaler.load_state_dict(resume_state["scaler"])
+        start_epoch = int(resume_state.get("epoch", 0)) + 1
+        best_rollout = float(resume_state.get("best_rollout", best_rollout))
+        print(f"Resumed predictor from epoch {start_epoch - 1} "
+              f"(best rollout={best_rollout:.6f})")
+    elif args.resume:
+        print(f"--resume requested but {latest_path} does not exist; starting fresh")
+
+    if args.compile_mode != "none":
+        predictor = torch.compile(predictor, mode=args.compile_mode)
+        print(f"torch.compile enabled (mode={args.compile_mode})")
+
+    log_mode = "a" if args.resume and start_epoch > 1 and (ckpt_dir / "predictor_log.csv").exists() else "w"
+    log_file = open(ckpt_dir / "predictor_log.csv", log_mode, newline="")
+    log = csv.writer(log_file)
+    if log_mode == "w":
+        log.writerow(["epoch", "train_nll", "val_nll", "val_acc", "val_fsq_l1_dist",
+                      *[f"rollout_{h}_l1" for h in horizons], "lr", "time_s"])
+
     max_steps = int(args.steps_per_epoch or 0)
-    for epoch in range(1, args.epochs + 1):
+    for epoch in range(start_epoch, args.epochs + 1):
         t0 = time.time()
         predictor.train()
         total_loss = total_tokens = 0
@@ -443,6 +469,18 @@ def main():
             f"{lr:.1e}", f"{dt:.1f}",
         ])
         log_file.flush()
+        clean_state = {k.removeprefix("_orig_mod."): v
+                       for k, v in predictor.state_dict().items()}
+        latest_payload = {
+            "epoch": epoch,
+            "model": clean_state,
+            "optimizer": optimizer.state_dict(),
+            "scheduler": scheduler.state_dict(),
+            "best_rollout": best_rollout,
+        }
+        if scaler.is_enabled():
+            latest_payload["scaler"] = scaler.state_dict()
+        torch.save(latest_payload, latest_path)
 
     clean_state = {k.removeprefix("_orig_mod."): v
                    for k, v in predictor.state_dict().items()}

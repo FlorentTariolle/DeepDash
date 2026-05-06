@@ -1,0 +1,363 @@
+"""Train/deploy an Atari actor in the real env while appending replay.
+
+This is the real-environment half of the Atari100K cycle. It loads a frozen
+FSQ tokenizer and frozen Atari predictor, uses their token grid + hidden state
+as policy features, updates a categorical actor-critic from real PPO rollouts,
+and appends the same transitions to replay.
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import sys
+import time
+from pathlib import Path
+
+import gymnasium as gym
+import numpy as np
+import torch
+import torch.nn.functional as F
+from PIL import Image
+
+import ale_py
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from atari.controller import AtariCNNPolicy
+from atari.replay_buffer import ReplayShardWriter, load_metadata
+from deepdash.config import apply_config, load_config
+from deepdash.fsq import FSQVAE
+from deepdash.world_model import WorldModel
+
+gym.register_envs(ale_py)
+RESAMPLE_BILINEAR = Image.Resampling.BILINEAR if hasattr(Image, "Resampling") else Image.BILINEAR
+
+
+def resize_frame_to_64(obs):
+    return np.asarray(Image.fromarray(obs).resize((64, 64), RESAMPLE_BILINEAR), dtype=np.uint8)
+
+
+def amp_dtype(name):
+    if name == "bfloat16":
+        return torch.bfloat16
+    if name == "float16":
+        return torch.float16
+    return None
+
+
+@torch.no_grad()
+def encode_frame(fsq, frame, device):
+    x = torch.from_numpy(frame).float().permute(2, 0, 1).unsqueeze(0).to(device) / 255.0
+    return fsq.encode(x).reshape(1, -1)
+
+
+def load_clean_state(path, device):
+    state = torch.load(path, map_location=device, weights_only=False)
+    if isinstance(state, dict) and "model" in state:
+        state = state["model"]
+    if isinstance(state, dict) and "controller" in state:
+        state = state["controller"]
+    return {k.removeprefix("_orig_mod."): v for k, v in state.items()}
+
+
+def compute_gae(rewards, values, dones, bootstrap_value, gamma, lam, device):
+    rewards = torch.tensor(rewards, dtype=torch.float32, device=device)
+    values = torch.tensor(values, dtype=torch.float32, device=device)
+    dones = torch.tensor(dones, dtype=torch.float32, device=device)
+    adv = torch.zeros_like(rewards)
+    gae = torch.zeros((), device=device)
+    next_value = bootstrap_value
+    for t in reversed(range(len(rewards))):
+        next_nonterminal = 1.0 - dones[t]
+        delta = rewards[t] + gamma * next_value * next_nonterminal - values[t]
+        gae = delta + gamma * lam * next_nonterminal * gae
+        adv[t] = gae
+        next_value = values[t]
+    returns = adv + values
+    return adv, returns
+
+
+def ppo_update(policy, optimizer, batch, args, device, amp):
+    tokens = torch.cat(batch["tokens"], dim=0).to(device)
+    h = torch.cat(batch["h"], dim=0).to(device)
+    actions = torch.tensor(batch["actions"], dtype=torch.long, device=device)
+    old_logp = torch.tensor(batch["logp"], dtype=torch.float32, device=device)
+    adv = batch["advantages"].to(device)
+    returns = batch["returns"].to(device)
+    adv = (adv - adv.mean()) / (adv.std(unbiased=False) + 1e-8)
+
+    n = actions.numel()
+    idx = torch.arange(n, device=device)
+    total_loss = 0.0
+    total_entropy = 0.0
+    updates = 0
+    for _ in range(args.ppo_epochs):
+        perm = idx[torch.randperm(n, device=device)]
+        for start in range(0, n, args.minibatch_size):
+            mb = perm[start:start + args.minibatch_size]
+            with torch.amp.autocast("cuda", enabled=amp is not None, dtype=amp):
+                logits, value = policy(tokens[mb], h[mb])
+                dist = torch.distributions.Categorical(logits=logits)
+                logp = dist.log_prob(actions[mb])
+                ratio = (logp - old_logp[mb]).exp()
+                pg1 = -adv[mb] * ratio
+                pg2 = -adv[mb] * torch.clamp(ratio, 1.0 - args.clip_eps, 1.0 + args.clip_eps)
+                actor_loss = torch.max(pg1, pg2).mean()
+                critic_loss = F.mse_loss(value, returns[mb])
+                entropy = dist.entropy().mean()
+                loss = actor_loss + args.critic_coeff * critic_loss - args.entropy_coeff * entropy
+            optimizer.zero_grad(set_to_none=True)
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(policy.parameters(), args.max_grad_norm)
+            optimizer.step()
+            total_loss += float(loss.item())
+            total_entropy += float(entropy.item())
+            updates += 1
+    return total_loss / max(updates, 1), total_entropy / max(updates, 1)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--config", default="configs/atari/atari_pong_h200.yaml")
+    parser.add_argument("--config-section", default="actor_real")
+    parser.add_argument("--game", default=None)
+    parser.add_argument("--replay-dir", default=None)
+    parser.add_argument("--checkpoint-dir", default=None)
+    parser.add_argument("--fsq-checkpoint", default=None)
+    parser.add_argument("--predictor-checkpoint", default=None)
+    parser.add_argument("--n-steps", type=int, default=None)
+    parser.add_argument("--rollout-steps", type=int, default=None)
+    parser.add_argument("--lr", type=float, default=None)
+    parser.add_argument("--gamma", type=float, default=None)
+    parser.add_argument("--lam", type=float, default=None)
+    parser.add_argument("--clip-eps", type=float, default=None)
+    parser.add_argument("--ppo-epochs", type=int, default=None)
+    parser.add_argument("--minibatch-size", type=int, default=None)
+    parser.add_argument("--entropy-coeff", type=float, default=None)
+    parser.add_argument("--critic-coeff", type=float, default=None)
+    parser.add_argument("--max-grad-norm", type=float, default=None)
+    parser.add_argument("--amp-dtype", choices=["none", "float16", "bfloat16"], default=None)
+    parser.add_argument("--compile-mode", choices=["none", "default", "reduce-overhead"], default=None)
+    parser.add_argument("--seed", type=int, default=None)
+    parser.add_argument("--resume", action="store_true")
+    args = parser.parse_args()
+    apply_config(args, section=args.config_section)
+
+    atari_cfg = load_config(args.config, section="atari")
+    fsq_cfg = load_config(args.config, section="fsq")
+    model_cfg = load_config(args.config, section="model")
+    pred_cfg = load_config(args.config, section="predictor")
+
+    args.game = args.game or atari_cfg.get("game", "Pong")
+    args.replay_dir = args.replay_dir or atari_cfg.get("replay_dir", f"data/atari/{args.game}/replay")
+    args.checkpoint_dir = args.checkpoint_dir or f"checkpoints_atari_{args.game.lower()}_actor_real"
+    args.fsq_checkpoint = args.fsq_checkpoint or pred_cfg.get("fsq_checkpoint")
+    args.predictor_checkpoint = args.predictor_checkpoint or str(Path(pred_cfg.get("checkpoint_dir")) / "predictor_best.pt")
+    args.n_steps = args.n_steps or int(atari_cfg.get("cycle_steps", 10000))
+    args.rollout_steps = args.rollout_steps or 256
+    args.lr = args.lr or 2.5e-4
+    args.gamma = args.gamma if args.gamma is not None else 0.99
+    args.lam = args.lam if args.lam is not None else 0.95
+    args.clip_eps = args.clip_eps if args.clip_eps is not None else 0.2
+    args.ppo_epochs = args.ppo_epochs or 4
+    args.minibatch_size = args.minibatch_size or 256
+    args.entropy_coeff = args.entropy_coeff if args.entropy_coeff is not None else 0.01
+    args.critic_coeff = args.critic_coeff if args.critic_coeff is not None else 0.5
+    args.max_grad_norm = args.max_grad_norm if args.max_grad_norm is not None else 0.5
+    args.amp_dtype = args.amp_dtype or "bfloat16"
+    args.compile_mode = args.compile_mode or "reduce-overhead"
+    args.seed = args.seed if args.seed is not None else int(atari_cfg.get("seed", 42))
+
+    torch.manual_seed(args.seed)
+    np.random.seed(args.seed)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    amp = amp_dtype(args.amp_dtype)
+    ckpt_dir = Path(args.checkpoint_dir)
+    ckpt_dir.mkdir(parents=True, exist_ok=True)
+
+    env = gym.make(
+        f"ALE/{args.game}-v5",
+        frameskip=int(atari_cfg.get("frame_skip", 4)),
+        repeat_action_probability=float(atari_cfg.get("repeat_action_probability", 0.0)),
+    )
+    n_actions = int(env.action_space.n)
+    metadata = load_metadata(args.replay_dir) or {}
+    writer = ReplayShardWriter(
+        args.replay_dir,
+        shard_size=int(atari_cfg.get("shard_size", metadata.get("shard_size", 8192))),
+        metadata={
+            "game": args.game,
+            "env_id": f"ALE/{args.game}-v5",
+            "n_actions": n_actions,
+            "frame_skip": int(atari_cfg.get("frame_skip", 4)),
+            "repeat_action_probability": float(atari_cfg.get("repeat_action_probability", 0.0)),
+            "obs_shape": [64, 64, 3],
+            "obs_dtype": "uint8",
+            "seed": args.seed,
+        },
+    )
+
+    fsq = FSQVAE(
+        img_channels=int(fsq_cfg.get("img_channels", 3)),
+        levels=fsq_cfg.get("levels", [8, 5, 5, 5]),
+        norm_type=fsq_cfg.get("norm_type", "group"),
+        latent_grid=int(fsq_cfg.get("latent_grid", 16)),
+    ).to(device)
+    fsq.load_state_dict(load_clean_state(args.fsq_checkpoint, device))
+    fsq.eval()
+
+    predictor = WorldModel(
+        vocab_size=int(model_cfg.get("vocab_size", 1000)),
+        n_actions=n_actions,
+        embed_dim=int(model_cfg.get("embed_dim", 384)),
+        n_heads=int(model_cfg.get("n_heads", 8)),
+        n_layers=int(model_cfg.get("n_layers", 8)),
+        context_frames=int(model_cfg.get("context_frames", 4)),
+        dropout=float(model_cfg.get("dropout", 0.1)),
+        tokens_per_frame=int(model_cfg.get("tokens_per_frame", 256)),
+        adaln=bool(model_cfg.get("adaln", False)),
+        use_status_token=False,
+        use_cpc=False,
+    ).to(device)
+    predictor.load_state_dict(load_clean_state(args.predictor_checkpoint, device))
+    predictor.eval()
+
+    policy = AtariCNNPolicy(
+        vocab_size=int(model_cfg.get("vocab_size", 1000)),
+        n_actions=n_actions,
+        grid_size=int(fsq_cfg.get("latent_grid", 16)),
+        h_dim=int(model_cfg.get("embed_dim", 384)),
+    ).to(device)
+    latest = ckpt_dir / "actor_real_latest.pt"
+    start_real_step = int(writer.metadata.get("total_steps", 0))
+    if args.resume and latest.exists():
+        state = torch.load(latest, map_location=device, weights_only=False)
+        policy.load_state_dict(load_clean_state(latest, device))
+        start_real_step = int(state.get("real_steps", start_real_step))
+        print(f"Resumed actor from {latest} real_steps={start_real_step}")
+
+    if args.compile_mode != "none" and device.type == "cuda":
+        fsq.encode = torch.compile(fsq.encode, mode=args.compile_mode)
+        predictor = torch.compile(predictor, mode=args.compile_mode)
+        policy = torch.compile(policy, mode=args.compile_mode)
+        print(f"torch.compile enabled (mode={args.compile_mode})")
+
+    optimizer = torch.optim.Adam(policy.parameters(), lr=args.lr)
+    if args.resume and latest.exists():
+        state = torch.load(latest, map_location=device, weights_only=False)
+        if "optimizer" in state:
+            optimizer.load_state_dict(state["optimizer"])
+
+    log_path = ckpt_dir / "actor_real_log.csv"
+    log_file = open(log_path, "a" if args.resume and log_path.exists() else "w", newline="")
+    log = csv.writer(log_file)
+    if log_file.tell() == 0:
+        log.writerow(["update", "real_steps", "episode_return", "ppo_loss", "entropy", "time_s"])
+
+    obs, _ = env.reset(seed=args.seed)
+    frame = resize_frame_to_64(obs)
+    k = int(model_cfg.get("context_frames", 4))
+    def reset_context(frame64):
+        token = encode_frame(fsq, frame64, device).cpu()
+        return [token.clone() for _ in range(k)], [0 for _ in range(k)]
+
+    ctx_tokens, ctx_actions = reset_context(frame)
+    episode_frames, episode_actions, episode_rewards, episode_dones = [], [], [], []
+    episode_return = 0.0
+    rng = np.random.default_rng(args.seed)
+
+    real_steps = 0
+    update_idx = 0
+    t0 = time.time()
+    rollout = {"tokens": [], "h": [], "actions": [], "logp": [], "values": [],
+               "rewards": [], "dones": []}
+
+    while real_steps < args.n_steps:
+        ctx_t = torch.stack(ctx_tokens[-k:], dim=1).to(device)
+        ctx_a = torch.tensor([ctx_actions[-k:]], dtype=torch.long, device=device)
+        with torch.no_grad(), torch.amp.autocast("cuda", enabled=amp is not None, dtype=amp):
+            h_t = predictor.encode_context(ctx_t, ctx_a)
+            token_t = ctx_t[:, -1]
+            action_t, logp_t, _, value_t = policy.act(token_t, h_t.float())
+        action = int(action_t.item())
+
+        obs, reward, terminated, truncated, _ = env.step(action)
+        done = bool(terminated or truncated)
+        next_frame = resize_frame_to_64(obs)
+
+        episode_frames.append(frame)
+        episode_actions.append(action)
+        episode_rewards.append(float(reward))
+        episode_dones.append(done)
+        episode_return += float(reward)
+
+        rollout["tokens"].append(token_t.detach().cpu())
+        rollout["h"].append(h_t.detach().cpu().float())
+        rollout["actions"].append(action)
+        rollout["logp"].append(float(logp_t.item()))
+        rollout["values"].append(float(value_t.item()))
+        rollout["rewards"].append(float(reward))
+        rollout["dones"].append(done)
+
+        next_token = encode_frame(fsq, next_frame, device).cpu()
+        ctx_tokens.append(next_token)
+        ctx_actions.append(action)
+        frame = next_frame
+        real_steps += 1
+
+        if done:
+            writer.append_episode(episode_frames, episode_actions, episode_rewards, episode_dones)
+            print(f"episode return={episode_return:+.1f} replay_steps={writer.total_steps}")
+            episode_frames, episode_actions, episode_rewards, episode_dones = [], [], [], []
+            episode_return = 0.0
+            obs, _ = env.reset(seed=int(rng.integers(0, 2**31 - 1)))
+            frame = resize_frame_to_64(obs)
+            ctx_tokens, ctx_actions = reset_context(frame)
+
+        if len(rollout["rewards"]) >= args.rollout_steps or real_steps >= args.n_steps:
+            with torch.no_grad():
+                if rollout["dones"] and rollout["dones"][-1]:
+                    bootstrap = torch.zeros((), device=device)
+                else:
+                    ctx_t = torch.stack(ctx_tokens[-k:], dim=1).to(device)
+                    ctx_a = torch.tensor([ctx_actions[-k:]], dtype=torch.long, device=device)
+                    h_t = predictor.encode_context(ctx_t, ctx_a)
+                    _, bootstrap_value = policy(ctx_t[:, -1], h_t.float())
+                    bootstrap = bootstrap_value.squeeze(0)
+            adv, returns = compute_gae(
+                rollout["rewards"], rollout["values"], rollout["dones"],
+                bootstrap, args.gamma, args.lam, device)
+            rollout["advantages"] = adv.cpu()
+            rollout["returns"] = returns.cpu()
+            loss, entropy = ppo_update(policy, optimizer, rollout, args, device, amp)
+            update_idx += 1
+            elapsed = time.time() - t0
+            print(f"update={update_idx} real_steps={real_steps}/{args.n_steps} "
+                  f"loss={loss:.4f} entropy={entropy:.3f} replay_steps={writer.total_steps}")
+            log.writerow([update_idx, writer.total_steps, f"{episode_return:.3f}",
+                          f"{loss:.6f}", f"{entropy:.6f}", f"{elapsed:.1f}"])
+            log_file.flush()
+            clean_policy = {k.removeprefix("_orig_mod."): v for k, v in policy.state_dict().items()}
+            torch.save({
+                "controller": clean_policy,
+                "optimizer": optimizer.state_dict(),
+                "real_steps": writer.total_steps,
+                "update": update_idx,
+            }, latest)
+            torch.save(clean_policy, ckpt_dir / "actor_real_best_effort.pt")
+            rollout = {"tokens": [], "h": [], "actions": [], "logp": [], "values": [],
+                       "rewards": [], "dones": []}
+
+    if episode_frames:
+        writer.append_episode(episode_frames, episode_actions, episode_rewards, episode_dones)
+    writer.close()
+    env.close()
+    log_file.close()
+    clean_policy = {k.removeprefix("_orig_mod."): v for k, v in policy.state_dict().items()}
+    torch.save(clean_policy, ckpt_dir / "actor_real_final.pt")
+    print(f"Done. Replay steps={writer.metadata['total_steps']} checkpoints={ckpt_dir}")
+
+
+if __name__ == "__main__":
+    main()
