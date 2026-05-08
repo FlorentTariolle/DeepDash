@@ -88,18 +88,46 @@ def valid_starts(replay, context_frames: int, horizon: int, start_mode: str, see
 
 
 @torch.no_grad()
+def sample_tokens_from_logits(logits: torch.Tensor, vocab_size: int,
+                              temperature: float) -> torch.Tensor:
+    visual_logits = logits[:, :, :vocab_size]
+    if temperature <= 0:
+        return visual_logits.argmax(dim=-1)
+    probs = (visual_logits / temperature).softmax(dim=-1)
+    return torch.multinomial(probs.reshape(-1, probs.size(-1)), 1).view(
+        visual_logits.size(0), visual_logits.size(1))
+
+
+@torch.no_grad()
+def predict_with_forward(predictor, ctx_tokens, action_window, temperature):
+    # The target frame content is ignored by WorldModel.forward: all target
+    # positions are replaced by mask_embed. A zero frame keeps the shape aligned
+    # with the training forward path without leaking ground truth.
+    target_stub = torch.zeros_like(ctx_tokens[:, :1])
+    frame_tokens = torch.cat([ctx_tokens, target_stub], dim=1)
+    logits, pred_reward, done_logit = predictor(frame_tokens, action_window, return_aux=True)
+    pred_tokens = sample_tokens_from_logits(logits, predictor.vocab_size, temperature)
+    done_prob = torch.sigmoid(done_logit.float())
+    return pred_tokens, pred_reward, done_prob
+
+
+@torch.no_grad()
 def build_episode(predictor, fsq, replay, start: int, args, device):
     k = int(args.context_frames)
     h = int(args.horizon)
-    ctx_tokens = encode_frames(fsq, replay.obs[start:start + k], device).unsqueeze(0)
+    gt_tokens = encode_frames(fsq, replay.obs[start:start + k + h], device)
+    ctx_tokens = gt_tokens[:k].unsqueeze(0)
     actions_np = replay.actions[start:start + k + h].astype(np.int64)
-    ctx_actions = torch.from_numpy(actions_np[:k][None]).to(device)
 
     frames = []
     for step in range(h):
         action_window = torch.from_numpy(actions_np[step:step + k][None]).to(device)
-        pred_tokens, pred_reward, done_prob = predictor.predict_next_frame(
-            ctx_tokens, action_window, temperature=args.temperature, return_aux=True)
+        if args.predict_path == "forward":
+            pred_tokens, pred_reward, done_prob = predict_with_forward(
+                predictor, ctx_tokens, action_window, args.temperature)
+        else:
+            pred_tokens, pred_reward, done_prob = predictor.predict_next_frame(
+                ctx_tokens, action_window, temperature=args.temperature, return_aux=True)
         pred_frame = decode_tokens(fsq, pred_tokens[0], device)
         gt_index = start + k + step
         action_id = int(actions_np[step + k - 1])
@@ -115,12 +143,17 @@ def build_episode(predictor, fsq, replay, start: int, args, device):
             "done": bool(replay.dones[gt_index]),
             "done_prob": float(done_prob[0].item()),
         })
-        ctx_tokens = torch.cat([ctx_tokens[:, 1:], pred_tokens.unsqueeze(1)], dim=1)
+        if args.context_source == "teacher_forced":
+            ctx_tokens = gt_tokens[step + 1:step + 1 + k].unsqueeze(0)
+        else:
+            ctx_tokens = torch.cat([ctx_tokens[:, 1:], pred_tokens.unsqueeze(1)], dim=1)
 
     return {
         "episode_id": int(replay.episode_ids[start]),
         "start": int(start),
         "context_frames": k,
+        "context_source": args.context_source,
+        "predict_path": args.predict_path,
         "frames": frames,
     }
 
@@ -174,8 +207,9 @@ function render() {{
   document.getElementById('gt').src = f.gt;
   document.getElementById('pred').src = f.pred;
   document.getElementById('pos').textContent = `episode ${{ep + 1}}/${{episodes.length}} frame ${{frame + 1}}/${{e.frames.length}}`;
-  document.getElementById('meta').innerHTML =
-    `replay episode=${{e.episode_id}} start=${{e.start}} index=${{f.replay_index}}<br>` +
+    document.getElementById('meta').innerHTML =
+    `replay episode=${{e.episode_id}} start=${{e.start}} index=${{f.replay_index}} ` +
+    `mode=${{e.context_source}} path=${{e.predict_path}}<br>` +
     `action=${{f.action}}:${{f.action_name}} reward=${{f.reward.toFixed(1)}} ` +
     `pred_reward=${{f.pred_reward.toFixed(3)}} done=${{f.done}} done_prob=${{f.done_prob.toFixed(3)}}`;
 }}
@@ -210,6 +244,9 @@ def main():
     parser.add_argument("--context-frames", type=int, default=None)
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--start-mode", choices=["random", "beginning"], default="random")
+    parser.add_argument("--context-source", choices=["autoregressive", "teacher_forced"],
+                        default="autoregressive")
+    parser.add_argument("--predict-path", choices=["cached", "forward"], default="cached")
     parser.add_argument("--scale", type=int, default=6)
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
@@ -253,11 +290,17 @@ def main():
         world_model, hidden_dim=int(model_cfg.get("embed_dim", 384))).to(device)
     state = load_clean_state(args.predictor_checkpoint, device)
     if "world_model.head.weight" in state:
-        predictor.load_state_dict(state)
+        load_result = predictor.load_state_dict(state)
+        print(f"Loaded full predictor: missing={load_result.missing_keys} "
+              f"unexpected={load_result.unexpected_keys}")
     else:
         wm_state, aux_state = split_atari_predictor_state(state)
-        predictor.world_model.load_state_dict(wm_state)
-        predictor.load_state_dict(aux_state, strict=False)
+        wm_result = predictor.world_model.load_state_dict(wm_state)
+        aux_result = predictor.load_state_dict(aux_state, strict=False)
+        print(f"Loaded split predictor: wm_missing={wm_result.missing_keys} "
+              f"wm_unexpected={wm_result.unexpected_keys}")
+        print(f"Loaded aux heads: keys={sorted(aux_state)} "
+              f"missing={aux_result.missing_keys} unexpected={aux_result.unexpected_keys}")
     predictor.eval()
 
     starts = valid_starts(replay, args.context_frames, args.horizon, args.start_mode, args.seed)
