@@ -143,6 +143,8 @@ def main():
     parser.add_argument("--amp-dtype", choices=["none", "float16", "bfloat16"], default=None)
     parser.add_argument("--compile-mode", choices=["none", "default", "reduce-overhead"], default=None)
     parser.add_argument("--seed", type=int, default=None)
+    parser.add_argument("--init-from", default=None,
+                        help="Warm-start actor weights from a checkpoint, but reset optimizer/update state.")
     parser.add_argument("--resume", action="store_true")
     args = parser.parse_args()
     apply_config(args, section=args.config_section)
@@ -247,7 +249,10 @@ def main():
     ).to(device)
     latest = ckpt_dir / "actor_real_latest.pt"
     start_real_step = int(writer.metadata.get("total_steps", 0))
-    if args.resume and latest.exists():
+    if args.init_from:
+        policy.load_state_dict(load_clean_state(args.init_from, device))
+        print(f"Warm-started actor weights from {args.init_from}; reset optimizer/update state")
+    elif args.resume and latest.exists():
         state = torch.load(latest, map_location=device, weights_only=False)
         policy.load_state_dict(load_clean_state(latest, device))
         start_real_step = int(state.get("real_steps", start_real_step))
@@ -260,13 +265,13 @@ def main():
         print(f"torch.compile enabled (mode={args.compile_mode})")
 
     optimizer = torch.optim.Adam(policy.parameters(), lr=args.lr)
-    if args.resume and latest.exists():
+    if args.resume and not args.init_from and latest.exists():
         state = torch.load(latest, map_location=device, weights_only=False)
         if "optimizer" in state:
             optimizer.load_state_dict(state["optimizer"])
 
     log_path = ckpt_dir / "actor_real_log.csv"
-    log_file = open(log_path, "a" if args.resume and log_path.exists() else "w", newline="")
+    log_file = open(log_path, "a" if (args.resume or args.init_from) and log_path.exists() else "w", newline="")
     log = csv.writer(log_file)
     if log_file.tell() == 0:
         log.writerow(["update", "real_steps", "episode_return", "ppo_loss", "entropy", "time_s"])

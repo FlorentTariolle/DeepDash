@@ -170,7 +170,12 @@ class Orchestrator:
     def train_dream_actor(self, cycle: int, final: bool = False):
         phase = f"{'final_' if final else ''}cycle_{cycle}_actor_dream"
         argv = [self.python, "-u", "scripts/train_atari_actor_dream.py",
-                "--config", self.config_path, "--config-section", "actor_dream", "--resume"]
+                "--config", self.config_path, "--config-section", "actor_dream"]
+        latest = Path(deep_get(self.cfg, "actor_dream.checkpoint_dir")) / "actor_dream_latest.pt"
+        if latest.exists():
+            # Predictor/FSQ may have changed since this actor was trained.
+            # Reuse policy weights, but reset PPO optimizer/iteration/RNG state.
+            argv.extend(["--init-from", str(latest)])
         argv.extend(self.phase_overrides("actor_dream"))
         self.run_cmd(phase, argv)
         self.state["selected_checkpoints"]["actor_dream"] = str(Path(deep_get(self.cfg, "actor_dream.checkpoint_dir")) / "actor_dream_final.pt")
@@ -184,7 +189,12 @@ class Orchestrator:
             return
         argv = [self.python, "-u", "scripts/train_atari_actor_real.py",
                 "--config", self.config_path, "--config-section", "actor_real",
-                "--target-replay-steps", str(target), "--resume"]
+                "--target-replay-steps", str(target)]
+        latest = Path(deep_get(self.cfg, "actor_real.checkpoint_dir")) / "actor_real_latest.pt"
+        if latest.exists():
+            # The policy feature space changes when FSQ/predictor changes.
+            # Reuse policy weights, but reset PPO optimizer/update state.
+            argv.extend(["--init-from", str(latest)])
         argv.extend(self.phase_overrides("actor_real"))
         self.run_cmd(f"cycle_{cycle}_actor_real", argv, expected_steps=target)
 
