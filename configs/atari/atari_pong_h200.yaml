@@ -76,6 +76,7 @@ predictor:
   batch_size: 128
   lr: 0.0002
   lr_min: 0.00001
+  warmup_epochs: 3
   weight_decay: 0.01
   val_ratio: 0.2
   eval_horizons: [1, 5, 10, 15]
@@ -102,6 +103,7 @@ predictor_sls:
   batch_size: 128
   lr: 0.0002
   lr_min: 0.00001
+  warmup_epochs: 3
   weight_decay: 0.01
   val_ratio: 0.2
   eval_horizons: [1, 5, 10, 15]

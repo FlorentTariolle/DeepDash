@@ -59,6 +59,26 @@ def _fsq_coords(levels: list[int], device: torch.device) -> torch.Tensor:
     return coords
 
 
+def predictor_lr_lambda(epoch_idx: int, total_epochs: int, warmup_epochs: int,
+                        min_lr_ratio: float) -> float:
+    """Linear warmup followed by cosine decay.
+
+    ``epoch_idx`` is LambdaLR's zero-based scheduler step index. LambdaLR sets
+    the epoch-1 LR at construction, then the loop advances it after each epoch.
+    """
+    total_epochs = max(1, int(total_epochs))
+    warmup_epochs = max(0, min(int(warmup_epochs), total_epochs))
+    min_lr_ratio = float(min_lr_ratio)
+
+    if warmup_epochs > 0 and epoch_idx < warmup_epochs:
+        return max(min_lr_ratio, float(epoch_idx + 1) / float(warmup_epochs))
+
+    decay_epochs = max(1, total_epochs - warmup_epochs)
+    progress = min(1.0, max(0.0, float(epoch_idx - warmup_epochs + 1) / decay_epochs))
+    cosine = 0.5 * (1.0 + math.cos(math.pi * progress))
+    return min_lr_ratio + (1.0 - min_lr_ratio) * cosine
+
+
 @torch.no_grad()
 def encode_replay_obs(fsq: FSQVAE, obs: np.ndarray, batch_size: int,
                       device: torch.device) -> torch.Tensor:
@@ -303,6 +323,7 @@ def main():
     parser.add_argument("--batch-size", type=int, default=None)
     parser.add_argument("--lr", type=float, default=None)
     parser.add_argument("--lr-min", type=float, default=None)
+    parser.add_argument("--warmup-epochs", type=int, default=None)
     parser.add_argument("--weight-decay", type=float, default=None)
     parser.add_argument("--label-smoothing", type=float, default=None,
                         help="0 = CE; >0 = SLS with fsq_kernel/fsq_sigma.")
@@ -332,6 +353,7 @@ def main():
     args.batch_size = args.batch_size or 32
     args.lr = args.lr or 2e-4
     args.lr_min = args.lr_min if args.lr_min is not None else 1e-5
+    args.warmup_epochs = args.warmup_epochs if args.warmup_epochs is not None else 0
     args.weight_decay = args.weight_decay if args.weight_decay is not None else 0.01
     args.label_smoothing = args.label_smoothing if args.label_smoothing is not None else 0.0
     args.fsq_kernel = args.fsq_kernel or "gaussian"
@@ -431,8 +453,17 @@ def main():
 
     optimizer = torch.optim.AdamW(
         predictor.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer, T_max=args.epochs, eta_min=args.lr_min)
+    min_lr_ratio = float(args.lr_min) / float(args.lr) if args.lr > 0 else 0.0
+    scheduler = torch.optim.lr_scheduler.LambdaLR(
+        optimizer,
+        lr_lambda=lambda epoch_idx: predictor_lr_lambda(
+            epoch_idx, args.epochs, args.warmup_epochs, min_lr_ratio),
+    )
+    if args.warmup_epochs > 0:
+        print(f"LR schedule: linear warmup {args.warmup_epochs} epoch(s), "
+              f"then cosine decay to {args.lr_min:.1e}")
+    else:
+        print(f"LR schedule: cosine decay to {args.lr_min:.1e}")
     scaler = torch.amp.GradScaler("cuda", enabled=(amp_dtype == torch.float16 and device.type == "cuda"))
     if scaler.is_enabled():
         print("GradScaler enabled for float16 AMP")
