@@ -194,6 +194,26 @@ def predictor_state_for_world_model(predictor: nn.Module):
     }
 
 
+def load_predictor_weights(predictor: nn.Module, path: str | Path,
+                           device: torch.device) -> None:
+    """Load predictor weights from either a raw state dict or latest payload.
+
+    This intentionally ignores optimizer, scheduler, epoch, and best metric
+    state. It is used when the FSQ tokenizer has changed and we want a warm
+    start from previous predictor weights, not continuation of the previous
+    training run.
+    """
+    payload = torch.load(path, map_location=device, weights_only=False)
+    state = payload.get("model", payload) if isinstance(payload, dict) else payload
+    state = {k.removeprefix("_orig_mod."): v for k, v in state.items()}
+    if "world_model.head.weight" in state:
+        predictor.load_state_dict(state)
+    else:
+        wm_state, aux_state = split_atari_predictor_state(state)
+        predictor.world_model.load_state_dict(wm_state)
+        predictor.load_state_dict(aux_state, strict=False)
+
+
 @torch.no_grad()
 def eval_next_step(model, loader, device, vocab_size, soft_target_matrix,
                    label_smoothing, focal_gamma, coords, amp_dtype,
@@ -296,10 +316,13 @@ def main():
     parser.add_argument("--val-interval", type=int, default=None)
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--steps-per-epoch", type=int, default=None)
-    parser.add_argument("--max-val-batches", type=int, default=0,
+    parser.add_argument("--max-val-batches", type=int, default=None,
                         help="Debug cap for next-step validation batches; 0 = full val set.")
-    parser.add_argument("--max-rollout-batches", type=int, default=0,
+    parser.add_argument("--max-rollout-batches", type=int, default=None,
                         help="Debug cap for rollout validation batches; 0 = full val set.")
+    parser.add_argument("--init-from", default=None,
+                        help="Warm-start model weights from a predictor checkpoint, "
+                             "but reset optimizer/scheduler/epoch/best metric.")
     parser.add_argument("--resume", action="store_true",
                         help="Resume from predictor_latest.pt in checkpoint-dir.")
     args = parser.parse_args()
@@ -320,6 +343,9 @@ def main():
     args.amp_dtype = args.amp_dtype or "float16"
     args.val_interval = args.val_interval if args.val_interval is not None else 1
     args.seed = args.seed if args.seed is not None else 42
+    args.max_val_batches = args.max_val_batches if args.max_val_batches is not None else 0
+    args.max_rollout_batches = (
+        args.max_rollout_batches if args.max_rollout_batches is not None else 0)
 
     torch.manual_seed(args.seed)
     if torch.cuda.is_available():
@@ -417,7 +443,11 @@ def main():
     latest_path = ckpt_dir / "predictor_latest.pt"
     start_epoch = 1
     best_rollout = float("inf")
-    if args.resume and latest_path.exists():
+    if args.init_from:
+        load_predictor_weights(predictor, args.init_from, device)
+        print(f"Warm-started predictor weights from {args.init_from}; "
+              "reset optimizer/scheduler/epoch/best metric")
+    elif args.resume and latest_path.exists():
         resume_state = torch.load(latest_path, map_location=device, weights_only=False)
         model_state = resume_state.get("model", resume_state)
         model_state = {k.removeprefix("_orig_mod."): v for k, v in model_state.items()}

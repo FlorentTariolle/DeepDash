@@ -155,7 +155,13 @@ class Orchestrator:
     def train_predictor(self, section: str, cycle: int, final: bool = False):
         phase = f"{'final_' if final else ''}cycle_{cycle}_{section}"
         argv = [self.python, "-u", "scripts/train_atari_predictor.py",
-                "--config", self.config_path, "--config-section", section, "--resume"]
+                "--config", self.config_path, "--config-section", section]
+        latest = Path(deep_get(self.cfg, f"{section}.checkpoint_dir")) / "predictor_latest.pt"
+        if latest.exists():
+            # FSQ is retrained before every predictor phase. Reuse the previous
+            # predictor weights, but reset optimizer/scheduler/epoch/best metric
+            # so the model actually adapts to the new tokenizer.
+            argv.extend(["--init-from", str(latest)])
         argv.extend(self.phase_overrides(section))
         self.run_cmd(phase, argv)
         self.state["selected_checkpoints"][section] = str(Path(deep_get(self.cfg, f"{section}.checkpoint_dir")) / "predictor_best.pt")

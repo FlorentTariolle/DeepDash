@@ -72,7 +72,7 @@ predictor:
   fsq_checkpoint: checkpoints_atari_pong_h200/fsq_best.pt
   tokenizer_config: configs/atari/atari_pong_h200.yaml
   n_actions: 6
-  epochs: 100
+  epochs: 20
   batch_size: 128
   lr: 0.0002
   lr_min: 0.00001
@@ -87,7 +87,9 @@ predictor:
   done_loss_weight: 1.0
   amp_dtype: bfloat16
   compile_mode: reduce-overhead
-  val_interval: 1
+  val_interval: 5
+  max_val_batches: 64
+  max_rollout_batches: 16
   seed: 42
   checkpoint_dir: checkpoints_atari_pong_h200_predictor_ce
 
@@ -96,7 +98,7 @@ predictor_sls:
   fsq_checkpoint: checkpoints_atari_pong_h200/fsq_best.pt
   tokenizer_config: configs/atari/atari_pong_h200.yaml
   n_actions: 6
-  epochs: 100
+  epochs: 20
   batch_size: 128
   lr: 0.0002
   lr_min: 0.00001
@@ -111,7 +113,9 @@ predictor_sls:
   done_loss_weight: 1.0
   amp_dtype: bfloat16
   compile_mode: reduce-overhead
-  val_interval: 1
+  val_interval: 5
+  max_val_batches: 64
+  max_rollout_batches: 16
   seed: 42
   checkpoint_dir: checkpoints_atari_pong_h200_predictor_sls
 
