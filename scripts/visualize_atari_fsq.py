@@ -8,9 +8,9 @@ import argparse
 import sys
 from pathlib import Path
 
-import cv2
 import numpy as np
 import torch
+from PIL import Image, ImageDraw
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -76,9 +76,10 @@ def make_sheet(originals, reconstructions, columns):
         y0 = pad + r * (2 * tile_h + label_h + pad)
         sheet[y0:y0 + tile_h, x0:x0 + tile_w] = orig
         sheet[y0 + tile_h:y0 + 2 * tile_h, x0:x0 + tile_w] = recon
-        cv2.putText(sheet, "orig/recon", (x0, y0 + 2 * tile_h + 13),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.38, (220, 220, 220), 1,
-                    cv2.LINE_AA)
+        pil = Image.fromarray(sheet)
+        draw = ImageDraw.Draw(pil)
+        draw.text((x0, y0 + 2 * tile_h + 4), "orig/recon", fill=(220, 220, 220))
+        sheet = np.array(pil)
     return sheet
 
 
@@ -120,7 +121,7 @@ def main():
 
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    cv2.imwrite(str(out_path), cv2.cvtColor(sheet, cv2.COLOR_RGB2BGR))
+    Image.fromarray(sheet).save(out_path)
     print(f"Saved {out_path}")
 
 
