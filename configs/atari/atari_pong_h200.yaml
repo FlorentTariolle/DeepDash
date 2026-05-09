@@ -47,7 +47,7 @@ fsq:
   norm_type: group
   levels: [8, 5, 5, 5]
   latent_grid: 16
-  epochs: 200
+  epochs: 100
   batch_size: 256
   lr: 0.0001
   lr_min: 0.000001
