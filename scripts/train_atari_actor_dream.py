@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import argparse
+import collections
 import csv
 import sys
 import time
 from pathlib import Path
 
+import gymnasium as gym
 import numpy as np
 import torch
 import torch.nn.functional as F
+import ale_py
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -21,7 +24,11 @@ from deepdash.config import apply_config, load_config
 from deepdash.fsq import FSQVAE
 from deepdash.world_model import WorldModel
 from scripts.train_atari_actor_real import amp_dtype, load_clean_state
+from scripts.train_atari_actor_real import encode_frame, resize_frame_to_64
 from scripts.train_atari_predictor import encode_replay_obs
+
+gym.register_envs(ale_py)
+ACTION_NAMES = ["NOOP", "FIRE", "RIGHT", "LEFT", "RIGHTFIRE", "LEFTFIRE"]
 
 
 def valid_context_starts(replay, context_frames: int):
@@ -99,6 +106,66 @@ def compute_gae_sequence(rewards, values, dones, bootstrap, gamma, lam):
         gae = delta + gamma * lam * next_nonterminal * gae
         advantages[t] = gae
     return advantages.reshape(-1), (advantages + values).reshape(-1)
+
+
+@torch.no_grad()
+def evaluate_real_env(policy, fsq, predictor, atari_cfg, model_cfg, args, device, amp,
+                      n_actions: int):
+    """Deterministic real-env eval used only for checkpoint selection."""
+    env = gym.make(
+        f"ALE/{atari_cfg.get('game', 'Pong')}-v5",
+        frameskip=int(atari_cfg.get("frame_skip", 4)),
+        repeat_action_probability=float(atari_cfg.get("repeat_action_probability", 0.0)),
+    )
+    k = int(model_cfg.get("context_frames", 4))
+    rng = np.random.default_rng(args.real_eval_seed)
+    returns, lengths = [], []
+    action_counts = collections.Counter()
+    was_training = policy.training
+    policy.eval()
+    predictor.eval()
+    fsq.eval()
+    for _ in range(args.real_eval_episodes):
+        obs, _ = env.reset(seed=int(rng.integers(0, 2**31 - 1)))
+        frame = resize_frame_to_64(obs)
+        token = encode_frame(fsq, frame, device).cpu()
+        ctx_tokens = [token.clone() for _ in range(k)]
+        ctx_actions = [0 for _ in range(k)]
+        ep_return = 0.0
+        steps = 0
+        for _ in range(args.real_eval_max_steps):
+            ctx_t = torch.stack(ctx_tokens[-k:], dim=1).to(device)
+            ctx_a = torch.tensor([ctx_actions[-k:]], dtype=torch.long, device=device)
+            with torch.amp.autocast("cuda", enabled=amp is not None and device.type == "cuda", dtype=amp):
+                h_t = predictor.encode_context(ctx_t, ctx_a)
+                logits, _ = policy(ctx_t[:, -1], h_t.float())
+            action = int(logits.argmax(dim=-1).item())
+            if action < 0 or action >= n_actions:
+                raise RuntimeError(f"policy emitted invalid action {action} for n_actions={n_actions}")
+            action_counts[action] += 1
+            obs, reward, terminated, truncated, _ = env.step(action)
+            frame = resize_frame_to_64(obs)
+            ctx_tokens.append(encode_frame(fsq, frame, device).cpu())
+            ctx_actions.append(action)
+            ep_return += float(reward)
+            steps += 1
+            if terminated or truncated:
+                break
+        returns.append(ep_return)
+        lengths.append(steps)
+    env.close()
+    if was_training:
+        policy.train()
+    return {
+        "mean_return": float(np.mean(returns)) if returns else 0.0,
+        "returns": returns,
+        "mean_length": float(np.mean(lengths)) if lengths else 0.0,
+        "lengths": lengths,
+        "action_counts": {
+            ACTION_NAMES[a] if a < len(ACTION_NAMES) else str(a): int(action_counts.get(a, 0))
+            for a in range(n_actions)
+        },
+    }
 
 
 @torch.no_grad()
@@ -190,6 +257,11 @@ def main():
     parser.add_argument("--entropy-coeff", type=float, default=None)
     parser.add_argument("--critic-coeff", type=float, default=None)
     parser.add_argument("--max-grad-norm", type=float, default=None)
+    parser.add_argument("--real-eval-interval", type=int, default=None,
+                        help="Run deterministic real-env eval every N dream PPO iterations; 0 disables.")
+    parser.add_argument("--real-eval-episodes", type=int, default=None)
+    parser.add_argument("--real-eval-max-steps", type=int, default=None)
+    parser.add_argument("--real-eval-seed", type=int, default=None)
     parser.add_argument("--amp-dtype", choices=["none", "float16", "bfloat16"], default=None)
     parser.add_argument("--compile-mode", choices=["none", "default", "reduce-overhead"], default=None)
     parser.add_argument("--seed", type=int, default=None)
@@ -224,9 +296,13 @@ def main():
     args.entropy_coeff = args.entropy_coeff if args.entropy_coeff is not None else 0.01
     args.critic_coeff = args.critic_coeff if args.critic_coeff is not None else 0.5
     args.max_grad_norm = args.max_grad_norm if args.max_grad_norm is not None else 0.5
+    args.seed = args.seed if args.seed is not None else int(atari_cfg.get("seed", 42))
+    args.real_eval_interval = args.real_eval_interval if args.real_eval_interval is not None else 0
+    args.real_eval_episodes = args.real_eval_episodes or 5
+    args.real_eval_max_steps = args.real_eval_max_steps or 27000
+    args.real_eval_seed = args.real_eval_seed if args.real_eval_seed is not None else args.seed + 20000
     args.amp_dtype = args.amp_dtype or "bfloat16"
     args.compile_mode = args.compile_mode or "reduce-overhead"
-    args.seed = args.seed if args.seed is not None else int(atari_cfg.get("seed", 42))
 
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
@@ -291,6 +367,8 @@ def main():
         print(f"Pretrained actor not found at {args.pretrained}; starting cold")
 
     latest = ckpt_dir / "actor_dream_latest.pt"
+    best_real_path = ckpt_dir / "actor_dream_best_real.pt"
+    best_real_metric = -float("inf")
     optimizer = torch.optim.Adam(policy.parameters(), lr=args.lr)
     start_iter = 1
     if args.init_from:
@@ -303,6 +381,7 @@ def main():
         optimizer.load_state_dict(ckpt["optimizer"])
         start_iter = int(ckpt["iteration"]) + 1
         rng.bit_generator.state = ckpt["rng_state"]
+        best_real_metric = float(ckpt.get("best_real_mean_return", best_real_metric))
         print(f"Resumed dream actor from iteration {start_iter - 1}")
 
     if args.compile_mode != "none" and device.type == "cuda":
@@ -314,7 +393,9 @@ def main():
     log_file = open(log_path, "a" if (args.resume or args.init_from) and log_path.exists() else "w", newline="")
     log = csv.writer(log_file)
     if log_file.tell() == 0:
-        log.writerow(["iteration", "mean_return", "ppo_loss", "entropy", "time_s"])
+        log.writerow(["iteration", "mean_return", "ppo_loss", "entropy",
+                      "real_eval_mean_return", "real_eval_mean_length",
+                      "real_eval_action_counts", "time_s"])
 
     for iteration in range(start_iter, args.n_iterations + 1):
         t0 = time.time()
@@ -329,20 +410,46 @@ def main():
             continue
         policy.train()
         loss, entropy = ppo_update(policy, optimizer, rollout, args, device, amp)
-        elapsed = time.time() - t0
         mean_return = float(dream_return.mean().item())
+        clean_policy = {k.removeprefix("_orig_mod."): v for k, v in policy.state_dict().items()}
+        real_eval_mean = ""
+        real_eval_length = ""
+        real_eval_actions = ""
+        if args.real_eval_interval and (
+            iteration == 1 or iteration % int(args.real_eval_interval) == 0
+            or iteration == args.n_iterations
+        ):
+            metrics = evaluate_real_env(
+                policy, fsq, predictor, atari_cfg, model_cfg, args, device, amp,
+                n_actions)
+            real_eval_mean = metrics["mean_return"]
+            real_eval_length = metrics["mean_length"]
+            real_eval_actions = metrics["action_counts"]
+            if real_eval_mean > best_real_metric:
+                best_real_metric = real_eval_mean
+                torch.save(clean_policy, best_real_path)
+                print(f"  new best real eval: return={real_eval_mean:+.3f} "
+                      f"checkpoint={best_real_path}")
+            print(f"  real_eval return={real_eval_mean:+.3f} "
+                  f"len={real_eval_length:.1f} actions={real_eval_actions}")
+        elapsed = time.time() - t0
         print(f"iter={iteration} return={mean_return:+.3f} loss={loss:.4f} "
               f"entropy={entropy:.3f} time={elapsed:.1f}s")
-        log.writerow([iteration, f"{mean_return:.6f}", f"{loss:.6f}",
-                      f"{entropy:.6f}", f"{elapsed:.1f}"])
+        log.writerow([
+            iteration, f"{mean_return:.6f}", f"{loss:.6f}", f"{entropy:.6f}",
+            "" if real_eval_mean == "" else f"{real_eval_mean:.6f}",
+            "" if real_eval_length == "" else f"{real_eval_length:.1f}",
+            real_eval_actions,
+            f"{elapsed:.1f}",
+        ])
         log_file.flush()
 
-        clean_policy = {k.removeprefix("_orig_mod."): v for k, v in policy.state_dict().items()}
         torch.save({
             "iteration": iteration,
             "controller": clean_policy,
             "optimizer": optimizer.state_dict(),
             "rng_state": rng.bit_generator.state,
+            "best_real_mean_return": best_real_metric,
         }, latest)
         if iteration == 1 or iteration % 10 == 0:
             torch.save(clean_policy, ckpt_dir / "actor_dream_best_effort.pt")

@@ -178,7 +178,11 @@ class Orchestrator:
             argv.extend(["--init-from", str(latest)])
         argv.extend(self.phase_overrides("actor_dream"))
         self.run_cmd(phase, argv)
-        self.state["selected_checkpoints"]["actor_dream"] = str(Path(deep_get(self.cfg, "actor_dream.checkpoint_dir")) / "actor_dream_final.pt")
+        ckpt_dir = Path(deep_get(self.cfg, "actor_dream.checkpoint_dir"))
+        best_real = ckpt_dir / "actor_dream_best_real.pt"
+        final_ckpt = ckpt_dir / "actor_dream_final.pt"
+        self.state["selected_checkpoints"]["actor_dream"] = str(
+            best_real if best_real.exists() else final_ckpt)
         save_state(self.state_path, self.state)
 
     def collect_policy(self, cycle: int):

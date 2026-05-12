@@ -191,6 +191,10 @@ actor_dream:
   entropy_coeff: 0.01
   critic_coeff: 0.5
   max_grad_norm: 0.5
+  real_eval_interval: 1
+  real_eval_episodes: 1
+  real_eval_max_steps: 100
+  real_eval_seed: 20007
   amp_dtype: none
   compile_mode: none
   seed: 7
@@ -199,6 +203,6 @@ actor_dream:
 evaluation:
   n_episodes: 1
   max_steps_per_episode: 100
-  actor_checkpoint: checkpoints_atari_pong_h200_smoke_actor_dream/actor_dream_final.pt
+  actor_checkpoint: checkpoints_atari_pong_h200_smoke_actor_dream/actor_dream_best_real.pt
   output: runs/atari_pong_h200_smoke_full/evaluation.json
   seed: 10007

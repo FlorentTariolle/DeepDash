@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import collections
 import json
 import sys
 from pathlib import Path
@@ -23,6 +24,8 @@ from deepdash.world_model import WorldModel
 from scripts.train_atari_actor_real import encode_frame, load_clean_state, resize_frame_to_64
 
 gym.register_envs(ale_py)
+
+ACTION_NAMES = ["NOOP", "FIRE", "RIGHT", "LEFT", "RIGHTFIRE", "LEFTFIRE"]
 
 
 def main():
@@ -100,8 +103,10 @@ def main():
     k = int(model_cfg.get("context_frames", 4))
     rng = np.random.default_rng(args.seed)
     returns, lengths = [], []
+    action_counts = collections.Counter()
     with torch.no_grad():
         for ep in range(args.n_episodes):
+            ep_action_counts = collections.Counter()
             obs, _ = env.reset(seed=int(rng.integers(0, 2**31 - 1)))
             frame = resize_frame_to_64(obs)
             token = encode_frame(fsq, frame, device).cpu()
@@ -115,6 +120,8 @@ def main():
                 h_t = predictor.encode_context(ctx_t, ctx_a)
                 logits, _ = policy(ctx_t[:, -1], h_t.float())
                 action = int(logits.argmax(dim=-1).item())
+                action_counts[action] += 1
+                ep_action_counts[action] += 1
                 obs, reward, terminated, truncated, _ = env.step(action)
                 frame = resize_frame_to_64(obs)
                 ctx_tokens.append(encode_frame(fsq, frame, device).cpu())
@@ -125,7 +132,12 @@ def main():
                     break
             returns.append(ep_return)
             lengths.append(steps)
-            print(f"eval_ep={ep + 1} return={ep_return:+.1f} steps={steps}")
+            ep_actions = {
+                ACTION_NAMES[a] if a < len(ACTION_NAMES) else str(a): int(n)
+                for a, n in sorted(ep_action_counts.items())
+            }
+            print(f"eval_ep={ep + 1} return={ep_return:+.1f} "
+                  f"steps={steps} actions={ep_actions}")
 
     env.close()
     summary = {
@@ -136,6 +148,10 @@ def main():
         "mean_return": float(np.mean(returns)) if returns else 0.0,
         "episode_count": len(returns),
         "eval_env_steps": int(sum(lengths)),
+        "action_counts": {
+            ACTION_NAMES[a] if a < len(ACTION_NAMES) else str(a): int(n)
+            for a, n in sorted(action_counts.items())
+        },
     }
     if args.output:
         Path(args.output).parent.mkdir(parents=True, exist_ok=True)

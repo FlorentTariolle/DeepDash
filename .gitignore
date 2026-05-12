@@ -2,6 +2,7 @@
 __pycache__/
 .venv/
 .codex_tmp/
+sls-wm-analysis/
 data/deepdash/frames/
 data/deepdash/train/
 data/deepdash/val/
