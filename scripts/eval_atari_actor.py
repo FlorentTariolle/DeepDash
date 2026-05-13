@@ -117,7 +117,8 @@ def main():
             for _ in range(args.max_steps_per_episode):
                 ctx_t = torch.stack(ctx_tokens[-k:], dim=1).to(device)
                 ctx_a = torch.tensor([ctx_actions[-k:]], dtype=torch.long, device=device)
-                h_t = predictor.encode_context(ctx_t, ctx_a)
+                h_t = predictor.encode_context(
+                    ctx_t, ctx_a, return_action_hidden=False)
                 logits, _ = policy(ctx_t[:, -1], h_t.float())
                 action = int(logits.argmax(dim=-1).item())
                 action_counts[action] += 1

@@ -298,7 +298,8 @@ def main():
         ctx_t = torch.stack(ctx_tokens[-k:], dim=1).to(device)
         ctx_a = torch.tensor([ctx_actions[-k:]], dtype=torch.long, device=device)
         with torch.no_grad(), torch.amp.autocast("cuda", enabled=amp is not None, dtype=amp):
-            h_t = predictor.encode_context(ctx_t, ctx_a)
+            h_t = predictor.encode_context(
+                ctx_t, ctx_a, return_action_hidden=False)
             token_t = ctx_t[:, -1]
             action_t, logp_t, _, value_t = policy.act(token_t, h_t.float())
         action = int(action_t.item())
@@ -343,7 +344,8 @@ def main():
                 else:
                     ctx_t = torch.stack(ctx_tokens[-k:], dim=1).to(device)
                     ctx_a = torch.tensor([ctx_actions[-k:]], dtype=torch.long, device=device)
-                    h_t = predictor.encode_context(ctx_t, ctx_a)
+                    h_t = predictor.encode_context(
+                        ctx_t, ctx_a, return_action_hidden=False)
                     _, bootstrap_value = policy(ctx_t[:, -1], h_t.float())
                     bootstrap = bootstrap_value.squeeze(0)
             adv, returns = compute_gae(

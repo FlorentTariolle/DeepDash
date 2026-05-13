@@ -540,7 +540,7 @@ class WorldModel(nn.Module):
         return torch.multinomial(probs, num_samples=1).squeeze(-1)
 
     @torch.no_grad()
-    def encode_context(self, frame_tokens, actions):
+    def encode_context(self, frame_tokens, actions, *, return_action_hidden=True):
         """Encode context frames and return hidden state h_t.
 
         Runs only the prefill phase (no prediction). Used at inference
@@ -549,6 +549,11 @@ class WorldModel(nn.Module):
         Args:
             frame_tokens: (B, K, block_size) long -- K context frames.
             actions: (B, K) long -- actions for context frames.
+            return_action_hidden: when True, return the hidden state after the
+                last action token. This matches next-frame transition heads.
+                When False, return the hidden state at the last visual token,
+                before the final action token. This is the state available to a
+                controller before it chooses that final action.
 
         Returns:
             h_t: (B, embed_dim) float -- hidden state at last context position.
@@ -579,7 +584,9 @@ class WorldModel(nn.Module):
             x, _ = block(x, ctx_mask, rope_cos_ctx, rope_sin_ctx,
                          use_cache=False, cond=cond)
         x = self.ln_f(x)
-        return x[:, -1]  # h_t at last context position
+        if self.adaln or return_action_hidden:
+            return x[:, -1]  # transition/action-conditioned context state
+        return x[:, -2]      # last visual token, before the unknown next action
 
     @torch.no_grad()
     def predict_next_frame(self, frame_tokens, actions,

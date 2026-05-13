@@ -45,6 +45,11 @@ class AtariPredictorWithHeads(nn.Module):
         return self.world_model.encode_context(frame_tokens, actions)
 
     @torch.no_grad()
+    def encode_controller_context(self, frame_tokens, actions):
+        return self.world_model.encode_context(
+            frame_tokens, actions, return_action_hidden=False)
+
+    @torch.no_grad()
     def predict_next_frame(self, frame_tokens, actions, temperature=0.0,
                            top_k=0, top_p=0.0, return_hidden=False,
                            return_aux=False):

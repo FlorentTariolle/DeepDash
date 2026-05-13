@@ -137,7 +137,7 @@ def evaluate_real_env(policy, fsq, predictor, atari_cfg, model_cfg, args, device
             ctx_t = torch.stack(ctx_tokens[-k:], dim=1).to(device)
             ctx_a = torch.tensor([ctx_actions[-k:]], dtype=torch.long, device=device)
             with torch.amp.autocast("cuda", enabled=amp is not None and device.type == "cuda", dtype=amp):
-                h_t = predictor.encode_context(ctx_t, ctx_a)
+                h_t = predictor.encode_controller_context(ctx_t, ctx_a)
                 logits, _ = policy(ctx_t[:, -1], h_t.float())
             action = int(logits.argmax(dim=-1).item())
             if action < 0 or action >= n_actions:
@@ -183,7 +183,7 @@ def dream_rollout(predictor, policy, ctx_tokens, ctx_actions, args, device, amp)
         if not alive.any():
             break
         with torch.amp.autocast("cuda", enabled=amp is not None and device.type == "cuda", dtype=amp):
-            h_t = predictor.encode_context(ctx_tokens, ctx_actions)
+            h_t = predictor.encode_controller_context(ctx_tokens, ctx_actions)
             token_t = ctx_tokens[:, -1]
             action_t, logp_t, _, value_t = policy.act(token_t, h_t.float())
 
@@ -216,7 +216,7 @@ def dream_rollout(predictor, policy, ctx_tokens, ctx_actions, args, device, amp)
 
     if alive.any():
         with torch.amp.autocast("cuda", enabled=amp is not None and device.type == "cuda", dtype=amp):
-            h_t = predictor.encode_context(ctx_tokens, ctx_actions)
+            h_t = predictor.encode_controller_context(ctx_tokens, ctx_actions)
             _, bootstrap = policy(ctx_tokens[:, -1], h_t.float())
         bootstrap = bootstrap * alive.float()
     else:
