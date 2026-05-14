@@ -5,6 +5,8 @@
 
 **Abstract:** Discrete World Models tokenize observations with a learned quantizer and predict next-frame tokens with a transformer, but standard cross-entropy treats every incorrect prediction as equally wrong. Finite Scalar Quantization (FSQ) makes a richer signal available by construction: each code sits on an integer coordinate lattice, so a token one step away in one dimension is a near-miss while a token at the opposite corner is a gross error. We introduce *Structured Label Smoothing* (SLS), which replaces the one-hot training target with a kernel over codebook coordinates, so a near-miss prediction is treated as a near-miss rather than a gross error. An isotropic kernel with bandwidth fixed by a first-neighbour rule gives a zero-calibration hyperparameter that is robust to codebook drift. We integrate SLS into a complete Vision-Model-Controller pipeline for Geometry Dash, where the controller is trained entirely in imagination and deployed at 30 FPS on the real game via screen capture.
 
+**Why a reconstruction anchor here.** The discrete setup is a deliberate part of the method. In real-world video, much of the pixel stream is not predictable from the agent's context, and spending compute on those pixels can be both wasteful and counterproductive. Geometry Dash and Atari are different: their frames are deterministic, low-entropy projections of an underlying game state. Pixel reconstruction is therefore a useful ground-truth anchor for learning a token space, and SLS then uses the geometry of that token space rather than treating all wrong tokens equally.
+
 <p align="center">
    <b>[ <a href="https://tariolle.github.io/sls-wm/static/pdfs/sls_wm.pdf">Paper Draft</a> | <a href="https://tariolle.github.io/sls-wm/">Website</a> ]</b>
 </p>
@@ -16,6 +18,8 @@
 > **Project status (updated 2026-04-29).**
 >
 > **Why SLS exists.** During transformer training we observed an anomaly: predicted frames matched ground truth almost perfectly, yet next-token accuracy stayed below 30%. Investigation revealed that FSQ's coordinate structure makes neighbor codes semantically near-identical, so standard CE was actively penalizing semantically-correct near-miss predictions as if they were gross errors. Structured Label Smoothing (SLS) is the principled fix: replace one-hot targets with a kernel over codebook coordinate distance, so the loss reflects the geometry the quantizer has already learned.
+>
+> **Why the tokenizer stays reconstruction-anchored.** We also tested a JEPA-style joint-embedding variant. It trained, but worked worse for control than the sequential reconstruction-anchored pipeline. Our interpretation is domain-specific rather than anti-JEPA: in natural video, predicting every pixel can waste capacity on unpredictable nuisance detail; in deterministic games, the pixels are repeatable outputs of the simulator, so reconstruction preserves useful state information for tokenization and control.
 >
 > **Why we are pivoting evaluation.** Once SLS was identified, it had to be measured properly. Geometry Dash's deploy metric (% of level reached) is a serial-difficulty cut: a model that is globally worse but lucky on the early section scores higher than a globally better model that dies at one tough obstacle. The SNR is too low to detect SLS effect sizes; even if SLS works, GD cannot tell us. A standard benchmark gives parallel-counted metrics (returns, achievements), statistical signal across seeds, and comparable baselines (DreamerV3, IRIS, TWISTER). The pivot is methodological, not aesthetic.
 >

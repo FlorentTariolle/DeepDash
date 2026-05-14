@@ -10,7 +10,7 @@
   <meta name="author" content="Florent Tariolle" />
 
   <meta property="og:title" content="Structured Label Smoothing over Finite Scalar Quantization for Discrete World Models" />
-  <meta property="og:description" content="A training objective that exploits the FSQ codebook lattice so near-miss predictions are treated as near-misses rather than gross errors, integrated into a real-time world-model pipeline for Geometry Dash." />
+  <meta property="og:description" content="A reconstruction-anchored discrete world model for deterministic game domains, where predictable pixels provide a useful tokenization anchor and SLS treats near-miss tokens as near-misses." />
   <meta property="og:image" content="static/images/pipeline.png" />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://tariolle.github.io/sls-wm/" />
@@ -115,8 +115,11 @@
     <p class="abstract">
       We integrate SLS into a complete Vision-Model-Controller (V-M-C) pipeline for Geometry Dash. The FSQ-VAE tokenizes Sobel edge maps, a causal transformer predicts next-frame tokens, and a CNN actor-critic on the predicted token grid drives the agent. The controller is trained entirely in imagination on dreamed rollouts and deployed at 30&nbsp;FPS on the real game via screen capture.
     </p>
+    <p class="abstract">
+      The reconstruction anchor is intentional. In real-world video, many pixels are not predictable from the available context, so forcing a model to predict them can waste compute and harm the representation. In deterministic games such as Geometry Dash or Atari, pixels are repeatable outputs of the simulator, making reconstruction a useful ground-truth anchor for tokenizing the state space.
+    </p>
     <p class="tldr">
-      <strong>TL;DR.</strong> A training objective that exploits the FSQ codebook lattice so near-miss predictions are treated as near-misses rather than gross errors, integrated into a real-time V-M-C pipeline that runs at 30&nbsp;FPS on Geometry Dash.
+      <strong>TL;DR.</strong> In deterministic game worlds, predictable pixels can anchor a discrete token space; SLS then exploits the FSQ lattice so near-miss predictions are treated as near-misses rather than gross errors.
     </p>
   </div>
 </section>
@@ -192,6 +195,7 @@
     <h2 class="section-title">Method highlights</h2>
     <ul>
       <li><strong>FSQ tokenization for sharp dreams.</strong> An FSQ-VAE with levels [8,&nbsp;5,&nbsp;5,&nbsp;5] (1000 implicit codes) encodes Sobel edge maps into an 8×8 grid of discrete tokens. No codebook collapse, no commitment loss, 100% utilization by construction.</li>
+      <li><strong>Reconstruction as a domain-specific anchor.</strong> Pixel prediction is not assumed to be universally optimal: in natural videos it can waste capacity on unpredictable detail. Here the game renderer is deterministic, so reconstructing pixels preserves control-relevant state information before the dynamics model learns over tokens.</li>
       <li><strong>Discrete dynamics transformer.</strong> A causal transformer (384d, 8 heads, 8 layers) predicts the next frame's tokens given a context window of past frames and actions. Actions are interleaved as tokens in the sequence; the target frame is replaced by a learnable mask embedding so the model never peeks at the ground truth. 3D-RoPE positional encoding factorises row, column, and frame indices, and block-causal attention is bidirectional within a frame block and causal across frames.</li>
       <li><strong>Action-conditional contrastive coding.</strong> A TWISTER-style AC-CPC auxiliary loss predicts future hidden states from past states and actions in latent space, sharpening the temporal coherence of dreams without a second decoder.</li>
       <li><strong>Zero-calibration kernel.</strong> The SLS bandwidth is set by a first-neighbour rule on the FSQ lattice, so no per-dataset sensitivity probe is needed and the hyperparameter has a single principled choice independent of codebook size.</li>
