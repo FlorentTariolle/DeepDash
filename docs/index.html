@@ -115,11 +115,8 @@
     <p class="abstract">
       We integrate SLS into a complete Vision-Model-Controller (V-M-C) pipeline for Geometry Dash. The FSQ-VAE tokenizes Sobel edge maps, a causal transformer predicts next-frame tokens, and a CNN actor-critic on the predicted token grid drives the agent. The controller is trained entirely in imagination on dreamed rollouts and deployed at 30&nbsp;FPS on the real game via screen capture.
     </p>
-    <p class="abstract">
-      The reconstruction anchor is intentional. In real-world video, many pixels are not predictable from the available context, so forcing a model to predict them can waste compute and harm the representation. In deterministic games such as Geometry Dash or Atari, pixels are repeatable outputs of the simulator, making reconstruction a useful ground-truth anchor for tokenizing the state space.
-    </p>
     <p class="tldr">
-      <strong>TL;DR.</strong> In deterministic game worlds, predictable pixels can anchor a discrete token space; SLS then exploits the FSQ lattice so near-miss predictions are treated as near-misses rather than gross errors.
+      <strong>TL;DR.</strong> A training objective that exploits the FSQ codebook lattice so near-miss predictions are treated as near-misses rather than gross errors, integrated into a real-time V-M-C pipeline that runs at 30&nbsp;FPS on Geometry Dash.
     </p>
   </div>
 </section>

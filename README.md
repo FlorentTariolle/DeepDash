@@ -5,8 +5,6 @@
 
 **Abstract:** Discrete World Models tokenize observations with a learned quantizer and predict next-frame tokens with a transformer, but standard cross-entropy treats every incorrect prediction as equally wrong. Finite Scalar Quantization (FSQ) makes a richer signal available by construction: each code sits on an integer coordinate lattice, so a token one step away in one dimension is a near-miss while a token at the opposite corner is a gross error. We introduce *Structured Label Smoothing* (SLS), which replaces the one-hot training target with a kernel over codebook coordinates, so a near-miss prediction is treated as a near-miss rather than a gross error. An isotropic kernel with bandwidth fixed by a first-neighbour rule gives a zero-calibration hyperparameter that is robust to codebook drift. We integrate SLS into a complete Vision-Model-Controller pipeline for Geometry Dash, where the controller is trained entirely in imagination and deployed at 30 FPS on the real game via screen capture.
 
-**Why a reconstruction anchor here.** The discrete setup is a deliberate part of the method. In real-world video, much of the pixel stream is not predictable from the agent's context, and spending compute on those pixels can be both wasteful and counterproductive. Geometry Dash and Atari are different: their frames are deterministic, low-entropy projections of an underlying game state. Pixel reconstruction is therefore a useful ground-truth anchor for learning a token space, and SLS then uses the geometry of that token space rather than treating all wrong tokens equally.
-
 <p align="center">
    <b>[ <a href="https://tariolle.github.io/sls-wm/static/pdfs/sls_wm.pdf">Paper Draft</a> | <a href="https://tariolle.github.io/sls-wm/">Website</a> ]</b>
 </p>
