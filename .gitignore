@@ -40,3 +40,5 @@ checkpoints/transformer_state.pt
 checkpoints/transformer_state.pt
 checkpoints_atari_*/
 wandb/
+
+papers/
