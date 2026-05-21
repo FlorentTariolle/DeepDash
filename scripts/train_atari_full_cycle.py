@@ -56,6 +56,16 @@ def command_exists(path: str) -> bool:
     return Path(path).exists()
 
 
+def first_existing(*paths: str | Path | None) -> Path | None:
+    for path in paths:
+        if not path:
+            continue
+        p = Path(path)
+        if p.exists():
+            return p
+    return None
+
+
 class Orchestrator:
     def __init__(self, config_path: str, force_phase: str | None = None):
         self.config_path = config_path
@@ -72,6 +82,7 @@ class Orchestrator:
         self.warmup_steps = int(full.get("warmup_steps", deep_get(self.cfg, "atari.warmup_steps", self.cycle_steps)))
         self.final_mode = str(full.get("final_mode", "evaluation_clean"))
         self.skip_real_actor_cycle0 = bool(full.get("skip_real_actor_cycle0", True))
+        self.dream_start_steps = int(full.get("dream_start_steps", 0))
         self.python = sys.executable
 
     def mark(self, phase: str, extra: dict | None = None):
@@ -169,13 +180,28 @@ class Orchestrator:
 
     def train_dream_actor(self, cycle: int, final: bool = False):
         phase = f"{'final_' if final else ''}cycle_{cycle}_actor_dream"
+        if not final and replay_steps(self.replay_dir) < self.dream_start_steps:
+            print(
+                f"skip phase={phase} replay_steps={replay_steps(self.replay_dir)} "
+                f"< dream_start_steps={self.dream_start_steps}"
+            )
+            self.mark(phase, {"dream_skipped_until_steps": self.dream_start_steps})
+            return
         argv = [self.python, "-u", "scripts/train_atari_actor_dream.py",
                 "--config", self.config_path, "--config-section", "actor_dream"]
-        latest = Path(deep_get(self.cfg, "actor_dream.checkpoint_dir")) / "actor_dream_latest.pt"
-        if latest.exists():
-            # Predictor/FSQ may have changed since this actor was trained.
-            # Reuse policy weights, but reset PPO optimizer/iteration/RNG state.
-            argv.extend(["--init-from", str(latest)])
+        real_dir = Path(deep_get(self.cfg, "actor_real.checkpoint_dir"))
+        dream_dir = Path(deep_get(self.cfg, "actor_dream.checkpoint_dir"))
+        init_ckpt = first_existing(
+            real_dir / "actor_real_final.pt",
+            real_dir / "actor_real_latest.pt",
+            self.state.get("selected_checkpoints", {}).get("actor_dream"),
+            dream_dir / "actor_dream_latest.pt",
+        )
+        if init_ckpt is not None:
+            # The tokenizer/predictor may have changed since this actor was
+            # trained. Reuse policy weights, but reset PPO optimizer/iteration
+            # state so dream PPO adapts to the refreshed world model.
+            argv.extend(["--init-from", str(init_ckpt)])
         argv.extend(self.phase_overrides("actor_dream"))
         self.run_cmd(phase, argv)
         ckpt_dir = Path(deep_get(self.cfg, "actor_dream.checkpoint_dir"))
@@ -194,13 +220,24 @@ class Orchestrator:
         argv = [self.python, "-u", "scripts/train_atari_actor_real.py",
                 "--config", self.config_path, "--config-section", "actor_real",
                 "--target-replay-steps", str(target)]
-        latest = Path(deep_get(self.cfg, "actor_real.checkpoint_dir")) / "actor_real_latest.pt"
-        if latest.exists():
-            # The policy feature space changes when FSQ/predictor changes.
-            # Reuse policy weights, but reset PPO optimizer/update state.
-            argv.extend(["--init-from", str(latest)])
+        real_dir = Path(deep_get(self.cfg, "actor_real.checkpoint_dir"))
+        init_ckpt = first_existing(
+            self.state.get("selected_checkpoints", {}).get("actor_dream"),
+            real_dir / "actor_real_latest.pt",
+            real_dir / "actor_real_final.pt",
+        )
+        if init_ckpt is not None:
+            # The dream actor is the current policy after the previous model
+            # refresh. Use it for real collection, then reset PPO optimizer
+            # state for on-environment updates.
+            argv.extend(["--init-from", str(init_ckpt)])
         argv.extend(self.phase_overrides("actor_real"))
         self.run_cmd(f"cycle_{cycle}_actor_real", argv, expected_steps=target)
+        final_ckpt = real_dir / "actor_real_final.pt"
+        latest_ckpt = real_dir / "actor_real_latest.pt"
+        self.state["selected_checkpoints"]["actor_real"] = str(
+            final_ckpt if final_ckpt.exists() else latest_ckpt)
+        save_state(self.state_path, self.state)
 
     def evaluate(self):
         phase = "evaluation"

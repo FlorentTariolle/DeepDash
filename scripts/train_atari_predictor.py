@@ -22,7 +22,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -188,6 +188,33 @@ def split_starts(replay, context_frames: int, max_horizon: int,
     return (*by_split(next_starts), *by_split(rollout_starts), len(eps), len(val_eps))
 
 
+def reward_balanced_sampler(starts: np.ndarray, rewards: np.ndarray,
+                            context_frames: int, zero_weight: float,
+                            neg_weight: float, pos_weight: float):
+    """Build a replacement sampler that oversamples rare reward events."""
+    if len(starts) == 0:
+        return None
+    target_idx = starts + int(context_frames) - 1
+    target_rewards = rewards[target_idx]
+    weights = np.full(len(starts), float(zero_weight), dtype=np.float64)
+    weights[target_rewards < 0] = float(neg_weight)
+    weights[target_rewards > 0] = float(pos_weight)
+    counts = {
+        "neg": int((target_rewards < 0).sum()),
+        "zero": int((target_rewards == 0).sum()),
+        "pos": int((target_rewards > 0).sum()),
+    }
+    print(
+        "Reward-balanced sampler: "
+        f"counts={counts} weights={{neg:{neg_weight}, zero:{zero_weight}, pos:{pos_weight}}}"
+    )
+    return WeightedRandomSampler(
+        torch.as_tensor(weights, dtype=torch.double),
+        num_samples=len(starts),
+        replacement=True,
+    )
+
+
 def compute_loss(logits, targets, vocab_size, soft_target_matrix,
                  label_smoothing, focal_gamma):
     visual_logits = logits[:, :, :vocab_size].reshape(-1, vocab_size)
@@ -332,6 +359,11 @@ def main():
     parser.add_argument("--focal-gamma", type=float, default=None)
     parser.add_argument("--reward-loss-weight", type=float, default=None)
     parser.add_argument("--done-loss-weight", type=float, default=None)
+    parser.add_argument("--reward-balanced-sampler", action="store_true",
+                        help="Oversample windows by target reward sign.")
+    parser.add_argument("--reward-sample-zero-weight", type=float, default=None)
+    parser.add_argument("--reward-sample-neg-weight", type=float, default=None)
+    parser.add_argument("--reward-sample-pos-weight", type=float, default=None)
     parser.add_argument("--compile-mode", choices=["none", "default", "reduce-overhead"], default=None)
     parser.add_argument("--amp-dtype", choices=["none", "float16", "bfloat16"], default=None)
     parser.add_argument("--val-interval", type=int, default=None)
@@ -361,6 +393,12 @@ def main():
     args.focal_gamma = args.focal_gamma if args.focal_gamma is not None else 0.0
     args.reward_loss_weight = args.reward_loss_weight if args.reward_loss_weight is not None else 1.0
     args.done_loss_weight = args.done_loss_weight if args.done_loss_weight is not None else 1.0
+    args.reward_sample_zero_weight = (
+        args.reward_sample_zero_weight if args.reward_sample_zero_weight is not None else 1.0)
+    args.reward_sample_neg_weight = (
+        args.reward_sample_neg_weight if args.reward_sample_neg_weight is not None else 10.0)
+    args.reward_sample_pos_weight = (
+        args.reward_sample_pos_weight if args.reward_sample_pos_weight is not None else 500.0)
     args.compile_mode = args.compile_mode or "reduce-overhead"
     args.amp_dtype = args.amp_dtype or "float16"
     args.val_interval = args.val_interval if args.val_interval is not None else 1
@@ -416,7 +454,17 @@ def main():
     val_ds = AtariTokenDataset(
         val_starts, tokens, replay.actions, replay.rewards, replay.dones, k)
     rollout_ds = AtariRolloutDataset(rollout_val, tokens, replay.actions, replay.obs, k, max_horizon)
-    train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=0)
+    train_sampler = None
+    if args.reward_balanced_sampler:
+        train_sampler = reward_balanced_sampler(
+            train_starts, replay.rewards, k,
+            args.reward_sample_zero_weight,
+            args.reward_sample_neg_weight,
+            args.reward_sample_pos_weight,
+        )
+    train_loader = DataLoader(
+        train_ds, batch_size=args.batch_size,
+        shuffle=train_sampler is None, sampler=train_sampler, num_workers=0)
     val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False, num_workers=0)
     rollout_loader = DataLoader(rollout_ds, batch_size=args.batch_size, shuffle=False, num_workers=0)
 

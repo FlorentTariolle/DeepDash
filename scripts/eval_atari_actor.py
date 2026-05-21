@@ -39,6 +39,8 @@ def main():
     parser.add_argument("--max-steps-per-episode", type=int, default=None)
     parser.add_argument("--output", default=None)
     parser.add_argument("--seed", type=int, default=None)
+    parser.add_argument("--stochastic", action="store_true",
+                        help="Sample from the policy instead of using argmax.")
     args = parser.parse_args()
     apply_config(args, section=args.config_section)
 
@@ -120,7 +122,11 @@ def main():
                 h_t = predictor.encode_context(
                     ctx_t, ctx_a, return_action_hidden=False)
                 logits, _ = policy(ctx_t[:, -1], h_t.float())
-                action = int(logits.argmax(dim=-1).item())
+                if args.stochastic:
+                    dist = torch.distributions.Categorical(logits=logits)
+                    action = int(dist.sample().item())
+                else:
+                    action = int(logits.argmax(dim=-1).item())
                 action_counts[action] += 1
                 ep_action_counts[action] += 1
                 obs, reward, terminated, truncated, _ = env.step(action)
@@ -148,6 +154,7 @@ def main():
         "lengths": lengths,
         "mean_return": float(np.mean(returns)) if returns else 0.0,
         "episode_count": len(returns),
+        "stochastic": bool(args.stochastic),
         "eval_env_steps": int(sum(lengths)),
         "action_counts": {
             ACTION_NAMES[a] if a < len(ACTION_NAMES) else str(a): int(n)

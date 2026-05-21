@@ -1,0 +1,191 @@
+# Atari Pong H200 real-warmup controller rerun.
+#
+# First supercomputer target:
+#   1. collect 10K random-policy replay,
+#   2. train FSQ on cumulative replay,
+#   3. train frozen-token predictors for CE and SLS,
+#   4. use this as the base for the Atari actor/control loop.
+
+model:
+  vocab_size: 1000
+  embed_dim: 384
+  n_heads: 8
+  n_layers: 8
+  tokens_per_frame: 256
+  context_frames: 4
+  levels: [8, 5, 5, 5]
+  dropout: 0.1
+  adaln: false
+  img_channels: 3
+
+atari:
+  game: Pong
+  out_dir: data/atari/Pong_realwarmup
+  replay_dir: data/atari/Pong_realwarmup/replay
+  shard_size: 8192
+  warmup_steps: 10000
+  cycle_steps: 10000
+  total_budget_steps: 100000
+  frame_skip: 4
+  repeat_action_probability: 0.0
+  seed: 42
+
+full_cycle:
+  run_dir: runs/atari_pong_h200_realwarmup_full
+  warmup_steps: 10000
+  cycle_steps: 10000
+  total_budget_steps: 100000
+  final_mode: evaluation_clean  # evaluation_clean or max_performance
+  skip_real_actor_cycle0: true
+  # Do real-environment PPO collection/update for two policy cycles after
+  # random warmup before letting dream PPO affect the policy.
+  dream_start_steps: 30000
+  phase_overrides:
+    predictor_sls:
+      reward_balanced_sampler: true
+      reward_sample_neg_weight: 10
+      reward_sample_pos_weight: 1000
+      reward_loss_weight: 10
+    actor_real:
+      entropy_coeff: 0.05
+
+fsq:
+  episodes_dir: data/atari/Pong_realwarmup/episodes
+  replay_dir: data/atari/Pong_realwarmup/replay
+  expert_episodes_dir: data/atari/Pong_realwarmup/_no_expert
+  img_channels: 3
+  norm_type: group
+  levels: [8, 5, 5, 5]
+  latent_grid: 16
+  epochs: 100
+  batch_size: 256
+  lr: 0.0001
+  lr_min: 0.000001
+  alpha_slow: 0.0
+  alpha_uniform: 0.1
+  recon_loss_type: l1
+  recon_reduction: mean
+  recon_weight_mode: none
+  foreground_weight: 0.0
+  foreground_weight_max: 25.0
+  perceptual_loss: lpips
+  perceptual_weight: 1.0
+  augment_shift: false
+  val_interval: 5
+  seed: 42
+  amp_dtype: bfloat16
+  compile_mode: reduce-overhead
+  checkpoint_dir: checkpoints_atari_pong_h200_realwarmup
+
+predictor:
+  replay_dir: data/atari/Pong_realwarmup/replay
+  fsq_checkpoint: checkpoints_atari_pong_h200_realwarmup/fsq_best.pt
+  tokenizer_config: configs/atari/atari_pong_h200_realwarmup.yaml
+  n_actions: 6
+  epochs: 20
+  batch_size: 128
+  lr: 0.0002
+  lr_min: 0.00001
+  warmup_epochs: 3
+  weight_decay: 0.01
+  val_ratio: 0.2
+  eval_horizons: [1, 5, 10, 15]
+  label_smoothing: 0.0
+  fsq_kernel: gaussian
+  fsq_sigma: 0.9
+  focal_gamma: 0.0
+  reward_loss_weight: 1.0
+  done_loss_weight: 1.0
+  amp_dtype: bfloat16
+  compile_mode: reduce-overhead
+  val_interval: 5
+  max_val_batches: 64
+  max_rollout_batches: 16
+  seed: 42
+  checkpoint_dir: checkpoints_atari_pong_h200_realwarmup_predictor_ce
+
+predictor_sls:
+  replay_dir: data/atari/Pong_realwarmup/replay
+  fsq_checkpoint: checkpoints_atari_pong_h200_realwarmup/fsq_best.pt
+  tokenizer_config: configs/atari/atari_pong_h200_realwarmup.yaml
+  n_actions: 6
+  epochs: 20
+  batch_size: 128
+  lr: 0.0002
+  lr_min: 0.00001
+  warmup_epochs: 3
+  weight_decay: 0.01
+  val_ratio: 0.2
+  eval_horizons: [1, 5, 10, 15]
+  label_smoothing: 0.1
+  fsq_kernel: gaussian
+  fsq_sigma: 0.9
+  focal_gamma: 0.0
+  reward_loss_weight: 1.0
+  done_loss_weight: 1.0
+  amp_dtype: bfloat16
+  compile_mode: reduce-overhead
+  val_interval: 5
+  max_val_batches: 64
+  max_rollout_batches: 16
+  seed: 42
+  checkpoint_dir: checkpoints_atari_pong_h200_realwarmup_predictor_sls
+
+actor_real:
+  game: Pong
+  replay_dir: data/atari/Pong_realwarmup/replay
+  fsq_checkpoint: checkpoints_atari_pong_h200_realwarmup/fsq_best.pt
+  # Start with the SLS predictor for the policy path; override to CE for ablations.
+  predictor_checkpoint: checkpoints_atari_pong_h200_realwarmup_predictor_sls/predictor_best.pt
+  n_steps: 10000
+  rollout_steps: 256
+  lr: 0.00025
+  gamma: 0.99
+  lam: 0.95
+  clip_eps: 0.2
+  ppo_epochs: 4
+  minibatch_size: 256
+  entropy_coeff: 0.05
+  critic_coeff: 0.5
+  max_grad_norm: 0.5
+  amp_dtype: bfloat16
+  compile_mode: reduce-overhead
+  seed: 42
+  checkpoint_dir: checkpoints_atari_pong_h200_realwarmup_actor_real
+
+actor_dream:
+  replay_dir: data/atari/Pong_realwarmup/replay
+  fsq_checkpoint: checkpoints_atari_pong_h200_realwarmup/fsq_best.pt
+  predictor_checkpoint: checkpoints_atari_pong_h200_realwarmup_predictor_sls/predictor_best.pt
+  pretrained: checkpoints_atari_pong_h200_realwarmup_actor_real/actor_real_latest.pt
+  n_iterations: 1000
+  n_episodes: 32
+  max_dream_steps: 50
+  temperature: 0.0
+  done_threshold: 0.5
+  reward_clip_min: -1.0
+  reward_clip_max: 1.0
+  lr: 0.00025
+  gamma: 0.99
+  lam: 0.95
+  clip_eps: 0.2
+  ppo_epochs: 4
+  minibatch_size: 256
+  entropy_coeff: 0.05
+  critic_coeff: 0.5
+  max_grad_norm: 0.5
+  real_eval_interval: 100
+  real_eval_episodes: 5
+  real_eval_max_steps: 27000
+  real_eval_seed: 20042
+  amp_dtype: bfloat16
+  compile_mode: reduce-overhead
+  seed: 42
+  checkpoint_dir: checkpoints_atari_pong_h200_realwarmup_actor_dream
+
+evaluation:
+  n_episodes: 20
+  max_steps_per_episode: 27000
+  actor_checkpoint: checkpoints_atari_pong_h200_realwarmup_actor_dream/actor_dream_best_real.pt
+  output: runs/atari_pong_h200_realwarmup_full/evaluation.json
+  seed: 10042
