@@ -228,8 +228,15 @@ class Orchestrator:
         ckpt_dir = Path(deep_get(self.cfg, "actor_dream.checkpoint_dir"))
         best_real = ckpt_dir / "actor_dream_best_real.pt"
         final_ckpt = ckpt_dir / "actor_dream_final.pt"
-        self.state["selected_checkpoints"]["actor_dream"] = str(
-            best_real if best_real.exists() else final_ckpt)
+        real_eval_interval = int(deep_get(self.cfg, "actor_dream.real_eval_interval", 0) or 0)
+        if best_real.exists():
+            selected = best_real
+        elif real_eval_interval > 0:
+            raise RuntimeError(
+                f"actor_dream real eval was enabled but {best_real} was not produced")
+        else:
+            selected = final_ckpt
+        self.state["selected_checkpoints"]["actor_dream"] = str(selected)
         save_state(self.state_path, self.state)
 
     def collect_policy(self, cycle: int):

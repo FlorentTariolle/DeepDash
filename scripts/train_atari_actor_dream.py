@@ -174,6 +174,92 @@ def compute_gae_sequence(rewards, values, dones, bootstrap, gamma, lam):
     return advantages.reshape(-1), (advantages + values).reshape(-1)
 
 
+def atari_event_reward(reward, threshold: float):
+    """Map scalar reward-head output to Atari's sparse -1/0/+1 event reward."""
+    return torch.where(
+        reward.abs() >= threshold,
+        reward.sign(),
+        torch.zeros_like(reward),
+    )
+
+
+@torch.no_grad()
+def calibrate_dream_rewards(predictor, starts, tokens, actions, rewards,
+                            context_frames: int, args, device, amp, rng):
+    if args.reward_calibration_samples <= 0:
+        return None
+    n = min(int(args.reward_calibration_samples), len(starts))
+    idx = rng.choice(starts, size=n, replace=len(starts) < n)
+    horizon = int(args.reward_calibration_horizon)
+    rows = []
+    sign_correct = timing_errors = false_positive = missed = 0
+    event_cases = neutral_cases = 0
+    for start in idx:
+        start = int(start)
+        end = start + context_frames
+        if end + horizon >= len(actions):
+            continue
+        ctx_tokens = tokens[start:end].unsqueeze(0).to(device)
+        ctx_actions = torch.from_numpy(
+            actions[start:end].astype(np.int64)
+        ).unsqueeze(0).to(device)
+        true_window = rewards[end:end + horizon]
+        true_events = np.flatnonzero(true_window != 0)
+        true_gap = int(true_events[0]) if len(true_events) else None
+        true_sign = int(np.sign(true_window[true_gap])) if true_gap is not None else 0
+        pred_gap = None
+        pred_sign = 0
+        for step in range(horizon):
+            action = int(actions[end + step])
+            pred_actions = torch.cat([
+                ctx_actions[:, 1:],
+                torch.tensor([[action]], dtype=torch.long, device=device),
+            ], dim=1)
+            with torch.amp.autocast("cuda", enabled=amp is not None and device.type == "cuda", dtype=amp):
+                pred_tokens, pred_reward, _ = predictor.predict_next_frame(
+                    ctx_tokens, pred_actions, temperature=args.temperature,
+                    return_aux=True)
+            pred_event = atari_event_reward(
+                pred_reward.float().clamp(args.reward_clip_min, args.reward_clip_max),
+                args.reward_discrete_threshold,
+            )
+            if pred_gap is None and bool((pred_event != 0).item()):
+                pred_gap = step
+                pred_sign = int(pred_event.item())
+            ctx_tokens = torch.cat([ctx_tokens[:, 1:], pred_tokens.unsqueeze(1)], dim=1)
+            ctx_actions = pred_actions
+        if true_gap is None:
+            neutral_cases += 1
+            false_positive += int(pred_gap is not None)
+        else:
+            event_cases += 1
+            if pred_gap is None:
+                missed += 1
+            else:
+                sign_correct += int(pred_sign == true_sign)
+                timing_errors += abs(pred_gap - true_gap)
+        rows.append({
+            "start": start,
+            "true_gap": "" if true_gap is None else true_gap,
+            "true_sign": true_sign,
+            "pred_gap": "" if pred_gap is None else pred_gap,
+            "pred_sign": pred_sign,
+        })
+    sign_acc = sign_correct / max(event_cases - missed, 1)
+    miss_rate = missed / max(event_cases, 1)
+    false_positive_rate = false_positive / max(neutral_cases, 1)
+    mean_timing_error = timing_errors / max(event_cases - missed, 1)
+    return {
+        "rows": rows,
+        "event_cases": event_cases,
+        "neutral_cases": neutral_cases,
+        "sign_accuracy": sign_acc,
+        "miss_rate": miss_rate,
+        "false_positive_rate": false_positive_rate,
+        "mean_timing_error": mean_timing_error,
+    }
+
+
 @torch.no_grad()
 def evaluate_real_env(policy, fsq, predictor, atari_cfg, model_cfg, args, device, amp,
                       n_actions: int):
@@ -260,6 +346,8 @@ def dream_rollout(predictor, policy, ctx_tokens, ctx_actions, args, device, amp)
                 return_aux=True)
 
         reward = reward.float().clamp(args.reward_clip_min, args.reward_clip_max)
+        if args.reward_mode == "discrete":
+            reward = atari_event_reward(reward, args.reward_discrete_threshold)
         reward_event = reward.abs() > args.reward_done_epsilon
         done = done_prob >= args.done_threshold
         terminal = done | (reward_event if args.stop_on_reward else torch.zeros_like(done))
@@ -322,6 +410,9 @@ def main():
     parser.add_argument("--done-threshold", type=float, default=None)
     parser.add_argument("--reward-clip-min", type=float, default=None)
     parser.add_argument("--reward-clip-max", type=float, default=None)
+    parser.add_argument("--reward-mode", choices=["raw", "discrete"], default=None,
+                        help="Use raw clipped reward-head output or Atari -1/0/+1 thresholded rewards.")
+    parser.add_argument("--reward-discrete-threshold", type=float, default=None)
     parser.add_argument("--reward-event-sample-frac", type=float, default=None)
     parser.add_argument("--reward-event-pos-frac", type=float, default=None)
     parser.add_argument("--reward-event-min-gap", type=int, default=None,
@@ -346,6 +437,8 @@ def main():
     parser.add_argument("--real-eval-episodes", type=int, default=None)
     parser.add_argument("--real-eval-max-steps", type=int, default=None)
     parser.add_argument("--real-eval-seed", type=int, default=None)
+    parser.add_argument("--reward-calibration-samples", type=int, default=None)
+    parser.add_argument("--reward-calibration-horizon", type=int, default=None)
     parser.add_argument("--wandb-project", default=None)
     parser.add_argument("--wandb-name", default=None)
     parser.add_argument("--amp-dtype", choices=["none", "float16", "bfloat16"], default=None)
@@ -373,6 +466,9 @@ def main():
     args.done_threshold = args.done_threshold if args.done_threshold is not None else 0.5
     args.reward_clip_min = args.reward_clip_min if args.reward_clip_min is not None else -1.0
     args.reward_clip_max = args.reward_clip_max if args.reward_clip_max is not None else 1.0
+    args.reward_mode = args.reward_mode or "raw"
+    args.reward_discrete_threshold = (
+        args.reward_discrete_threshold if args.reward_discrete_threshold is not None else 0.5)
     args.reward_event_sample_frac = (
         args.reward_event_sample_frac if args.reward_event_sample_frac is not None else 0.0)
     args.reward_event_pos_frac = (
@@ -398,6 +494,11 @@ def main():
     args.real_eval_episodes = args.real_eval_episodes or 5
     args.real_eval_max_steps = args.real_eval_max_steps or 27000
     args.real_eval_seed = args.real_eval_seed if args.real_eval_seed is not None else args.seed + 20000
+    args.reward_calibration_samples = (
+        args.reward_calibration_samples if args.reward_calibration_samples is not None else 0)
+    args.reward_calibration_horizon = (
+        args.reward_calibration_horizon if args.reward_calibration_horizon is not None
+        else args.max_dream_steps)
     args.wandb_project = args.wandb_project or "sls-wm-atari"
     args.wandb_name = args.wandb_name or f"actor-dream-{Path(args.checkpoint_dir).name}"
     args.amp_dtype = args.amp_dtype or "bfloat16"
@@ -503,6 +604,39 @@ def main():
         predictor = torch.compile(predictor, mode=args.compile_mode)
         policy = torch.compile(policy, mode=args.compile_mode)
         print(f"torch.compile enabled (mode={args.compile_mode})")
+
+    calibration_starts = np.concatenate([
+        event_starts[1],
+        event_starts[-1],
+        starts,
+    ])
+    calibration = calibrate_dream_rewards(
+        predictor, calibration_starts, tokens, replay.actions, replay.rewards, context_frames,
+        args, device, amp, rng)
+    if calibration is not None:
+        cal_path = ckpt_dir / "reward_calibration.csv"
+        with open(cal_path, "w", newline="") as f:
+            writer = csv.DictWriter(
+                f, fieldnames=["start", "true_gap", "true_sign", "pred_gap", "pred_sign"])
+            writer.writeheader()
+            writer.writerows(calibration["rows"])
+        print(
+            "Reward calibration: "
+            f"events={calibration['event_cases']} neutral={calibration['neutral_cases']} "
+            f"sign_acc={calibration['sign_accuracy']:.3f} "
+            f"miss_rate={calibration['miss_rate']:.3f} "
+            f"false_pos={calibration['false_positive_rate']:.3f} "
+            f"timing_err={calibration['mean_timing_error']:.2f} "
+            f"path={cal_path}"
+        )
+        wandb_log({
+            "actor_dream/reward_calibration_event_cases": calibration["event_cases"],
+            "actor_dream/reward_calibration_neutral_cases": calibration["neutral_cases"],
+            "actor_dream/reward_calibration_sign_accuracy": calibration["sign_accuracy"],
+            "actor_dream/reward_calibration_miss_rate": calibration["miss_rate"],
+            "actor_dream/reward_calibration_false_positive_rate": calibration["false_positive_rate"],
+            "actor_dream/reward_calibration_mean_timing_error": calibration["mean_timing_error"],
+        })
 
     log_path = ckpt_dir / "actor_dream_log.csv"
     log_file = open(log_path, "a" if (args.resume or args.init_from) and log_path.exists() else "w", newline="")

@@ -157,6 +157,8 @@ actor_dream:
   done_threshold: 0.5
   reward_clip_min: -1.0
   reward_clip_max: 1.0
+  reward_mode: discrete
+  reward_discrete_threshold: 0.5
   reward_event_sample_frac: 0.9
   reward_event_pos_frac: 0.5
   reward_event_min_gap: 3
@@ -172,10 +174,12 @@ actor_dream:
   entropy_coeff: 0.001
   critic_coeff: 0.5
   max_grad_norm: 0.5
-  real_eval_interval: 100
+  real_eval_interval: 50
   real_eval_episodes: 5
   real_eval_max_steps: 27000
   real_eval_seed: 20042
+  reward_calibration_samples: 256
+  reward_calibration_horizon: 20
   amp_dtype: bfloat16
   compile_mode: reduce-overhead
   seed: 42
