@@ -12,6 +12,8 @@ Usage:
     wandb_finish()
 """
 
+import os
+
 _run = None
 _enabled = False
 
@@ -29,6 +31,7 @@ def wandb_init(project="deepdash", name=None, config=None, enabled=True,
         return None
     try:
         import wandb
+        project = os.environ.get("WANDB_PROJECT", project)
         kwargs = dict(project=project, name=name, config=config)
         if resume_id:
             kwargs["id"] = resume_id

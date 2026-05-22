@@ -2,12 +2,12 @@
 #SBATCH -J "atari_bestreal"
 #SBATCH -o slurm/logs/atari_train_actor_dream_bestreal.out
 #SBATCH -e slurm/logs/atari_train_actor_dream_bestreal.err
-#SBATCH -p ar_mig
-#SBATCH --gres=gpu:a100_2g.20gb:1
+#SBATCH -p ar_h200
+#SBATCH --gres=gpu:h200:1
 #SBATCH -n 1
-#SBATCH --cpus-per-gpu 4
-#SBATCH --mem 32G
-#SBATCH --time=05:00:00
+#SBATCH --cpus-per-gpu 8
+#SBATCH --mem 64G
+#SBATCH --time=08:00:00
 
 # Rerun dream PPO from an existing actor checkpoint while selecting the best
 # checkpoint by periodic deterministic real-env evaluation.
@@ -24,9 +24,9 @@ REAL_EVAL_EPISODES=${6:-5}
 
 mkdir -p slurm/logs
 
-module purge
-module load aidl/pytorch/2.10.0-py3.12-cuda12.6
-export PATH="$HOME/.local/bin:$PATH"
+export PATH="/soft/AIDL/conda_envs/pytorch210/bin:$HOME/.local/bin:$PATH"
+export WANDB_PROJECT=sls-wm-atari
+export PYTHONPATH="$HOME/.python3-3.12-torch210/site-packages/lib/python3.12/site-packages:${PYTHONPATH:-}"
 
 echo "=== Config: $CONFIG ==="
 echo "=== Section: $SECTION ==="

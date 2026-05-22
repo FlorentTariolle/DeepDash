@@ -13,11 +13,7 @@
 # tokenizer and replay. This intentionally writes to a fresh checkpoint
 # directory so it cannot resume the stale predictor trained on an older FSQ.
 
-module purge
-module load aidl/pytorch/2.10.0-py3.12-cuda12.6
 
-export WANDB_MODE=disabled
-export WANDB_SILENT=true
 export PYTORCH_ALLOC_CONF=expandable_segments:True
 
 mkdir -p slurm/logs

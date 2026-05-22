@@ -29,6 +29,7 @@ from atari.controller import AtariCNNPolicy
 from atari.replay_buffer import ReplayShardWriter, load_metadata
 from deepdash.config import apply_config, load_config
 from deepdash.fsq import FSQVAE
+from deepdash.wandb_utils import wandb_finish, wandb_init, wandb_log
 from deepdash.world_model import WorldModel
 
 gym.register_envs(ale_py)
@@ -142,6 +143,8 @@ def main():
     parser.add_argument("--max-grad-norm", type=float, default=None)
     parser.add_argument("--amp-dtype", choices=["none", "float16", "bfloat16"], default=None)
     parser.add_argument("--compile-mode", choices=["none", "default", "reduce-overhead"], default=None)
+    parser.add_argument("--wandb-project", default=None)
+    parser.add_argument("--wandb-name", default=None)
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--init-from", default=None,
                         help="Warm-start actor weights from a checkpoint, but reset optimizer/update state.")
@@ -172,6 +175,8 @@ def main():
     args.max_grad_norm = args.max_grad_norm if args.max_grad_norm is not None else 0.5
     args.amp_dtype = args.amp_dtype or "bfloat16"
     args.compile_mode = args.compile_mode or "reduce-overhead"
+    args.wandb_project = args.wandb_project or "sls-wm-atari"
+    args.wandb_name = args.wandb_name or f"actor-real-{Path(args.checkpoint_dir).name}"
     args.seed = args.seed if args.seed is not None else int(atari_cfg.get("seed", 42))
 
     torch.manual_seed(args.seed)
@@ -275,6 +280,11 @@ def main():
     log = csv.writer(log_file)
     if log_file.tell() == 0:
         log.writerow(["update", "real_steps", "episode_return", "ppo_loss", "entropy", "time_s"])
+    wandb_init(
+        project=args.wandb_project,
+        name=args.wandb_name,
+        config={**vars(args), "before_replay_steps": before_replay_steps, "n_actions": n_actions},
+    )
 
     obs, _ = env.reset(seed=args.seed)
     frame = resize_frame_to_64(obs)
@@ -294,7 +304,8 @@ def main():
     rollout = {"tokens": [], "h": [], "actions": [], "logp": [], "values": [],
                "rewards": [], "dones": []}
 
-    while real_steps < args.n_steps:
+    try:
+      while real_steps < args.n_steps:
         ctx_t = torch.stack(ctx_tokens[-k:], dim=1).to(device)
         ctx_a = torch.tensor([ctx_actions[-k:]], dtype=torch.long, device=device)
         with torch.no_grad(), torch.amp.autocast("cuda", enabled=amp is not None, dtype=amp):
@@ -331,6 +342,11 @@ def main():
         if done:
             writer.append_episode(episode_frames, episode_actions, episode_rewards, episode_dones)
             print(f"episode return={episode_return:+.1f} replay_steps={writer.total_steps}")
+            wandb_log({
+                "actor_real/episode_return": episode_return,
+                "actor_real/replay_steps": writer.total_steps,
+                "actor_real/local_real_steps": real_steps,
+            })
             episode_frames, episode_actions, episode_rewards, episode_dones = [], [], [], []
             episode_return = 0.0
             obs, _ = env.reset(seed=int(rng.integers(0, 2**31 - 1)))
@@ -361,6 +377,15 @@ def main():
             log.writerow([update_idx, writer.total_steps, f"{episode_return:.3f}",
                           f"{loss:.6f}", f"{entropy:.6f}", f"{elapsed:.1f}"])
             log_file.flush()
+            wandb_log({
+                "actor_real/update": update_idx,
+                "actor_real/replay_steps": writer.total_steps,
+                "actor_real/local_real_steps": real_steps,
+                "actor_real/episode_return_open": episode_return,
+                "actor_real/ppo_loss": loss,
+                "actor_real/entropy": entropy,
+                "actor_real/time_s": elapsed,
+            })
             clean_policy = {k.removeprefix("_orig_mod."): v for k, v in policy.state_dict().items()}
             torch.save({
                 "controller": clean_policy,
@@ -372,14 +397,17 @@ def main():
             rollout = {"tokens": [], "h": [], "actions": [], "logp": [], "values": [],
                        "rewards": [], "dones": []}
 
-    if episode_frames:
-        writer.append_episode(episode_frames, episode_actions, episode_rewards, episode_dones)
-    writer.close()
-    env.close()
-    log_file.close()
-    clean_policy = {k.removeprefix("_orig_mod."): v for k, v in policy.state_dict().items()}
-    torch.save(clean_policy, ckpt_dir / "actor_real_final.pt")
-    print(f"Done. Replay steps={writer.metadata['total_steps']} checkpoints={ckpt_dir}")
+      if episode_frames:
+          writer.append_episode(episode_frames, episode_actions, episode_rewards, episode_dones)
+      clean_policy = {k.removeprefix("_orig_mod."): v for k, v in policy.state_dict().items()}
+      torch.save(clean_policy, ckpt_dir / "actor_real_final.pt")
+      wandb_log({"actor_real/final_replay_steps": writer.metadata["total_steps"]})
+      print(f"Done. Replay steps={writer.metadata['total_steps']} checkpoints={ckpt_dir}")
+    finally:
+      writer.close()
+      env.close()
+      log_file.close()
+      wandb_finish()
 
 
 if __name__ == "__main__":

@@ -41,9 +41,9 @@ STEPS=${STEPS_ARG:-$WARMUP_STEPS}
 
 mkdir -p slurm/logs
 
-module purge
-module load aidl/pytorch/2.10.0-py3.12-cuda12.6
-export PATH="$HOME/.local/bin:$PATH"
+export PATH="/soft/AIDL/conda_envs/pytorch210/bin:$HOME/.local/bin:$PATH"
+export WANDB_PROJECT=sls-wm-atari
+export PYTHONPATH="$HOME/.python3-3.12-torch210/site-packages/lib/python3.12/site-packages:${PYTHONPATH:-}"
 pip install --user --upgrade "gymnasium[atari,accept-rom-license]>=1.0.0" 2>/dev/null
 
 echo "=== Config: $CONFIG ==="

@@ -45,9 +45,9 @@ handle_timeout() {
 }
 trap handle_timeout USR1
 
-module purge
-module load aidl/pytorch/2.10.0-py3.12-cuda12.6
-export PATH="$HOME/.local/bin:$PATH"
+export PATH="/soft/AIDL/conda_envs/pytorch210/bin:$HOME/.local/bin:$PATH"
+export WANDB_PROJECT=sls-wm-atari
+export PYTHONPATH="$HOME/.python3-3.12-torch210/site-packages/lib/python3.12/site-packages:${PYTHONPATH:-}"
 # wandb bundles gencode that expects protobuf >= 6.32; the torch 2.10
 # module ships protobuf 6.31, so upgrade it here on the compute node.
 pip install --user --upgrade wandb "protobuf>=6.32" 2>/dev/null

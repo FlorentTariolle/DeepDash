@@ -2,8 +2,8 @@
 #SBATCH -J "train_ctrl_bc"
 #SBATCH -o slurm/logs/train_controller_bc.out
 #SBATCH -e slurm/logs/train_controller_bc.err
-#SBATCH -p ar_a100
-#SBATCH --gres=gpu:a100:1
+#SBATCH -p ar_h200
+#SBATCH --gres=gpu:h200:1
 #SBATCH -n 1
 #SBATCH --cpus-per-gpu 8
 #SBATCH --mem 64G
@@ -18,9 +18,9 @@
 CONFIG=${1:-configs/v7-phase0.yaml}
 CKPT_DIR=$(python -c "import yaml; print(yaml.safe_load(open('$CONFIG')).get('transformer',{}).get('checkpoint_dir','checkpoints'))")
 
-module purge
-module load aidl/pytorch/2.10.0-py3.12-cuda12.6
-export PATH="$HOME/.local/bin:$PATH"
+export PATH="/soft/AIDL/conda_envs/pytorch210/bin:$HOME/.local/bin:$PATH"
+export WANDB_PROJECT=sls-wm-atari
+export PYTHONPATH="$HOME/.python3-3.12-torch210/site-packages/lib/python3.12/site-packages:${PYTHONPATH:-}"
 pip install --user --upgrade wandb "protobuf>=6.32" 2>/dev/null
 
 echo "=== Train Controller (BC) ==="

@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from atari.replay_buffer import load_metadata
 from deepdash.config import load_yaml
+from deepdash.wandb_utils import wandb_finish, wandb_init, wandb_log
 
 
 def deep_get(cfg, dotted, default=None):
@@ -84,6 +85,8 @@ class Orchestrator:
         self.skip_real_actor_cycle0 = bool(full.get("skip_real_actor_cycle0", True))
         self.dream_start_steps = int(full.get("dream_start_steps", 0))
         self.python = sys.executable
+        self.wandb_project = str(full.get("wandb_project", "sls-wm-atari"))
+        self.wandb_name = str(full.get("wandb_name", Path(config_path).stem))
 
     def mark(self, phase: str, extra: dict | None = None):
         steps = replay_steps(self.replay_dir)
@@ -95,6 +98,12 @@ class Orchestrator:
         if extra:
             self.state.update(extra)
         save_state(self.state_path, self.state)
+        wandb_log({
+            "full_cycle/replay_steps": steps,
+            "full_cycle/real_env_steps": steps,
+            "full_cycle/current_cycle": int(self.state.get("current_cycle", 0)),
+            "full_cycle/completed_phase_count": len(self.state.get("completed_phases", [])),
+        })
 
     def done(self, phase: str) -> bool:
         return self.force_phase != phase and phase in self.state.get("completed_phases", [])
@@ -105,9 +114,13 @@ class Orchestrator:
             return
         before = replay_steps(self.replay_dir)
         print(f"phase={phase} before_replay_steps={before}")
+        t0 = time.time()
+        wandb_log({
+            "full_cycle/phase_start": 1,
+            "full_cycle/phase_replay_steps_before": before,
+            "full_cycle/current_cycle": int(self.state.get("current_cycle", 0)),
+        })
         env = os.environ.copy()
-        env.setdefault("WANDB_MODE", "disabled")
-        env.setdefault("WANDB_SILENT", "true")
         subprocess.run(argv, check=True, env=env)
         after = replay_steps(self.replay_dir)
         if expected_steps is not None and after != expected_steps:
@@ -115,6 +128,14 @@ class Orchestrator:
                 f"{phase} replay step mismatch: expected {expected_steps}, got {after} (before {before})")
         if after > self.total_budget:
             raise RuntimeError(f"training replay exceeded budget: {after} > {self.total_budget}")
+        wandb_log({
+            "full_cycle/phase_done": 1,
+            "full_cycle/phase_time_s": time.time() - t0,
+            "full_cycle/phase_replay_steps_before": before,
+            "full_cycle/phase_replay_steps_after": after,
+            "full_cycle/phase_replay_steps_delta": after - before,
+            "full_cycle/current_cycle": int(self.state.get("current_cycle", 0)),
+        })
         self.mark(phase)
 
     def phase_overrides(self, section: str) -> list[str]:
@@ -241,12 +262,36 @@ class Orchestrator:
 
     def evaluate(self):
         phase = "evaluation"
-        out = self.run_dir / "evaluation.json"
-        argv = [self.python, "-u", "scripts/eval_atari_actor.py",
-                "--config", self.config_path, "--output", str(out)]
-        argv.extend(self.phase_overrides("evaluation"))
-        self.run_cmd(phase, argv, expected_steps=self.total_budget)
-        summary = json.loads(out.read_text()) if out.exists() else {}
+        candidates = [
+            ("actor_dream", self.state.get("selected_checkpoints", {}).get("actor_dream")),
+            ("actor_real", self.state.get("selected_checkpoints", {}).get("actor_real")),
+        ]
+        results = []
+        for name, ckpt in candidates:
+            if not ckpt or not Path(ckpt).exists():
+                continue
+            out = self.run_dir / f"evaluation_{name}.json"
+            argv = [self.python, "-u", "scripts/eval_atari_actor.py",
+                    "--config", self.config_path,
+                    "--actor-checkpoint", str(ckpt),
+                    "--output", str(out)]
+            argv.extend(self.phase_overrides("evaluation"))
+            self.run_cmd(f"{phase}_{name}", argv, expected_steps=self.total_budget)
+            if out.exists():
+                result = json.loads(out.read_text())
+                result["candidate"] = name
+                results.append(result)
+        if not results:
+            out = self.run_dir / "evaluation.json"
+            argv = [self.python, "-u", "scripts/eval_atari_actor.py",
+                    "--config", self.config_path, "--output", str(out)]
+            argv.extend(self.phase_overrides("evaluation"))
+            self.run_cmd(phase, argv, expected_steps=self.total_budget)
+            summary = json.loads(out.read_text()) if out.exists() else {}
+        else:
+            summary = max(results, key=lambda r: float(r.get("mean_return", float("-inf"))))
+            summary["candidate_results"] = results
+            (self.run_dir / "evaluation.json").write_text(json.dumps(summary, indent=2))
         summary.update({
             "real_steps": replay_steps(self.replay_dir),
             "replay_steps": replay_steps(self.replay_dir),
@@ -260,34 +305,51 @@ class Orchestrator:
         self.mark("summary")
 
     def run(self):
+        wandb_init(
+            project=self.wandb_project,
+            name=self.wandb_name,
+            config={
+                "config_path": self.config_path,
+                "run_dir": str(self.run_dir),
+                "cycle_steps": self.cycle_steps,
+                "total_budget": self.total_budget,
+                "warmup_steps": self.warmup_steps,
+                "dream_start_steps": self.dream_start_steps,
+                "final_mode": self.final_mode,
+            },
+        )
         self.run_dir.mkdir(parents=True, exist_ok=True)
-        save_state(self.state_path, self.state)
-        self.collect_random()
-        self.train_fsq(0)
-        self.train_predictor("predictor", 0)
-        self.train_predictor("predictor_sls", 0)
-        self.train_dream_actor(0)
-        if not self.skip_real_actor_cycle0:
-            self.collect_policy(0)
-        cycles = max(1, self.total_budget // self.cycle_steps)
-        for cycle in range(1, cycles):
-            self.state["current_cycle"] = cycle
+        try:
             save_state(self.state_path, self.state)
-            self.collect_policy(cycle)
-            self.train_fsq(cycle)
-            self.train_predictor("predictor", cycle)
-            self.train_predictor("predictor_sls", cycle)
-            self.train_dream_actor(cycle)
-        if replay_steps(self.replay_dir) != self.total_budget:
-            raise RuntimeError(f"final training budget mismatch: replay={replay_steps(self.replay_dir)} budget={self.total_budget}")
-        if self.final_mode == "max_performance":
-            self.train_fsq(cycles, final=True)
-            self.train_predictor("predictor", cycles, final=True)
-            self.train_predictor("predictor_sls", cycles, final=True)
-            self.train_dream_actor(cycles, final=True)
-        elif self.final_mode != "evaluation_clean":
-            raise ValueError(f"unknown full_cycle.final_mode={self.final_mode}")
-        self.evaluate()
+            self.collect_random()
+            self.train_fsq(0)
+            self.train_predictor("predictor", 0)
+            self.train_predictor("predictor_sls", 0)
+            self.train_dream_actor(0)
+            if not self.skip_real_actor_cycle0:
+                self.collect_policy(0)
+            cycles = max(1, self.total_budget // self.cycle_steps)
+            for cycle in range(1, cycles):
+                self.state["current_cycle"] = cycle
+                save_state(self.state_path, self.state)
+                wandb_log({"full_cycle/current_cycle": cycle})
+                self.collect_policy(cycle)
+                self.train_fsq(cycle)
+                self.train_predictor("predictor", cycle)
+                self.train_predictor("predictor_sls", cycle)
+                self.train_dream_actor(cycle)
+            if replay_steps(self.replay_dir) != self.total_budget:
+                raise RuntimeError(f"final training budget mismatch: replay={replay_steps(self.replay_dir)} budget={self.total_budget}")
+            if self.final_mode == "max_performance":
+                self.train_fsq(cycles, final=True)
+                self.train_predictor("predictor", cycles, final=True)
+                self.train_predictor("predictor_sls", cycles, final=True)
+                self.train_dream_actor(cycles, final=True)
+            elif self.final_mode != "evaluation_clean":
+                raise ValueError(f"unknown full_cycle.final_mode={self.final_mode}")
+            self.evaluate()
+        finally:
+            wandb_finish()
 
 
 def main():

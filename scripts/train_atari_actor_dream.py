@@ -22,6 +22,7 @@ from atari.predictor import AtariPredictorWithHeads, split_atari_predictor_state
 from atari.replay_buffer import load_metadata, load_replay_arrays
 from deepdash.config import apply_config, load_config
 from deepdash.fsq import FSQVAE
+from deepdash.wandb_utils import wandb_finish, wandb_init, wandb_log
 from deepdash.world_model import WorldModel
 from scripts.train_atari_actor_real import amp_dtype, load_clean_state
 from scripts.train_atari_actor_real import encode_frame, resize_frame_to_64
@@ -44,13 +45,78 @@ def valid_context_starts(replay, context_frames: int):
     return np.asarray(starts, dtype=np.int64)
 
 
-def sample_contexts(starts, tokens, actions, context_frames, n, rng):
-    idx = rng.choice(starts, size=n, replace=len(starts) < n)
+def reward_event_context_starts(replay, context_frames: int,
+                                min_gap: int, max_gap: int):
+    """Context starts whose first trainable action is close to a reward event."""
+    if min_gap < 0 or max_gap < min_gap:
+        raise ValueError("reward event gaps must satisfy 0 <= min_gap <= max_gap")
+    episode_ids = replay.episode_ids
+    dones = replay.dones
+    rewards = replay.rewards
+    by_sign = {1: [], -1: []}
+    reward_indices = np.flatnonzero(rewards != 0)
+    for reward_idx in reward_indices:
+        sign = 1 if rewards[reward_idx] > 0 else -1
+        for gap in range(min_gap, max_gap + 1):
+            start = int(reward_idx) - context_frames - gap
+            end = start + context_frames
+            if start < 0 or end > len(episode_ids):
+                continue
+            episode_id = episode_ids[start]
+            if episode_ids[reward_idx] != episode_id:
+                continue
+            if not np.all(episode_ids[start:reward_idx + 1] == episode_id):
+                continue
+            if np.any(dones[start:reward_idx]):
+                continue
+            by_sign[sign].append(start)
+    return {
+        sign: np.asarray(sorted(set(values)), dtype=np.int64)
+        for sign, values in by_sign.items()
+    }
+
+
+def _choice(values, n, rng):
+    if n <= 0 or len(values) == 0:
+        return np.empty(0, dtype=np.int64)
+    return rng.choice(values, size=n, replace=len(values) < n)
+
+
+def sample_contexts(starts, tokens, actions, context_frames, n, rng,
+                    event_starts=None, event_sample_frac=0.0,
+                    event_pos_frac=0.5):
+    n_event = int(round(n * float(event_sample_frac)))
+    event_starts = event_starts or {}
+    pos_starts = event_starts.get(1, np.empty(0, dtype=np.int64))
+    neg_starts = event_starts.get(-1, np.empty(0, dtype=np.int64))
+    if len(pos_starts) == 0 and len(neg_starts) == 0:
+        n_event = 0
+
+    n_pos = int(round(n_event * float(event_pos_frac)))
+    n_neg = n_event - n_pos
+    if len(pos_starts) == 0:
+        n_neg += n_pos
+        n_pos = 0
+    if len(neg_starts) == 0:
+        n_pos += n_neg
+        n_neg = 0
+
+    idx_parts = [
+        _choice(pos_starts, n_pos, rng),
+        _choice(neg_starts, n_neg, rng),
+        _choice(starts, n - n_pos - n_neg, rng),
+    ]
+    idx = np.concatenate([part for part in idx_parts if len(part) > 0])
+    rng.shuffle(idx)
     ctx_tokens = torch.stack([tokens[i:i + context_frames] for i in idx], dim=0)
     ctx_actions = torch.from_numpy(np.stack([
         actions[i:i + context_frames] for i in idx
     ]).astype(np.int64))
-    return ctx_tokens, ctx_actions
+    return ctx_tokens, ctx_actions, {
+        "pos": int(n_pos),
+        "neg": int(n_neg),
+        "uniform": int(n - n_pos - n_neg),
+    }
 
 
 def ppo_update(policy, optimizer, batch, args, device, amp):
@@ -175,6 +241,7 @@ def dream_rollout(predictor, policy, ctx_tokens, ctx_actions, args, device, amp)
     bsz = ctx_tokens.size(0)
     alive = torch.ones(bsz, dtype=torch.bool, device=device)
     episode_return = torch.zeros(bsz, dtype=torch.float32, device=device)
+    active_steps = torch.zeros(bsz, dtype=torch.float32, device=device)
 
     rollout = {"tokens": [], "h": [], "actions": [], "logp": [], "values": [],
                "rewards": [], "dones": []}
@@ -192,13 +259,19 @@ def dream_rollout(predictor, policy, ctx_tokens, ctx_actions, args, device, amp)
                 ctx_tokens, pred_actions, temperature=args.temperature,
                 return_aux=True)
 
-        done = done_prob >= args.done_threshold
         reward = reward.float().clamp(args.reward_clip_min, args.reward_clip_max)
+        reward_event = reward.abs() > args.reward_done_epsilon
+        done = done_prob >= args.done_threshold
+        terminal = done | (reward_event if args.stop_on_reward else torch.zeros_like(done))
         active = alive.float()
         masked_reward = reward * active
-        masked_done = done & alive
+        masked_done = terminal & alive
         episode_return += masked_reward
+        active_steps += active
 
+        # Store the reward-bearing transition before applying terminal masks.
+        # This lets GAE propagate +1/-1 back to all earlier actions in the
+        # dream, while still stopping immediately after the point is scored.
         rollout["tokens"].append(token_t.detach().cpu())
         rollout["h"].append(h_t.detach().cpu().float())
         rollout["actions"].append(action_t.detach().cpu())
@@ -207,7 +280,7 @@ def dream_rollout(predictor, policy, ctx_tokens, ctx_actions, args, device, amp)
         rollout["rewards"].append(masked_reward.detach().cpu())
         rollout["dones"].append(masked_done.detach().cpu())
 
-        alive &= ~done
+        alive &= ~terminal
         ctx_tokens = torch.cat([ctx_tokens[:, 1:], pred_tokens.unsqueeze(1)], dim=1)
         ctx_actions = pred_actions
 
@@ -229,6 +302,7 @@ def dream_rollout(predictor, policy, ctx_tokens, ctx_actions, args, device, amp)
         rewards, values, dones, bootstrap, args.gamma, args.lam)
     rollout["advantages"] = adv.cpu()
     rollout["returns"] = returns.cpu()
+    rollout["mean_active_steps"] = float(active_steps.mean().item())
     return rollout, episode_return
 
 
@@ -248,6 +322,16 @@ def main():
     parser.add_argument("--done-threshold", type=float, default=None)
     parser.add_argument("--reward-clip-min", type=float, default=None)
     parser.add_argument("--reward-clip-max", type=float, default=None)
+    parser.add_argument("--reward-event-sample-frac", type=float, default=None)
+    parser.add_argument("--reward-event-pos-frac", type=float, default=None)
+    parser.add_argument("--reward-event-min-gap", type=int, default=None,
+                        help="Minimum trainable dream steps from PPO start to a replay reward.")
+    parser.add_argument("--reward-event-max-gap", type=int, default=None,
+                        help="Maximum trainable dream steps from PPO start to a replay reward.")
+    parser.add_argument("--stop-on-reward", action=argparse.BooleanOptionalAction,
+                        default=None,
+                        help="Treat non-zero predicted reward as terminal for dream PPO.")
+    parser.add_argument("--reward-done-epsilon", type=float, default=None)
     parser.add_argument("--lr", type=float, default=None)
     parser.add_argument("--gamma", type=float, default=None)
     parser.add_argument("--lam", type=float, default=None)
@@ -262,6 +346,8 @@ def main():
     parser.add_argument("--real-eval-episodes", type=int, default=None)
     parser.add_argument("--real-eval-max-steps", type=int, default=None)
     parser.add_argument("--real-eval-seed", type=int, default=None)
+    parser.add_argument("--wandb-project", default=None)
+    parser.add_argument("--wandb-name", default=None)
     parser.add_argument("--amp-dtype", choices=["none", "float16", "bfloat16"], default=None)
     parser.add_argument("--compile-mode", choices=["none", "default", "reduce-overhead"], default=None)
     parser.add_argument("--seed", type=int, default=None)
@@ -287,6 +373,17 @@ def main():
     args.done_threshold = args.done_threshold if args.done_threshold is not None else 0.5
     args.reward_clip_min = args.reward_clip_min if args.reward_clip_min is not None else -1.0
     args.reward_clip_max = args.reward_clip_max if args.reward_clip_max is not None else 1.0
+    args.reward_event_sample_frac = (
+        args.reward_event_sample_frac if args.reward_event_sample_frac is not None else 0.0)
+    args.reward_event_pos_frac = (
+        args.reward_event_pos_frac if args.reward_event_pos_frac is not None else 0.5)
+    args.reward_event_min_gap = (
+        args.reward_event_min_gap if args.reward_event_min_gap is not None else 3)
+    args.reward_event_max_gap = (
+        args.reward_event_max_gap if args.reward_event_max_gap is not None else 13)
+    args.stop_on_reward = bool(args.stop_on_reward) if args.stop_on_reward is not None else False
+    args.reward_done_epsilon = (
+        args.reward_done_epsilon if args.reward_done_epsilon is not None else 0.5)
     args.lr = args.lr or 2.5e-4
     args.gamma = args.gamma if args.gamma is not None else 0.99
     args.lam = args.lam if args.lam is not None else 0.95
@@ -301,6 +398,8 @@ def main():
     args.real_eval_episodes = args.real_eval_episodes or 5
     args.real_eval_max_steps = args.real_eval_max_steps or 27000
     args.real_eval_seed = args.real_eval_seed if args.real_eval_seed is not None else args.seed + 20000
+    args.wandb_project = args.wandb_project or "sls-wm-atari"
+    args.wandb_name = args.wandb_name or f"actor-dream-{Path(args.checkpoint_dir).name}"
     args.amp_dtype = args.amp_dtype or "bfloat16"
     args.compile_mode = args.compile_mode or "reduce-overhead"
 
@@ -326,7 +425,23 @@ def main():
     fsq.load_state_dict(load_clean_state(args.fsq_checkpoint, device))
     fsq.eval()
     tokens = encode_replay_obs(fsq, replay.obs, batch_size=256, device=device)
-    starts = valid_context_starts(replay, int(model_cfg.get("context_frames", 4)))
+    context_frames = int(model_cfg.get("context_frames", 4))
+    starts = valid_context_starts(replay, context_frames)
+    event_starts = reward_event_context_starts(
+        replay, context_frames, args.reward_event_min_gap,
+        args.reward_event_max_gap)
+    print(
+        "Dream starts: "
+        f"uniform={len(starts)} reward_pos={len(event_starts[1])} "
+        f"reward_neg={len(event_starts[-1])} "
+        f"event_frac={args.reward_event_sample_frac:.2f} "
+        f"gap=[K+{args.reward_event_min_gap}, K+{args.reward_event_max_gap}]"
+    )
+    wandb_init(
+        project=args.wandb_project,
+        name=args.wandb_name,
+        config={**vars(args), "replay_steps": len(replay.obs), "n_actions": n_actions},
+    )
 
     world_model = WorldModel(
         vocab_size=int(model_cfg.get("vocab_size", 1000)),
@@ -393,71 +508,96 @@ def main():
     log_file = open(log_path, "a" if (args.resume or args.init_from) and log_path.exists() else "w", newline="")
     log = csv.writer(log_file)
     if log_file.tell() == 0:
-        log.writerow(["iteration", "mean_return", "ppo_loss", "entropy",
+        log.writerow(["iteration", "mean_return", "mean_dream_steps",
+                      "ppo_loss", "entropy",
                       "real_eval_mean_return", "real_eval_mean_length",
                       "real_eval_action_counts", "time_s"])
 
-    for iteration in range(start_iter, args.n_iterations + 1):
-        t0 = time.time()
-        ctx_tokens, ctx_actions = sample_contexts(
-            starts, tokens, replay.actions, int(model_cfg.get("context_frames", 4)),
-            args.n_episodes, rng)
-        policy.eval()
-        rollout, dream_return = dream_rollout(
-            predictor, policy, ctx_tokens, ctx_actions, args, device, amp)
-        if rollout is None:
-            print(f"iteration={iteration} empty dream rollout; skipping")
-            continue
-        policy.train()
-        loss, entropy = ppo_update(policy, optimizer, rollout, args, device, amp)
-        mean_return = float(dream_return.mean().item())
+    try:
+        for iteration in range(start_iter, args.n_iterations + 1):
+            t0 = time.time()
+            ctx_tokens, ctx_actions, sample_info = sample_contexts(
+                starts, tokens, replay.actions, context_frames,
+                args.n_episodes, rng, event_starts,
+                args.reward_event_sample_frac, args.reward_event_pos_frac)
+            policy.eval()
+            rollout, dream_return = dream_rollout(
+                predictor, policy, ctx_tokens, ctx_actions, args, device, amp)
+            if rollout is None:
+                print(f"iteration={iteration} empty dream rollout; skipping")
+                continue
+            policy.train()
+            loss, entropy = ppo_update(policy, optimizer, rollout, args, device, amp)
+            mean_return = float(dream_return.mean().item())
+            mean_dream_steps = float(rollout.get("mean_active_steps", 0.0))
+            clean_policy = {k.removeprefix("_orig_mod."): v for k, v in policy.state_dict().items()}
+            real_eval_mean = ""
+            real_eval_length = ""
+            real_eval_actions = ""
+            if args.real_eval_interval and (
+                iteration == 1 or iteration % int(args.real_eval_interval) == 0
+                or iteration == args.n_iterations
+            ):
+                metrics = evaluate_real_env(
+                    policy, fsq, predictor, atari_cfg, model_cfg, args, device, amp,
+                    n_actions)
+                real_eval_mean = metrics["mean_return"]
+                real_eval_length = metrics["mean_length"]
+                real_eval_actions = metrics["action_counts"]
+                if real_eval_mean > best_real_metric:
+                    best_real_metric = real_eval_mean
+                    torch.save(clean_policy, best_real_path)
+                    print(f"  new best real eval: return={real_eval_mean:+.3f} "
+                          f"checkpoint={best_real_path}")
+                print(f"  real_eval return={real_eval_mean:+.3f} "
+                      f"len={real_eval_length:.1f} actions={real_eval_actions}")
+            elapsed = time.time() - t0
+            print(f"iter={iteration} return={mean_return:+.3f} loss={loss:.4f} "
+                  f"entropy={entropy:.3f} dream_steps={mean_dream_steps:.1f} "
+                  f"samples={sample_info} time={elapsed:.1f}s")
+            log.writerow([
+                iteration, f"{mean_return:.6f}", f"{mean_dream_steps:.3f}",
+                f"{loss:.6f}", f"{entropy:.6f}",
+                "" if real_eval_mean == "" else f"{real_eval_mean:.6f}",
+                "" if real_eval_length == "" else f"{real_eval_length:.1f}",
+                real_eval_actions,
+                f"{elapsed:.1f}",
+            ])
+            log_file.flush()
+            payload = {
+                "actor_dream/iteration": iteration,
+                "actor_dream/mean_return": mean_return,
+                "actor_dream/mean_dream_steps": mean_dream_steps,
+                "actor_dream/ppo_loss": loss,
+                "actor_dream/entropy": entropy,
+                "actor_dream/sample_pos": sample_info["pos"],
+                "actor_dream/sample_neg": sample_info["neg"],
+                "actor_dream/sample_uniform": sample_info["uniform"],
+                "actor_dream/time_s": elapsed,
+            }
+            if real_eval_mean != "":
+                payload["actor_dream/real_eval_mean_return"] = float(real_eval_mean)
+                payload["actor_dream/real_eval_mean_length"] = float(real_eval_length)
+                for action_name, count in real_eval_actions.items():
+                    payload[f"actor_dream/real_eval_actions/{action_name}"] = int(count)
+            wandb_log(payload)
+
+            torch.save({
+                "iteration": iteration,
+                "controller": clean_policy,
+                "optimizer": optimizer.state_dict(),
+                "rng_state": rng.bit_generator.state,
+                "best_real_mean_return": best_real_metric,
+            }, latest)
+            if iteration == 1 or iteration % 10 == 0:
+                torch.save(clean_policy, ckpt_dir / "actor_dream_best_effort.pt")
+
         clean_policy = {k.removeprefix("_orig_mod."): v for k, v in policy.state_dict().items()}
-        real_eval_mean = ""
-        real_eval_length = ""
-        real_eval_actions = ""
-        if args.real_eval_interval and (
-            iteration == 1 or iteration % int(args.real_eval_interval) == 0
-            or iteration == args.n_iterations
-        ):
-            metrics = evaluate_real_env(
-                policy, fsq, predictor, atari_cfg, model_cfg, args, device, amp,
-                n_actions)
-            real_eval_mean = metrics["mean_return"]
-            real_eval_length = metrics["mean_length"]
-            real_eval_actions = metrics["action_counts"]
-            if real_eval_mean > best_real_metric:
-                best_real_metric = real_eval_mean
-                torch.save(clean_policy, best_real_path)
-                print(f"  new best real eval: return={real_eval_mean:+.3f} "
-                      f"checkpoint={best_real_path}")
-            print(f"  real_eval return={real_eval_mean:+.3f} "
-                  f"len={real_eval_length:.1f} actions={real_eval_actions}")
-        elapsed = time.time() - t0
-        print(f"iter={iteration} return={mean_return:+.3f} loss={loss:.4f} "
-              f"entropy={entropy:.3f} time={elapsed:.1f}s")
-        log.writerow([
-            iteration, f"{mean_return:.6f}", f"{loss:.6f}", f"{entropy:.6f}",
-            "" if real_eval_mean == "" else f"{real_eval_mean:.6f}",
-            "" if real_eval_length == "" else f"{real_eval_length:.1f}",
-            real_eval_actions,
-            f"{elapsed:.1f}",
-        ])
-        log_file.flush()
-
-        torch.save({
-            "iteration": iteration,
-            "controller": clean_policy,
-            "optimizer": optimizer.state_dict(),
-            "rng_state": rng.bit_generator.state,
-            "best_real_mean_return": best_real_metric,
-        }, latest)
-        if iteration == 1 or iteration % 10 == 0:
-            torch.save(clean_policy, ckpt_dir / "actor_dream_best_effort.pt")
-
-    clean_policy = {k.removeprefix("_orig_mod."): v for k, v in policy.state_dict().items()}
-    torch.save(clean_policy, ckpt_dir / "actor_dream_final.pt")
-    log_file.close()
-    print(f"Done. Checkpoints saved to {ckpt_dir}")
+        torch.save(clean_policy, ckpt_dir / "actor_dream_final.pt")
+        print(f"Done. Checkpoints saved to {ckpt_dir}")
+    finally:
+        log_file.close()
+        wandb_finish()
 
 
 if __name__ == "__main__":

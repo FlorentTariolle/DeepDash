@@ -30,6 +30,7 @@ from atari.predictor import AtariPredictorWithHeads, split_atari_predictor_state
 from atari.replay_buffer import load_metadata, load_replay_arrays
 from deepdash.config import apply_config, load_config
 from deepdash.fsq import FSQVAE
+from deepdash.wandb_utils import wandb_finish, wandb_init, wandb_log
 from deepdash.world_model import WorldModel
 from scripts.train_world_model import build_structured_smooth_targets, focal_cross_entropy
 
@@ -367,6 +368,8 @@ def main():
     parser.add_argument("--compile-mode", choices=["none", "default", "reduce-overhead"], default=None)
     parser.add_argument("--amp-dtype", choices=["none", "float16", "bfloat16"], default=None)
     parser.add_argument("--val-interval", type=int, default=None)
+    parser.add_argument("--wandb-project", default=None)
+    parser.add_argument("--wandb-name", default=None)
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--steps-per-epoch", type=int, default=None)
     parser.add_argument("--max-val-batches", type=int, default=None,
@@ -402,6 +405,8 @@ def main():
     args.compile_mode = args.compile_mode or "reduce-overhead"
     args.amp_dtype = args.amp_dtype or "float16"
     args.val_interval = args.val_interval if args.val_interval is not None else 1
+    args.wandb_project = args.wandb_project or "sls-wm-atari"
+    args.wandb_name = args.wandb_name or f"predictor-{args.config_section}-{Path(args.checkpoint_dir).name}"
     args.seed = args.seed if args.seed is not None else 42
     args.max_val_batches = args.max_val_batches if args.max_val_batches is not None else 0
     args.max_rollout_batches = (
@@ -564,9 +569,15 @@ def main():
                       "val_nll", "val_acc", "val_fsq_l1_dist",
                       "val_reward_mae", "val_done_acc",
                       *[f"rollout_{h}_l1" for h in horizons], "lr", "time_s"])
+    wandb_init(
+        project=args.wandb_project,
+        name=args.wandb_name,
+        config={**vars(args), "replay_steps": len(replay.obs), "n_actions": n_actions},
+    )
 
     max_steps = int(args.steps_per_epoch or 0)
-    for epoch in range(start_epoch, args.epochs + 1):
+    try:
+      for epoch in range(start_epoch, args.epochs + 1):
         t0 = time.time()
         predictor.train()
         total_loss = total_tokens = total_reward_loss = total_done_loss = total_aux = 0
@@ -648,6 +659,25 @@ def main():
             f"{lr:.1e}", f"{dt:.1f}",
         ])
         log_file.flush()
+        payload = {
+            f"{args.config_section}/epoch": epoch,
+            f"{args.config_section}/train_nll": train_nll,
+            f"{args.config_section}/train_reward_loss": train_reward_loss,
+            f"{args.config_section}/train_done_loss": train_done_loss,
+            f"{args.config_section}/lr": lr,
+            f"{args.config_section}/time_s": dt,
+        }
+        if do_val:
+            payload.update({
+                f"{args.config_section}/val_nll": val_metrics["nll"],
+                f"{args.config_section}/val_acc": val_metrics["acc"],
+                f"{args.config_section}/val_fsq_l1_dist": val_metrics["fsq_l1_dist"],
+                f"{args.config_section}/val_reward_mae": val_metrics["reward_mae"],
+                f"{args.config_section}/val_done_acc": val_metrics["done_acc"],
+            })
+            for h in horizons:
+                payload[f"{args.config_section}/rollout_{h}_l1"] = rollout_metrics[f"rollout_{h}_l1"]
+        wandb_log(payload)
         latest_payload = {
             "epoch": epoch,
             "model": clean_state_dict(predictor),
@@ -659,12 +689,14 @@ def main():
             latest_payload["scaler"] = scaler.state_dict()
         torch.save(latest_payload, latest_path)
 
-    torch.save(clean_state_dict(predictor), ckpt_dir / "predictor_final.pt")
-    torch.save(predictor_state_for_world_model(predictor),
-               ckpt_dir / "predictor_final_world_model.pt")
-    log_file.close()
-    print(f"Training complete. Best rollout_{max_horizon}_l1={best_rollout:.6f}")
-    print(f"Checkpoints saved to {ckpt_dir}")
+      torch.save(clean_state_dict(predictor), ckpt_dir / "predictor_final.pt")
+      torch.save(predictor_state_for_world_model(predictor),
+                 ckpt_dir / "predictor_final_world_model.pt")
+      print(f"Training complete. Best rollout_{max_horizon}_l1={best_rollout:.6f}")
+      print(f"Checkpoints saved to {ckpt_dir}")
+    finally:
+      log_file.close()
+      wandb_finish()
 
 
 if __name__ == "__main__":
