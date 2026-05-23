@@ -303,7 +303,7 @@ class Orchestrator:
             self.run_cmd(phase, argv, expected_steps=self.total_budget)
             summary = json.loads(out.read_text()) if out.exists() else {}
         else:
-            summary = max(results, key=lambda r: float(r.get("mean_return", float("-inf"))))
+            summary = dict(max(results, key=lambda r: float(r.get("mean_return", float("-inf")))))
             summary["candidate_results"] = results
             (self.run_dir / "evaluation.json").write_text(json.dumps(summary, indent=2))
         summary.update({
