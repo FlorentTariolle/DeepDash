@@ -39,6 +39,8 @@ full_cycle:
   total_budget_steps: 100000
   final_mode: evaluation_clean  # evaluation_clean or max_performance
   skip_real_actor_cycle0: true
+  dream_start_steps: 30000
+  post_dream_real_steps: 10000
   phase_overrides: {}
 
 fsq:
@@ -150,7 +152,7 @@ actor_dream:
   fsq_checkpoint: checkpoints_atari_pong_h200/fsq_best.pt
   predictor_checkpoint: checkpoints_atari_pong_h200_predictor_sls/predictor_best.pt
   pretrained: checkpoints_atari_pong_h200_actor_real/actor_real_latest.pt
-  n_iterations: 500
+  n_iterations: 250
   n_episodes: 256
   max_dream_steps: 20
   temperature: 0.0

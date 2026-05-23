@@ -84,6 +84,7 @@ class Orchestrator:
         self.final_mode = str(full.get("final_mode", "evaluation_clean"))
         self.skip_real_actor_cycle0 = bool(full.get("skip_real_actor_cycle0", True))
         self.dream_start_steps = int(full.get("dream_start_steps", 0))
+        self.post_dream_real_steps = int(full.get("post_dream_real_steps", 0))
         self.python = sys.executable
         self.wandb_project = str(full.get("wandb_project", "sls-wm-atari"))
         self.wandb_name = str(full.get("wandb_name", Path(config_path).stem))
@@ -199,7 +200,7 @@ class Orchestrator:
         self.state["selected_checkpoints"][section] = str(Path(deep_get(self.cfg, f"{section}.checkpoint_dir")) / "predictor_best.pt")
         save_state(self.state_path, self.state)
 
-    def train_dream_actor(self, cycle: int, final: bool = False):
+    def train_dream_actor(self, cycle: int, final: bool = False) -> bool:
         phase = f"{'final_' if final else ''}cycle_{cycle}_actor_dream"
         if not final and replay_steps(self.replay_dir) < self.dream_start_steps:
             print(
@@ -207,7 +208,7 @@ class Orchestrator:
                 f"< dream_start_steps={self.dream_start_steps}"
             )
             self.mark(phase, {"dream_skipped_until_steps": self.dream_start_steps})
-            return
+            return False
         argv = [self.python, "-u", "scripts/train_atari_actor_dream.py",
                 "--config", self.config_path, "--config-section", "actor_dream"]
         real_dir = Path(deep_get(self.cfg, "actor_real.checkpoint_dir"))
@@ -238,12 +239,18 @@ class Orchestrator:
             selected = final_ckpt
         self.state["selected_checkpoints"]["actor_dream"] = str(selected)
         save_state(self.state_path, self.state)
+        return True
 
-    def collect_policy(self, cycle: int):
-        target = min((cycle + 1) * self.cycle_steps, self.total_budget)
+    def collect_policy(self, cycle: int, target_steps: int | None = None,
+                       phase_name: str | None = None):
+        target = min(
+            target_steps if target_steps is not None else (cycle + 1) * self.cycle_steps,
+            self.total_budget,
+        )
+        phase = phase_name or f"cycle_{cycle}_actor_real"
         current = replay_steps(self.replay_dir)
         if current >= target:
-            self.mark(f"cycle_{cycle}_actor_real")
+            self.mark(phase)
             return
         argv = [self.python, "-u", "scripts/train_atari_actor_real.py",
                 "--config", self.config_path, "--config-section", "actor_real",
@@ -260,7 +267,7 @@ class Orchestrator:
             # state for on-environment updates.
             argv.extend(["--init-from", str(init_ckpt)])
         argv.extend(self.phase_overrides("actor_real"))
-        self.run_cmd(f"cycle_{cycle}_actor_real", argv, expected_steps=target)
+        self.run_cmd(phase, argv, expected_steps=target)
         final_ckpt = real_dir / "actor_real_final.pt"
         latest_ckpt = real_dir / "actor_real_latest.pt"
         self.state["selected_checkpoints"]["actor_real"] = str(
@@ -322,6 +329,7 @@ class Orchestrator:
                 "total_budget": self.total_budget,
                 "warmup_steps": self.warmup_steps,
                 "dream_start_steps": self.dream_start_steps,
+                "post_dream_real_steps": self.post_dream_real_steps,
                 "final_mode": self.final_mode,
             },
         )
@@ -332,7 +340,13 @@ class Orchestrator:
             self.train_fsq(0)
             self.train_predictor("predictor", 0)
             self.train_predictor("predictor_sls", 0)
-            self.train_dream_actor(0)
+            dream_ran = self.train_dream_actor(0)
+            if dream_ran and self.post_dream_real_steps > 0:
+                self.collect_policy(
+                    0,
+                    target_steps=replay_steps(self.replay_dir) + self.post_dream_real_steps,
+                    phase_name="cycle_0_actor_real_post_dream",
+                )
             if not self.skip_real_actor_cycle0:
                 self.collect_policy(0)
             cycles = max(1, self.total_budget // self.cycle_steps)
@@ -344,7 +358,13 @@ class Orchestrator:
                 self.train_fsq(cycle)
                 self.train_predictor("predictor", cycle)
                 self.train_predictor("predictor_sls", cycle)
-                self.train_dream_actor(cycle)
+                dream_ran = self.train_dream_actor(cycle)
+                if dream_ran and self.post_dream_real_steps > 0:
+                    self.collect_policy(
+                        cycle,
+                        target_steps=replay_steps(self.replay_dir) + self.post_dream_real_steps,
+                        phase_name=f"cycle_{cycle}_actor_real_post_dream",
+                    )
             if replay_steps(self.replay_dir) != self.total_budget:
                 raise RuntimeError(f"final training budget mismatch: replay={replay_steps(self.replay_dir)} budget={self.total_budget}")
             if self.final_mode == "max_performance":

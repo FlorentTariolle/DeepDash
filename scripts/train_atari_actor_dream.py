@@ -273,6 +273,11 @@ def evaluate_real_env(policy, fsq, predictor, atari_cfg, model_cfg, args, device
     rng = np.random.default_rng(args.real_eval_seed)
     returns, lengths = [], []
     action_counts = collections.Counter()
+    reward_true_events = 0
+    reward_pred_events = 0
+    reward_sign_correct = 0
+    reward_false_positive = 0
+    reward_missed = 0
     was_training = policy.training
     policy.eval()
     predictor.eval()
@@ -294,8 +299,32 @@ def evaluate_real_env(policy, fsq, predictor, atari_cfg, model_cfg, args, device
             action = int(logits.argmax(dim=-1).item())
             if action < 0 or action >= n_actions:
                 raise RuntimeError(f"policy emitted invalid action {action} for n_actions={n_actions}")
+            pred_actions = torch.cat([
+                ctx_a[:, 1:],
+                torch.tensor([[action]], dtype=torch.long, device=device),
+            ], dim=1)
+            with torch.amp.autocast("cuda", enabled=amp is not None and device.type == "cuda", dtype=amp):
+                _, pred_reward, _ = predictor.predict_next_frame(
+                    ctx_t, pred_actions, temperature=args.temperature,
+                    return_aux=True)
+            pred_event = atari_event_reward(
+                pred_reward.float().clamp(args.reward_clip_min, args.reward_clip_max),
+                args.reward_discrete_threshold,
+            )
             action_counts[action] += 1
             obs, reward, terminated, truncated, _ = env.step(action)
+            true_event = int(np.sign(reward)) if reward != 0 else 0
+            pred_event_int = int(pred_event.item())
+            if true_event != 0:
+                reward_true_events += 1
+                if pred_event_int == 0:
+                    reward_missed += 1
+                elif pred_event_int == true_event:
+                    reward_sign_correct += 1
+            if pred_event_int != 0:
+                reward_pred_events += 1
+                if true_event == 0:
+                    reward_false_positive += 1
             frame = resize_frame_to_64(obs)
             ctx_tokens.append(encode_frame(fsq, frame, device).cpu())
             ctx_actions.append(action)
@@ -317,6 +346,11 @@ def evaluate_real_env(policy, fsq, predictor, atari_cfg, model_cfg, args, device
             ACTION_NAMES[a] if a < len(ACTION_NAMES) else str(a): int(action_counts.get(a, 0))
             for a in range(n_actions)
         },
+        "reward_true_events": reward_true_events,
+        "reward_pred_events": reward_pred_events,
+        "reward_sign_accuracy": reward_sign_correct / max(reward_true_events - reward_missed, 1),
+        "reward_miss_rate": reward_missed / max(reward_true_events, 1),
+        "reward_false_positive_rate": reward_false_positive / max(reward_pred_events, 1),
     }
 
 
@@ -645,7 +679,12 @@ def main():
         log.writerow(["iteration", "mean_return", "mean_dream_steps",
                       "ppo_loss", "entropy",
                       "real_eval_mean_return", "real_eval_mean_length",
-                      "real_eval_action_counts", "time_s"])
+                      "real_eval_action_counts",
+                      "real_eval_reward_true_events",
+                      "real_eval_reward_pred_events",
+                      "real_eval_reward_miss_rate",
+                      "real_eval_reward_false_positive_rate",
+                      "time_s"])
 
     try:
         for iteration in range(start_iter, args.n_iterations + 1):
@@ -684,7 +723,11 @@ def main():
                     print(f"  new best real eval: return={real_eval_mean:+.3f} "
                           f"checkpoint={best_real_path}")
                 print(f"  real_eval return={real_eval_mean:+.3f} "
-                      f"len={real_eval_length:.1f} actions={real_eval_actions}")
+                      f"len={real_eval_length:.1f} actions={real_eval_actions} "
+                      f"reward_head={{'true': {metrics['reward_true_events']}, "
+                      f"'pred': {metrics['reward_pred_events']}, "
+                      f"'miss': {metrics['reward_miss_rate']:.3f}, "
+                      f"'false_pos': {metrics['reward_false_positive_rate']:.3f}}}")
             elapsed = time.time() - t0
             print(f"iter={iteration} return={mean_return:+.3f} loss={loss:.4f} "
                   f"entropy={entropy:.3f} dream_steps={mean_dream_steps:.1f} "
@@ -695,6 +738,10 @@ def main():
                 "" if real_eval_mean == "" else f"{real_eval_mean:.6f}",
                 "" if real_eval_length == "" else f"{real_eval_length:.1f}",
                 real_eval_actions,
+                "" if real_eval_mean == "" else metrics["reward_true_events"],
+                "" if real_eval_mean == "" else metrics["reward_pred_events"],
+                "" if real_eval_mean == "" else f"{metrics['reward_miss_rate']:.6f}",
+                "" if real_eval_mean == "" else f"{metrics['reward_false_positive_rate']:.6f}",
                 f"{elapsed:.1f}",
             ])
             log_file.flush()
@@ -712,6 +759,11 @@ def main():
             if real_eval_mean != "":
                 payload["actor_dream/real_eval_mean_return"] = float(real_eval_mean)
                 payload["actor_dream/real_eval_mean_length"] = float(real_eval_length)
+                payload["actor_dream/real_eval_reward_true_events"] = int(metrics["reward_true_events"])
+                payload["actor_dream/real_eval_reward_pred_events"] = int(metrics["reward_pred_events"])
+                payload["actor_dream/real_eval_reward_sign_accuracy"] = float(metrics["reward_sign_accuracy"])
+                payload["actor_dream/real_eval_reward_miss_rate"] = float(metrics["reward_miss_rate"])
+                payload["actor_dream/real_eval_reward_false_positive_rate"] = float(metrics["reward_false_positive_rate"])
                 for action_name, count in real_eval_actions.items():
                     payload[f"actor_dream/real_eval_actions/{action_name}"] = int(count)
             wandb_log(payload)

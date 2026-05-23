@@ -42,6 +42,7 @@ full_cycle:
   # Do real-environment PPO collection/update for two policy cycles after
   # random warmup before letting dream PPO affect the policy.
   dream_start_steps: 30000
+  post_dream_real_steps: 10000
   phase_overrides:
     predictor_sls:
       reward_balanced_sampler: true
@@ -160,7 +161,7 @@ actor_dream:
   fsq_checkpoint: checkpoints_atari_pong_h200_realwarmup/fsq_best.pt
   predictor_checkpoint: checkpoints_atari_pong_h200_realwarmup_predictor_sls/predictor_best.pt
   pretrained: checkpoints_atari_pong_h200_realwarmup_actor_real/actor_real_latest.pt
-  n_iterations: 500
+  n_iterations: 250
   n_episodes: 256
   max_dream_steps: 20
   temperature: 0.0
