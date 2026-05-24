@@ -387,7 +387,8 @@ class WorldModel(nn.Module):
         return total_loss / max(n_pairs, 1)
 
     def forward(self, frame_tokens, actions, z_q_ste_context=None,
-                return_dense_logits=False, return_hidden=False):
+                return_dense_logits=False, return_hidden=False,
+                return_cpc_loss=False):
         """Forward pass: predict all target tokens from context.
 
         All target positions are replaced with mask_embed (no ground truth
@@ -414,6 +415,9 @@ class WorldModel(nn.Module):
             return_hidden: if True, also returns the hidden state at the last
                 context position. Atari reward/done heads use this for the
                 transition-level auxiliary predictions.
+            return_cpc_loss: if True and use_cpc=True, also returns the AC-CPC
+                loss. This lets auxiliary-head callers reuse the same backbone
+                pass instead of running a second forward.
 
         Returns:
             logits: (B, block_size, full_vocab_size) — predictions for the
@@ -495,14 +499,22 @@ class WorldModel(nn.Module):
             dense_logits = ctx_logits.view(
                 B, K, self.block_size, -1)  # (B, K, block_size, V)
 
+        cpc_loss = None
+        if self.use_cpc and (return_cpc_loss or not return_hidden):
+            cpc_loss = self._compute_cpc_loss(x, actions)
         if return_dense_logits and return_hidden:
+            if return_cpc_loss:
+                return logits, dense_logits, h_t, cpc_loss
             return logits, dense_logits, h_t
         if return_dense_logits:
+            if return_cpc_loss:
+                return logits, dense_logits, cpc_loss
             return logits, dense_logits
         if return_hidden:
+            if return_cpc_loss:
+                return logits, h_t, cpc_loss
             return logits, h_t
         if self.use_cpc:
-            cpc_loss = self._compute_cpc_loss(x, actions)
             return logits, cpc_loss
         return logits
 

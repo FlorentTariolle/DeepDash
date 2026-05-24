@@ -53,14 +53,27 @@ class AtariPredictorWithHeads(nn.Module):
 
     def forward(self, frame_tokens, actions, return_aux: bool = False,
                 return_reward_logits: bool = False,
-                return_event_logits: bool = False):
+                return_event_logits: bool = False,
+                return_cpc_loss: bool = False):
         if not return_aux:
-            return self.world_model(frame_tokens, actions)
-        logits, h_t = self.world_model(frame_tokens, actions, return_hidden=True)
+            outputs = self.world_model(
+                frame_tokens, actions, return_cpc_loss=return_cpc_loss)
+            if isinstance(outputs, tuple) and not return_cpc_loss:
+                return outputs[0]
+            return outputs
+        outputs = self.world_model(
+            frame_tokens, actions, return_hidden=True,
+            return_cpc_loss=return_cpc_loss)
+        if return_cpc_loss:
+            logits, h_t, cpc_loss = outputs
+        else:
+            logits, h_t = outputs
         reward_out = self.reward_head(h_t.float())
         reward = self._decode_reward(reward_out)
         done_logit = self.done_head(h_t.float()).squeeze(-1)
         outs = [logits, reward, done_logit]
+        if return_cpc_loss:
+            outs.append(cpc_loss)
         if return_reward_logits:
             outs.append(reward_out)
         if return_event_logits:

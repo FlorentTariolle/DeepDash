@@ -2,6 +2,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+from atari.predictor import AtariPredictorWithHeads
+from deepdash.world_model import WorldModel
 from scripts.train_atari_predictor import (
     AtariRolloutConsistencyDataset,
     compute_rollout_consistency_loss,
@@ -92,3 +94,49 @@ def test_rollout_consistency_loss_is_finite_and_backprops():
     assert all(torch.isfinite(value) for value in parts.values())
     loss.backward()
     assert any(param.grad is not None for param in model.parameters())
+
+
+def test_atari_predictor_can_return_aux_and_cpc_loss():
+    world_model = WorldModel(
+        vocab_size=11,
+        n_actions=4,
+        embed_dim=16,
+        n_heads=4,
+        n_layers=1,
+        context_frames=2,
+        dropout=0.0,
+        tokens_per_frame=4,
+        adaln=False,
+        use_status_token=False,
+        use_cpc=True,
+        cpc_dim=8,
+    )
+    predictor = AtariPredictorWithHeads(
+        world_model,
+        hidden_dim=16,
+        reward_head_type="twohot",
+        reward_bins=5,
+        reward_low=-1.0,
+        reward_high=1.0,
+        reward_event_head=True,
+    )
+    frame_tokens = torch.randint(0, 11, (3, 3, 4))
+    actions = torch.randint(0, 4, (3, 2))
+
+    logits, reward, done, cpc, reward_logits, event_logits = predictor(
+        frame_tokens,
+        actions,
+        return_aux=True,
+        return_reward_logits=True,
+        return_event_logits=True,
+        return_cpc_loss=True,
+    )
+
+    assert logits.shape == (3, 4, 11)
+    assert reward.shape == (3,)
+    assert done.shape == (3,)
+    assert reward_logits.shape == (3, 5)
+    assert event_logits.shape == (3, 3)
+    assert torch.isfinite(cpc)
+    plain_logits = predictor(frame_tokens, actions)
+    assert plain_logits.shape == (3, 4, 11)

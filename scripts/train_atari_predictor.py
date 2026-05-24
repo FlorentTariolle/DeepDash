@@ -560,6 +560,10 @@ def main():
     parser.add_argument("--rollout-consistency-event-zero-weight", type=float, default=None)
     parser.add_argument("--rollout-consistency-event-neg-weight", type=float, default=None)
     parser.add_argument("--rollout-consistency-event-pos-weight", type=float, default=None)
+    parser.add_argument("--use-cpc", action=argparse.BooleanOptionalAction,
+                        default=None)
+    parser.add_argument("--cpc-weight", type=float, default=None)
+    parser.add_argument("--cpc-dim", type=int, default=None)
     parser.add_argument("--compile-mode", choices=["none", "default", "reduce-overhead"], default=None)
     parser.add_argument("--amp-dtype", choices=["none", "float16", "bfloat16"], default=None)
     parser.add_argument("--val-interval", type=int, default=None)
@@ -655,6 +659,9 @@ def main():
         args.rollout_consistency_event_pos_weight
         if args.rollout_consistency_event_pos_weight is not None
         else args.reward_event_pos_weight)
+    args.use_cpc = bool(args.use_cpc) if args.use_cpc is not None else False
+    args.cpc_weight = args.cpc_weight if args.cpc_weight is not None else 0.0
+    args.cpc_dim = args.cpc_dim if args.cpc_dim is not None else 64
     args.compile_mode = args.compile_mode or "reduce-overhead"
     args.amp_dtype = args.amp_dtype or "float16"
     args.val_interval = args.val_interval if args.val_interval is not None else 1
@@ -767,7 +774,8 @@ def main():
         tokens_per_frame=int(model_cfg.get("tokens_per_frame", fsq.latent_grid ** 2)),
         adaln=bool(model_cfg.get("adaln", False)),
         use_status_token=False,
-        use_cpc=False,
+        use_cpc=bool(args.use_cpc),
+        cpc_dim=int(args.cpc_dim),
     ).to(device)
     predictor = AtariPredictorWithHeads(
         world_model,
@@ -791,6 +799,10 @@ def main():
               f"epsilon={args.label_smoothing}")
     else:
         print("CE baseline: no SLS target smoothing")
+    if args.use_cpc and args.cpc_weight > 0:
+        print(f"AC-CPC enabled: weight={args.cpc_weight} dim={args.cpc_dim}")
+    elif args.use_cpc:
+        print("AC-CPC module enabled but cpc_weight=0; loss is inactive")
 
     optimizer = torch.optim.AdamW(
         predictor.parameters(), lr=args.lr, weight_decay=args.weight_decay)
@@ -856,6 +868,7 @@ def main():
     if log_mode == "w":
         log.writerow(["epoch", "train_nll", "train_reward_loss",
                       "train_reward_event_loss", "train_done_loss",
+                      "train_cpc_loss",
                       "train_rollout_consistency_loss",
                       "train_rollout_consistency_token_loss",
                       "train_rollout_consistency_reward_loss",
@@ -877,6 +890,7 @@ def main():
         predictor.train()
         total_loss = total_tokens = total_reward_loss = 0
         total_reward_event_loss = total_done_loss = total_aux = 0
+        total_cpc_loss = total_cpc_batches = 0
         total_consistency_loss = total_consistency_batches = 0
         total_consistency_token_loss = total_consistency_reward_loss = 0
         total_consistency_event_loss = total_consistency_done_loss = 0
@@ -904,9 +918,19 @@ def main():
                     outputs = predictor(
                         frame_tokens, actions, return_aux=True,
                         return_reward_logits=True,
-                        return_event_logits=args.reward_event_head)
-                    logits, pred_reward, done_logit, reward_logits = outputs[:4]
-                    event_logits = outputs[4] if args.reward_event_head else None
+                        return_event_logits=args.reward_event_head,
+                        return_cpc_loss=bool(args.use_cpc and args.cpc_weight > 0))
+                    logits, pred_reward, done_logit = outputs[:3]
+                    out_idx = 3
+                    cpc_loss = (
+                        outputs[out_idx]
+                        if args.use_cpc and args.cpc_weight > 0
+                        else rewards.new_zeros(())
+                    )
+                    out_idx += int(bool(args.use_cpc and args.cpc_weight > 0))
+                    reward_logits = outputs[out_idx]
+                    out_idx += 1
+                    event_logits = outputs[out_idx] if args.reward_event_head else None
                     reward_targets = twohot_symlog_targets(
                         rewards, args.reward_twohot_bins,
                         args.reward_twohot_low, args.reward_twohot_high)
@@ -914,9 +938,17 @@ def main():
                 else:
                     outputs = predictor(
                         frame_tokens, actions, return_aux=True,
-                        return_event_logits=args.reward_event_head)
+                        return_event_logits=args.reward_event_head,
+                        return_cpc_loss=bool(args.use_cpc and args.cpc_weight > 0))
                     logits, pred_reward, done_logit = outputs[:3]
-                    event_logits = outputs[3] if args.reward_event_head else None
+                    out_idx = 3
+                    cpc_loss = (
+                        outputs[out_idx]
+                        if args.use_cpc and args.cpc_weight > 0
+                        else rewards.new_zeros(())
+                    )
+                    out_idx += int(bool(args.use_cpc and args.cpc_weight > 0))
+                    event_logits = outputs[out_idx] if args.reward_event_head else None
                     reward_loss = F.mse_loss(pred_reward.float(), rewards)
                 if event_logits is not None:
                     event_loss = F.cross_entropy(
@@ -930,7 +962,8 @@ def main():
                 done_loss = F.binary_cross_entropy_with_logits(done_logit.float(), dones)
                 loss = token_loss + float(args.reward_loss_weight) * reward_loss + \
                     float(args.reward_event_loss_weight) * event_loss + \
-                    float(args.done_loss_weight) * done_loss
+                    float(args.done_loss_weight) * done_loss + \
+                    float(args.cpc_weight) * cpc_loss
                 consistency_loss = rewards.new_zeros(())
                 consistency_parts = None
                 if consistency_iter is not None:
@@ -971,6 +1004,9 @@ def main():
             total_reward_event_loss += float(event_loss.item()) * rewards.numel()
             total_done_loss += float(done_loss.item()) * dones.numel()
             total_aux += rewards.numel()
+            if args.use_cpc and args.cpc_weight > 0:
+                total_cpc_loss += float(cpc_loss.item())
+                total_cpc_batches += 1
             if consistency_parts is not None:
                 total_consistency_loss += float(consistency_loss.item())
                 total_consistency_token_loss += float(consistency_parts["token"].item())
@@ -1010,6 +1046,7 @@ def main():
         train_reward_loss = total_reward_loss / max(total_aux, 1)
         train_reward_event_loss = total_reward_event_loss / max(total_aux, 1)
         train_done_loss = total_done_loss / max(total_aux, 1)
+        train_cpc_loss = total_cpc_loss / max(total_cpc_batches, 1)
         train_consistency_loss = total_consistency_loss / max(total_consistency_batches, 1)
         train_consistency_token_loss = (
             total_consistency_token_loss / max(total_consistency_batches, 1))
@@ -1025,6 +1062,7 @@ def main():
             f"train_nll={train_nll:.4f} rloss={train_reward_loss:.4f} "
             f"revent={train_reward_event_loss:.4f} "
             f"dloss={train_done_loss:.4f} "
+            f"cpc={train_cpc_loss:.4f} "
             f"rcons={train_consistency_loss:.4f} "
             f"rc_tok={train_consistency_token_loss:.4f} "
             f"rc_rew={train_consistency_reward_loss:.4f} "
@@ -1039,6 +1077,7 @@ def main():
             epoch, f"{train_nll:.6f}", f"{train_reward_loss:.6f}",
             f"{train_reward_event_loss:.6f}",
             f"{train_done_loss:.6f}",
+            f"{train_cpc_loss:.6f}",
             f"{train_consistency_loss:.6f}",
             f"{train_consistency_token_loss:.6f}",
             f"{train_consistency_reward_loss:.6f}",
@@ -1057,6 +1096,7 @@ def main():
             f"{args.config_section}/train_reward_loss": train_reward_loss,
             f"{args.config_section}/train_reward_event_loss": train_reward_event_loss,
             f"{args.config_section}/train_done_loss": train_done_loss,
+            f"{args.config_section}/train_cpc_loss": train_cpc_loss,
             f"{args.config_section}/train_rollout_consistency_loss": train_consistency_loss,
             f"{args.config_section}/train_rollout_consistency_token_loss": train_consistency_token_loss,
             f"{args.config_section}/train_rollout_consistency_reward_loss": train_consistency_reward_loss,
