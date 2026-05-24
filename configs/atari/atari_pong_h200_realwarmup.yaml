@@ -117,6 +117,9 @@ predictor:
   reward_rollout_zero_weight: 1.0
   reward_rollout_neg_weight: 20.0
   reward_rollout_pos_weight: 200.0
+  reward_rollout_event_ce_zero_weight: 1.0
+  reward_rollout_event_ce_neg_weight: 1.0
+  reward_rollout_event_ce_pos_weight: 1.0
   done_loss_weight: 1.0
   amp_dtype: bfloat16
   compile_mode: reduce-overhead
@@ -163,6 +166,9 @@ predictor_sls:
   reward_rollout_zero_weight: 1.0
   reward_rollout_neg_weight: 20.0
   reward_rollout_pos_weight: 200.0
+  reward_rollout_event_ce_zero_weight: 1.0
+  reward_rollout_event_ce_neg_weight: 1.0
+  reward_rollout_event_ce_pos_weight: 1.0
   done_loss_weight: 1.0
   amp_dtype: bfloat16
   compile_mode: reduce-overhead
