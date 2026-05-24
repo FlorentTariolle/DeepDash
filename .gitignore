@@ -42,3 +42,13 @@ checkpoints_atari_*/
 wandb/
 
 papers/
+
+# Checkpoints are produced and consumed on the cluster; keep them out of git.
+*.pt
+*.pth
+
+# Frozen DeepDash V7 showcase bundle kept in the repository.
+!checkpoints_v7/
+!checkpoints_v7/fsq_best.pt
+!checkpoints_v7/transformer_best.pt
+!checkpoints_v7/controller_ppo_best.pt
