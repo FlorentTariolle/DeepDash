@@ -447,6 +447,15 @@ def main():
             ctx_tokens, ctx_actions = reset_context(frame)
 
         if len(rollout["rewards"]) >= args.rollout_steps or real_steps >= args.n_steps:
+            if len(rollout["rewards"]) < args.rollout_steps and real_steps >= args.n_steps:
+                # Avoid a final short batch under torch.compile reduce-overhead:
+                # cudagraph capture expects the same rollout shape as prior PPO updates.
+                print(
+                    f"Skipping final partial PPO rollout len={len(rollout['rewards'])} "
+                    f"rollout_steps={args.rollout_steps}")
+                rollout = {"tokens": [], "h": [], "actions": [], "logp": [], "values": [],
+                           "rewards": [], "dones": []}
+                continue
             with torch.no_grad():
                 if rollout["dones"] and rollout["dones"][-1]:
                     bootstrap = torch.zeros((), device=device)
