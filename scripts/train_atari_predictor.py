@@ -146,34 +146,6 @@ class AtariRolloutDataset(Dataset):
         )
 
 
-class AtariRewardRolloutDataset(Dataset):
-    def __init__(self, starts: np.ndarray, tokens: torch.Tensor,
-                 actions: np.ndarray, rewards: np.ndarray,
-                 context_frames: int, horizon: int):
-        self.starts = np.asarray(starts, dtype=np.int64)
-        self.tokens = tokens
-        self.actions = torch.from_numpy(actions.astype(np.int64))
-        self.rewards = torch.from_numpy(rewards.astype(np.float32))
-        self.context_frames = int(context_frames)
-        self.horizon = int(horizon)
-
-    def __len__(self):
-        return len(self.starts)
-
-    def __getitem__(self, idx):
-        i = int(self.starts[idx])
-        k = self.context_frames
-        h = self.horizon
-        end = i + k
-        first_transition = end - 1
-        return (
-            self.tokens[i:end],
-            self.actions[i:end],
-            self.actions[first_transition:first_transition + h],
-            self.rewards[first_transition:first_transition + h],
-        )
-
-
 def split_starts(replay, context_frames: int, max_horizon: int,
                  val_ratio: float, seed: int):
     episode_ids = replay.episode_ids
@@ -218,50 +190,6 @@ def split_starts(replay, context_frames: int, max_horizon: int,
     return (*by_split(next_starts), *by_split(rollout_starts), len(eps), len(val_eps))
 
 
-def reward_rollout_starts(replay, context_frames: int, horizon: int,
-                          min_gap: int, max_gap: int):
-    """Starts for autoregressive reward calibration windows.
-
-    The first predicted transition for a start ``i`` uses action/reward index
-    ``i + K - 1``. Event windows are only included when their first reward
-    lands in the configured gap range; neutral windows have no reward event
-    inside the rollout horizon.
-    """
-    if horizon <= 0:
-        return np.empty(0, dtype=np.int64), np.empty(0, dtype=np.int64)
-    if min_gap < 0 or max_gap < min_gap:
-        raise ValueError("reward rollout gaps must satisfy 0 <= min_gap <= max_gap")
-    episode_ids = replay.episode_ids
-    dones = replay.dones
-    rewards = replay.rewards
-    n = len(episode_ids)
-    starts = []
-    signs = []
-    k = int(context_frames)
-    h = int(horizon)
-    for i in range(0, n - k - h + 1):
-        end = i + k
-        first_transition = end - 1
-        last_transition = first_transition + h
-        episode_id = episode_ids[i]
-        if not np.all(episode_ids[i:last_transition] == episode_id):
-            continue
-        if np.any(dones[i:last_transition]):
-            continue
-        window = rewards[first_transition:last_transition]
-        events = np.flatnonzero(window != 0)
-        if len(events):
-            gap = int(events[0])
-            if gap < min_gap or gap > max_gap:
-                continue
-            sign = 1 if window[gap] > 0 else -1
-        else:
-            sign = 0
-        starts.append(i)
-        signs.append(sign)
-    return np.asarray(starts, dtype=np.int64), np.asarray(signs, dtype=np.int64)
-
-
 def reward_balanced_sampler(starts: np.ndarray, rewards: np.ndarray,
                             context_frames: int, zero_weight: float,
                             neg_weight: float, pos_weight: float):
@@ -289,29 +217,6 @@ def reward_balanced_sampler(starts: np.ndarray, rewards: np.ndarray,
     )
 
 
-def reward_rollout_sampler(signs: np.ndarray, zero_weight: float,
-                           neg_weight: float, pos_weight: float):
-    if len(signs) == 0:
-        return None
-    weights = np.full(len(signs), float(zero_weight), dtype=np.float64)
-    weights[signs < 0] = float(neg_weight)
-    weights[signs > 0] = float(pos_weight)
-    counts = {
-        "neg": int((signs < 0).sum()),
-        "zero": int((signs == 0).sum()),
-        "pos": int((signs > 0).sum()),
-    }
-    print(
-        "Reward-rollout sampler: "
-        f"counts={counts} weights={{neg:{neg_weight}, zero:{zero_weight}, pos:{pos_weight}}}"
-    )
-    return WeightedRandomSampler(
-        torch.as_tensor(weights, dtype=torch.double),
-        num_samples=len(signs),
-        replacement=True,
-    )
-
-
 def reward_event_targets(rewards: torch.Tensor) -> torch.Tensor:
     """Class indices for Pong-style sparse rewards: 0=-1, 1=0, 2=+1."""
     return torch.where(
@@ -323,69 +228,6 @@ def reward_event_targets(rewards: torch.Tensor) -> torch.Tensor:
             torch.ones_like(rewards, dtype=torch.long),
         ),
     )
-
-
-def action_window_with_last_action(ctx_actions: torch.Tensor,
-                                   action: torch.Tensor) -> torch.Tensor:
-    """Align a chosen/recorded action with the last context frame."""
-    return torch.cat([ctx_actions[:, :-1], action.reshape(-1, 1).long()], dim=1)
-
-
-def compute_reward_rollout_loss(model, batch, device, vocab_size: int,
-                                reward_head_type: str, reward_bins: int,
-                                reward_low: float, reward_high: float,
-                                reward_event_head: bool,
-                                event_weights: torch.Tensor,
-                                amp_dtype):
-    ctx_tokens, ctx_actions, rollout_actions, rollout_rewards = batch
-    ctx_tokens = ctx_tokens.to(device)
-    ctx_actions = ctx_actions.to(device)
-    rollout_actions = rollout_actions.to(device)
-    rollout_rewards = rollout_rewards.to(device)
-    horizon = int(rollout_rewards.size(1))
-    reward_loss_sum = rollout_rewards.new_zeros(())
-    event_loss_sum = rollout_rewards.new_zeros(())
-
-    for step in range(horizon):
-        pred_actions = action_window_with_last_action(
-            ctx_actions, rollout_actions[:, step])
-        with torch.amp.autocast(
-            "cuda",
-            enabled=amp_dtype is not None and device.type == "cuda",
-            dtype=amp_dtype,
-        ):
-            if reward_head_type == "twohot":
-                outputs = model(
-                    ctx_tokens, pred_actions, return_aux=True,
-                    return_reward_logits=True,
-                    return_event_logits=reward_event_head)
-                logits, pred_reward, _, reward_logits = outputs[:4]
-                event_logits = outputs[4] if reward_event_head else None
-                reward_targets = twohot_symlog_targets(
-                    rollout_rewards[:, step], reward_bins, reward_low, reward_high)
-                reward_loss = twohot_cross_entropy(reward_logits, reward_targets)
-            else:
-                outputs = model(
-                    ctx_tokens, pred_actions, return_aux=True,
-                    return_event_logits=reward_event_head)
-                logits, pred_reward, _ = outputs[:3]
-                event_logits = outputs[3] if reward_event_head else None
-                reward_loss = F.mse_loss(pred_reward.float(), rollout_rewards[:, step])
-            if event_logits is not None:
-                event_loss = F.cross_entropy(
-                    event_logits.float(),
-                    reward_event_targets(rollout_rewards[:, step]),
-                    weight=event_weights)
-            else:
-                event_loss = rollout_rewards.new_zeros(())
-        reward_loss_sum = reward_loss_sum + reward_loss
-        event_loss_sum = event_loss_sum + event_loss
-        pred_next = logits[:, :, :vocab_size].argmax(dim=-1).detach()
-        ctx_tokens = torch.cat([ctx_tokens[:, 1:], pred_next.unsqueeze(1)], dim=1)
-        ctx_actions = torch.cat([pred_actions[:, 1:], pred_actions[:, -1:]], dim=1)
-
-    denom = max(horizon, 1)
-    return reward_loss_sum / denom, event_loss_sum / denom
 
 
 def compute_loss(logits, targets, vocab_size, soft_target_matrix,
@@ -557,16 +399,6 @@ def main():
     parser.add_argument("--reward-event-zero-weight", type=float, default=None)
     parser.add_argument("--reward-event-neg-weight", type=float, default=None)
     parser.add_argument("--reward-event-pos-weight", type=float, default=None)
-    parser.add_argument("--reward-rollout-loss-weight", type=float, default=None)
-    parser.add_argument("--reward-rollout-reward-loss-weight", type=float, default=None)
-    parser.add_argument("--reward-rollout-event-loss-weight", type=float, default=None)
-    parser.add_argument("--reward-rollout-batch-size", type=int, default=None)
-    parser.add_argument("--reward-rollout-horizon", type=int, default=None)
-    parser.add_argument("--reward-rollout-min-gap", type=int, default=None)
-    parser.add_argument("--reward-rollout-max-gap", type=int, default=None)
-    parser.add_argument("--reward-rollout-zero-weight", type=float, default=None)
-    parser.add_argument("--reward-rollout-neg-weight", type=float, default=None)
-    parser.add_argument("--reward-rollout-pos-weight", type=float, default=None)
     parser.add_argument("--reward-balanced-sampler", action="store_true",
                         help="Oversample windows by target reward sign.")
     parser.add_argument("--reward-sample-zero-weight", type=float, default=None)
@@ -616,29 +448,6 @@ def main():
         args.reward_event_neg_weight if args.reward_event_neg_weight is not None else 10.0)
     args.reward_event_pos_weight = (
         args.reward_event_pos_weight if args.reward_event_pos_weight is not None else 100.0)
-    args.reward_rollout_loss_weight = (
-        args.reward_rollout_loss_weight if args.reward_rollout_loss_weight is not None else 0.0)
-    args.reward_rollout_reward_loss_weight = (
-        args.reward_rollout_reward_loss_weight
-        if args.reward_rollout_reward_loss_weight is not None else 1.0)
-    args.reward_rollout_event_loss_weight = (
-        args.reward_rollout_event_loss_weight
-        if args.reward_rollout_event_loss_weight is not None else 1.0)
-    args.reward_rollout_batch_size = (
-        args.reward_rollout_batch_size if args.reward_rollout_batch_size is not None
-        else max(1, int(args.batch_size) // 4))
-    args.reward_rollout_horizon = (
-        args.reward_rollout_horizon if args.reward_rollout_horizon is not None else 0)
-    args.reward_rollout_min_gap = (
-        args.reward_rollout_min_gap if args.reward_rollout_min_gap is not None else 3)
-    args.reward_rollout_max_gap = (
-        args.reward_rollout_max_gap if args.reward_rollout_max_gap is not None else 13)
-    args.reward_rollout_zero_weight = (
-        args.reward_rollout_zero_weight if args.reward_rollout_zero_weight is not None else 1.0)
-    args.reward_rollout_neg_weight = (
-        args.reward_rollout_neg_weight if args.reward_rollout_neg_weight is not None else 10.0)
-    args.reward_rollout_pos_weight = (
-        args.reward_rollout_pos_weight if args.reward_rollout_pos_weight is not None else 100.0)
     args.reward_sample_zero_weight = (
         args.reward_sample_zero_weight if args.reward_sample_zero_weight is not None else 1.0)
     args.reward_sample_neg_weight = (
@@ -715,35 +524,6 @@ def main():
         shuffle=train_sampler is None, sampler=train_sampler, num_workers=0)
     val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False, num_workers=0)
     rollout_loader = DataLoader(rollout_ds, batch_size=args.batch_size, shuffle=False, num_workers=0)
-    reward_rollout_loader = None
-    if args.reward_rollout_loss_weight > 0 and args.reward_rollout_horizon > 0:
-        reward_starts, reward_signs = reward_rollout_starts(
-            replay, k, args.reward_rollout_horizon,
-            args.reward_rollout_min_gap, args.reward_rollout_max_gap)
-        if len(reward_starts) == 0:
-            print("Reward-rollout auxiliary disabled: no valid windows found")
-        else:
-            reward_rollout_ds = AtariRewardRolloutDataset(
-                reward_starts, tokens, replay.actions, replay.rewards,
-                k, args.reward_rollout_horizon)
-            reward_rollout_loader = DataLoader(
-                reward_rollout_ds,
-                batch_size=args.reward_rollout_batch_size,
-                sampler=reward_rollout_sampler(
-                    reward_signs,
-                    args.reward_rollout_zero_weight,
-                    args.reward_rollout_neg_weight,
-                    args.reward_rollout_pos_weight,
-                ),
-                shuffle=False,
-                num_workers=0,
-            )
-            print(
-                "Reward-rollout auxiliary enabled: "
-                f"windows={len(reward_starts)} horizon={args.reward_rollout_horizon} "
-                f"batch={args.reward_rollout_batch_size} "
-                f"gap=[{args.reward_rollout_min_gap},{args.reward_rollout_max_gap}]"
-            )
 
     levels = list(model_cfg.get("levels", [8, 5, 5, 5]))
     vocab_size = int(model_cfg.get("vocab_size", math.prod(levels)))
@@ -845,11 +625,7 @@ def main():
     log = csv.writer(log_file)
     if log_mode == "w":
         log.writerow(["epoch", "train_nll", "train_reward_loss",
-                      "train_reward_event_loss",
-                      "train_reward_rollout_loss",
-                      "train_reward_rollout_reward_loss",
-                      "train_reward_rollout_event_loss",
-                      "train_done_loss",
+                      "train_reward_event_loss", "train_done_loss",
                       "val_nll", "val_acc", "val_fsq_l1_dist",
                       "val_reward_mae", "val_done_acc",
                       *[f"rollout_{h}_l1" for h in horizons], "lr", "time_s"])
@@ -860,15 +636,12 @@ def main():
     )
 
     max_steps = int(args.steps_per_epoch or 0)
-    reward_rollout_iter = iter(reward_rollout_loader) if reward_rollout_loader is not None else None
     try:
       for epoch in range(start_epoch, args.epochs + 1):
         t0 = time.time()
         predictor.train()
         total_loss = total_tokens = total_reward_loss = 0
         total_reward_event_loss = total_done_loss = total_aux = 0
-        total_reward_rollout_loss = total_reward_rollout_reward_loss = 0.0
-        total_reward_rollout_event_loss = total_reward_rollout_aux = 0
         event_weights = torch.tensor(
             [args.reward_event_neg_weight, args.reward_event_zero_weight,
              args.reward_event_pos_weight],
@@ -912,25 +685,6 @@ def main():
                 loss = token_loss + float(args.reward_loss_weight) * reward_loss + \
                     float(args.reward_event_loss_weight) * event_loss + \
                     float(args.done_loss_weight) * done_loss
-                rollout_loss = rewards.new_zeros(())
-                rollout_reward_loss = rewards.new_zeros(())
-                rollout_event_loss = rewards.new_zeros(())
-                if reward_rollout_iter is not None:
-                    try:
-                        reward_rollout_batch = next(reward_rollout_iter)
-                    except StopIteration:
-                        reward_rollout_iter = iter(reward_rollout_loader)
-                        reward_rollout_batch = next(reward_rollout_iter)
-                    rollout_reward_loss, rollout_event_loss = compute_reward_rollout_loss(
-                        predictor, reward_rollout_batch, device, vocab_size,
-                        args.reward_head_type, args.reward_twohot_bins,
-                        args.reward_twohot_low, args.reward_twohot_high,
-                        args.reward_event_head, event_weights, amp_dtype)
-                    rollout_loss = (
-                        float(args.reward_rollout_reward_loss_weight) * rollout_reward_loss
-                        + float(args.reward_rollout_event_loss_weight) * rollout_event_loss
-                    )
-                    loss = loss + float(args.reward_rollout_loss_weight) * rollout_loss
             optimizer.zero_grad(set_to_none=True)
             if scaler.is_enabled():
                 scaler.scale(loss).backward()
@@ -945,12 +699,6 @@ def main():
             total_reward_event_loss += float(event_loss.item()) * rewards.numel()
             total_done_loss += float(done_loss.item()) * dones.numel()
             total_aux += rewards.numel()
-            if reward_rollout_iter is not None:
-                rollout_n = int(reward_rollout_batch[3].numel())
-                total_reward_rollout_loss += float(rollout_loss.item()) * rollout_n
-                total_reward_rollout_reward_loss += float(rollout_reward_loss.item()) * rollout_n
-                total_reward_rollout_event_loss += float(rollout_event_loss.item()) * rollout_n
-                total_reward_rollout_aux += rollout_n
             if max_steps and step >= max_steps:
                 break
         scheduler.step()
@@ -983,17 +731,11 @@ def main():
         train_reward_loss = total_reward_loss / max(total_aux, 1)
         train_reward_event_loss = total_reward_event_loss / max(total_aux, 1)
         train_done_loss = total_done_loss / max(total_aux, 1)
-        train_reward_rollout_loss = total_reward_rollout_loss / max(total_reward_rollout_aux, 1)
-        train_reward_rollout_reward_loss = (
-            total_reward_rollout_reward_loss / max(total_reward_rollout_aux, 1))
-        train_reward_rollout_event_loss = (
-            total_reward_rollout_event_loss / max(total_reward_rollout_aux, 1))
         lr = optimizer.param_groups[0]["lr"]
         print(
             f"Epoch {epoch:3d}/{args.epochs} ({dt:.1f}s) | "
             f"train_nll={train_nll:.4f} rloss={train_reward_loss:.4f} "
             f"revent={train_reward_event_loss:.4f} "
-            f"rroll={train_reward_rollout_loss:.4f} "
             f"dloss={train_done_loss:.4f} | val_nll={val_metrics['nll']:.4f} "
             f"acc={100*val_metrics['acc']:.2f}% fsq_l1={val_metrics['fsq_l1_dist']:.3f} "
             f"rmae={val_metrics['reward_mae']:.3f} done={100*val_metrics['done_acc']:.1f}% | "
@@ -1003,9 +745,6 @@ def main():
         log.writerow([
             epoch, f"{train_nll:.6f}", f"{train_reward_loss:.6f}",
             f"{train_reward_event_loss:.6f}",
-            f"{train_reward_rollout_loss:.6f}",
-            f"{train_reward_rollout_reward_loss:.6f}",
-            f"{train_reward_rollout_event_loss:.6f}",
             f"{train_done_loss:.6f}", f"{val_metrics['nll']:.6f}",
             f"{val_metrics['acc']:.6f}", f"{val_metrics['fsq_l1_dist']:.6f}",
             f"{val_metrics['reward_mae']:.6f}", f"{val_metrics['done_acc']:.6f}",
@@ -1018,9 +757,6 @@ def main():
             f"{args.config_section}/train_nll": train_nll,
             f"{args.config_section}/train_reward_loss": train_reward_loss,
             f"{args.config_section}/train_reward_event_loss": train_reward_event_loss,
-            f"{args.config_section}/train_reward_rollout_loss": train_reward_rollout_loss,
-            f"{args.config_section}/train_reward_rollout_reward_loss": train_reward_rollout_reward_loss,
-            f"{args.config_section}/train_reward_rollout_event_loss": train_reward_rollout_event_loss,
             f"{args.config_section}/train_done_loss": train_done_loss,
             f"{args.config_section}/lr": lr,
             f"{args.config_section}/time_s": dt,

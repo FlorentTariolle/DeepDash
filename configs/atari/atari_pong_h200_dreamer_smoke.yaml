@@ -99,16 +99,6 @@ predictor:
   reward_event_zero_weight: 1.0
   reward_event_neg_weight: 10.0
   reward_event_pos_weight: 200.0
-  reward_rollout_loss_weight: 1.0
-  reward_rollout_reward_loss_weight: 0.5
-  reward_rollout_event_loss_weight: 2.0
-  reward_rollout_batch_size: 32
-  reward_rollout_horizon: 15
-  reward_rollout_min_gap: 3
-  reward_rollout_max_gap: 13
-  reward_rollout_zero_weight: 1.0
-  reward_rollout_neg_weight: 20.0
-  reward_rollout_pos_weight: 200.0
   done_loss_weight: 1.0
   amp_dtype: bfloat16
   compile_mode: reduce-overhead
@@ -145,16 +135,6 @@ predictor_sls:
   reward_event_zero_weight: 1.0
   reward_event_neg_weight: 10.0
   reward_event_pos_weight: 200.0
-  reward_rollout_loss_weight: 1.0
-  reward_rollout_reward_loss_weight: 0.5
-  reward_rollout_event_loss_weight: 2.0
-  reward_rollout_batch_size: 32
-  reward_rollout_horizon: 15
-  reward_rollout_min_gap: 3
-  reward_rollout_max_gap: 13
-  reward_rollout_zero_weight: 1.0
-  reward_rollout_neg_weight: 20.0
-  reward_rollout_pos_weight: 200.0
   done_loss_weight: 1.0
   amp_dtype: bfloat16
   compile_mode: reduce-overhead
