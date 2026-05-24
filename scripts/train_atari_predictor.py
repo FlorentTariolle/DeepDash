@@ -567,9 +567,6 @@ def main():
     parser.add_argument("--reward-rollout-zero-weight", type=float, default=None)
     parser.add_argument("--reward-rollout-neg-weight", type=float, default=None)
     parser.add_argument("--reward-rollout-pos-weight", type=float, default=None)
-    parser.add_argument("--reward-rollout-event-ce-zero-weight", type=float, default=None)
-    parser.add_argument("--reward-rollout-event-ce-neg-weight", type=float, default=None)
-    parser.add_argument("--reward-rollout-event-ce-pos-weight", type=float, default=None)
     parser.add_argument("--reward-balanced-sampler", action="store_true",
                         help="Oversample windows by target reward sign.")
     parser.add_argument("--reward-sample-zero-weight", type=float, default=None)
@@ -642,15 +639,6 @@ def main():
         args.reward_rollout_neg_weight if args.reward_rollout_neg_weight is not None else 10.0)
     args.reward_rollout_pos_weight = (
         args.reward_rollout_pos_weight if args.reward_rollout_pos_weight is not None else 100.0)
-    args.reward_rollout_event_ce_zero_weight = (
-        args.reward_rollout_event_ce_zero_weight
-        if args.reward_rollout_event_ce_zero_weight is not None else 1.0)
-    args.reward_rollout_event_ce_neg_weight = (
-        args.reward_rollout_event_ce_neg_weight
-        if args.reward_rollout_event_ce_neg_weight is not None else 1.0)
-    args.reward_rollout_event_ce_pos_weight = (
-        args.reward_rollout_event_ce_pos_weight
-        if args.reward_rollout_event_ce_pos_weight is not None else 1.0)
     args.reward_sample_zero_weight = (
         args.reward_sample_zero_weight if args.reward_sample_zero_weight is not None else 1.0)
     args.reward_sample_neg_weight = (
@@ -888,13 +876,6 @@ def main():
             dtype=torch.float32,
             device=device,
         )
-        rollout_event_weights = torch.tensor(
-            [args.reward_rollout_event_ce_neg_weight,
-             args.reward_rollout_event_ce_zero_weight,
-             args.reward_rollout_event_ce_pos_weight],
-            dtype=torch.float32,
-            device=device,
-        )
         for step, (frame_tokens, actions, rewards, dones) in enumerate(train_loader, start=1):
             frame_tokens = frame_tokens.to(device)
             actions = actions.to(device)
@@ -945,7 +926,7 @@ def main():
                         reward_rollout_model, reward_rollout_batch, device, vocab_size,
                         args.reward_head_type, args.reward_twohot_bins,
                         args.reward_twohot_low, args.reward_twohot_high,
-                        args.reward_event_head, rollout_event_weights, amp_dtype)
+                        args.reward_event_head, event_weights, amp_dtype)
                     rollout_loss = (
                         float(args.reward_rollout_reward_loss_weight) * rollout_reward_loss
                         + float(args.reward_rollout_event_loss_weight) * rollout_event_loss
