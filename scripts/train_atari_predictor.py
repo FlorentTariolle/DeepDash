@@ -836,6 +836,7 @@ def main():
     elif args.resume:
         print(f"--resume requested but {latest_path} does not exist; starting fresh")
 
+    reward_rollout_model = predictor
     if args.compile_mode != "none":
         predictor = torch.compile(predictor, mode=args.compile_mode)
         print(f"torch.compile enabled (mode={args.compile_mode})")
@@ -922,7 +923,7 @@ def main():
                         reward_rollout_iter = iter(reward_rollout_loader)
                         reward_rollout_batch = next(reward_rollout_iter)
                     rollout_reward_loss, rollout_event_loss = compute_reward_rollout_loss(
-                        predictor, reward_rollout_batch, device, vocab_size,
+                        reward_rollout_model, reward_rollout_batch, device, vocab_size,
                         args.reward_head_type, args.reward_twohot_bins,
                         args.reward_twohot_low, args.reward_twohot_high,
                         args.reward_event_head, event_weights, amp_dtype)
