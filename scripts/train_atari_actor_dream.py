@@ -67,7 +67,7 @@ def reward_event_context_starts(replay, context_frames: int,
     for reward_idx in reward_indices:
         sign = 1 if rewards[reward_idx] > 0 else -1
         for gap in range(min_gap, max_gap + 1):
-            start = int(reward_idx) - context_frames - gap
+            start = int(reward_idx) - (context_frames - 1) - gap
             end = start + context_frames
             if start < 0 or end > len(episode_ids):
                 continue
@@ -192,6 +192,12 @@ def atari_event_reward(reward, threshold: float):
     )
 
 
+def action_window_with_last_action(ctx_actions: torch.Tensor,
+                                   action: torch.Tensor) -> torch.Tensor:
+    """Align a chosen action with the last context frame for next-step prediction."""
+    return torch.cat([ctx_actions[:, :-1], action.reshape(-1, 1).long()], dim=1)
+
+
 @torch.no_grad()
 def calibrate_dream_rewards(predictor, starts, tokens, actions, rewards,
                             context_frames: int, args, device, amp, rng):
@@ -206,24 +212,23 @@ def calibrate_dream_rewards(predictor, starts, tokens, actions, rewards,
     for start in idx:
         start = int(start)
         end = start + context_frames
-        if end + horizon >= len(actions):
+        if end - 1 + horizon > len(actions):
             continue
         ctx_tokens = tokens[start:end].unsqueeze(0).to(device)
         ctx_actions = torch.from_numpy(
             actions[start:end].astype(np.int64)
         ).unsqueeze(0).to(device)
-        true_window = rewards[end:end + horizon]
+        true_window = rewards[end - 1:end - 1 + horizon]
         true_events = np.flatnonzero(true_window != 0)
         true_gap = int(true_events[0]) if len(true_events) else None
         true_sign = int(np.sign(true_window[true_gap])) if true_gap is not None else 0
         pred_gap = None
         pred_sign = 0
         for step in range(horizon):
-            action = int(actions[end + step])
-            pred_actions = torch.cat([
-                ctx_actions[:, 1:],
-                torch.tensor([[action]], dtype=torch.long, device=device),
-            ], dim=1)
+            action_idx = end - 1 + step
+            action = int(actions[action_idx])
+            pred_actions = action_window_with_last_action(
+                ctx_actions, torch.tensor([action], dtype=torch.long, device=device))
             with torch.amp.autocast("cuda", enabled=amp is not None and device.type == "cuda", dtype=amp):
                 pred_tokens, pred_reward, _ = predictor.predict_next_frame(
                     ctx_tokens, pred_actions, temperature=args.temperature,
@@ -236,7 +241,7 @@ def calibrate_dream_rewards(predictor, starts, tokens, actions, rewards,
                 pred_gap = step
                 pred_sign = int(pred_event.item())
             ctx_tokens = torch.cat([ctx_tokens[:, 1:], pred_tokens.unsqueeze(1)], dim=1)
-            ctx_actions = pred_actions
+            ctx_actions = torch.cat([pred_actions[:, 1:], pred_actions[:, -1:]], dim=1)
         if true_gap is None:
             neutral_cases += 1
             false_positive += int(pred_gap is not None)
@@ -308,10 +313,8 @@ def evaluate_real_env(policy, fsq, predictor, atari_cfg, model_cfg, args, device
             action = int(logits.argmax(dim=-1).item())
             if action < 0 or action >= n_actions:
                 raise RuntimeError(f"policy emitted invalid action {action} for n_actions={n_actions}")
-            pred_actions = torch.cat([
-                ctx_a[:, 1:],
-                torch.tensor([[action]], dtype=torch.long, device=device),
-            ], dim=1)
+            pred_actions = action_window_with_last_action(
+                ctx_a, torch.tensor([action], dtype=torch.long, device=device))
             with torch.amp.autocast("cuda", enabled=amp is not None and device.type == "cuda", dtype=amp):
                 _, pred_reward, _ = predictor.predict_next_frame(
                     ctx_t, pred_actions, temperature=args.temperature,
@@ -384,7 +387,7 @@ def dream_rollout(predictor, policy, ctx_tokens, ctx_actions, args, device, amp,
             token_t = ctx_tokens[:, -1]
             action_t, logp_t, _, value_t = policy.act(token_t, h_t.float())
 
-            pred_actions = torch.cat([ctx_actions[:, 1:], action_t.unsqueeze(1)], dim=1)
+            pred_actions = action_window_with_last_action(ctx_actions, action_t)
             pred_tokens, reward, done_prob = predictor.predict_next_frame(
                 ctx_tokens, pred_actions, temperature=args.temperature,
                 return_aux=True)
@@ -414,7 +417,7 @@ def dream_rollout(predictor, policy, ctx_tokens, ctx_actions, args, device, amp,
 
         alive &= ~terminal
         ctx_tokens = torch.cat([ctx_tokens[:, 1:], pred_tokens.unsqueeze(1)], dim=1)
-        ctx_actions = pred_actions
+        ctx_actions = torch.cat([pred_actions[:, 1:], action_t.unsqueeze(1)], dim=1)
 
     if not rollout["rewards"]:
         return None, episode_return

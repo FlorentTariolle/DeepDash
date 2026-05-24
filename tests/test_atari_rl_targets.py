@@ -1,4 +1,5 @@
 import torch
+import torch._dynamo as dynamo
 
 from atari.rl_targets import (
     decode_twohot_symlog,
@@ -31,3 +32,12 @@ def test_decode_monotonic_and_clipped():
     assert decoded.min() >= -25.0
     assert decoded.max() <= 25.0
     assert torch.all(decoded[1:] >= decoded[:-1] - 1e-5)
+
+
+def test_decode_has_no_dynamo_graph_breaks():
+    def decode(logits):
+        return decode_twohot_symlog(logits, num_bins=255, low=-25.0, high=25.0)
+
+    report = dynamo.explain(decode)(torch.randn(4, 255))
+    assert report.graph_count == 1
+    assert report.graph_break_count == 0

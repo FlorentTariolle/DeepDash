@@ -21,9 +21,11 @@ def symexp(x: torch.Tensor) -> torch.Tensor:
 
 def symlog_support(num_bins: int = 255, low: float = -25.0,
                    high: float = 25.0, device=None, dtype=None) -> torch.Tensor:
+    low_symlog = math.copysign(math.log1p(abs(float(low))), float(low))
+    high_symlog = math.copysign(math.log1p(abs(float(high))), float(high))
     return torch.linspace(
-        float(symlog(torch.tensor(low)).item()),
-        float(symlog(torch.tensor(high)).item()),
+        low_symlog,
+        high_symlog,
         int(num_bins),
         device=device,
         dtype=dtype or torch.float32,
