@@ -224,13 +224,22 @@ class Orchestrator:
             # trained. Reuse policy weights, but reset PPO optimizer/iteration
             # state so dream PPO adapts to the refreshed world model.
             argv.extend(["--init-from", str(init_ckpt)])
+        global_best = self.run_dir / "actor_dream_global_best_real.pt"
+        global_best_meta = self.run_dir / "actor_dream_global_best_real.json"
+        argv.extend([
+            "--global-best-real-checkpoint", str(global_best),
+            "--global-best-real-metadata", str(global_best_meta),
+        ])
         argv.extend(self.phase_overrides("actor_dream"))
         self.run_cmd(phase, argv)
         ckpt_dir = Path(deep_get(self.cfg, "actor_dream.checkpoint_dir"))
+        global_best = self.run_dir / "actor_dream_global_best_real.pt"
         best_real = ckpt_dir / "actor_dream_best_real.pt"
         final_ckpt = ckpt_dir / "actor_dream_final.pt"
         real_eval_interval = int(deep_get(self.cfg, "actor_dream.real_eval_interval", 0) or 0)
-        if best_real.exists():
+        if global_best.exists():
+            selected = global_best
+        elif best_real.exists():
             selected = best_real
         elif real_eval_interval > 0:
             raise RuntimeError(

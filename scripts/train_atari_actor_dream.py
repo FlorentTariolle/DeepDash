@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import collections
 import csv
+import json
 import sys
 import time
 from pathlib import Path
@@ -471,6 +472,10 @@ def main():
     parser.add_argument("--real-eval-episodes", type=int, default=None)
     parser.add_argument("--real-eval-max-steps", type=int, default=None)
     parser.add_argument("--real-eval-seed", type=int, default=None)
+    parser.add_argument("--global-best-real-checkpoint", default=None,
+                        help="Checkpoint updated only when real eval beats the full run's prior best.")
+    parser.add_argument("--global-best-real-metadata", default=None,
+                        help="JSON metadata storing the full-run best real eval score.")
     parser.add_argument("--reward-calibration-samples", type=int, default=None)
     parser.add_argument("--reward-calibration-horizon", type=int, default=None)
     parser.add_argument("--wandb-project", default=None)
@@ -619,6 +624,17 @@ def main():
     latest = ckpt_dir / "actor_dream_latest.pt"
     best_real_path = ckpt_dir / "actor_dream_best_real.pt"
     best_real_metric = -float("inf")
+    global_best_real_path = Path(args.global_best_real_checkpoint) if args.global_best_real_checkpoint else (
+        ckpt_dir / "actor_dream_global_best_real.pt")
+    global_best_real_meta = Path(args.global_best_real_metadata) if args.global_best_real_metadata else (
+        ckpt_dir / "actor_dream_global_best_real.json")
+    global_best_real_metric = -float("inf")
+    if global_best_real_meta.exists():
+        try:
+            global_best_real_metric = float(json.loads(
+                global_best_real_meta.read_text()).get("mean_return", global_best_real_metric))
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            print(f"Could not read global best metadata at {global_best_real_meta}; resetting metric")
     optimizer = torch.optim.Adam(policy.parameters(), lr=args.lr)
     start_iter = 1
     if args.init_from:
@@ -632,6 +648,8 @@ def main():
         start_iter = int(ckpt["iteration"]) + 1
         rng.bit_generator.state = ckpt["rng_state"]
         best_real_metric = float(ckpt.get("best_real_mean_return", best_real_metric))
+        global_best_real_metric = float(ckpt.get(
+            "global_best_real_mean_return", global_best_real_metric))
         print(f"Resumed dream actor from iteration {start_iter - 1}")
 
     if args.compile_mode != "none" and device.type == "cuda":
@@ -722,6 +740,22 @@ def main():
                     torch.save(clean_policy, best_real_path)
                     print(f"  new best real eval: return={real_eval_mean:+.3f} "
                           f"checkpoint={best_real_path}")
+                if real_eval_mean > global_best_real_metric:
+                    global_best_real_metric = real_eval_mean
+                    global_best_real_path.parent.mkdir(parents=True, exist_ok=True)
+                    global_best_real_meta.parent.mkdir(parents=True, exist_ok=True)
+                    torch.save(clean_policy, global_best_real_path)
+                    global_best_real_meta.write_text(json.dumps({
+                        "mean_return": float(real_eval_mean),
+                        "iteration": int(iteration),
+                        "checkpoint": str(global_best_real_path),
+                        "local_checkpoint": str(best_real_path),
+                        "source_checkpoint_dir": str(ckpt_dir),
+                        "mean_length": float(real_eval_length),
+                        "action_counts": real_eval_actions,
+                    }, indent=2))
+                    print(f"  new global best real eval: return={real_eval_mean:+.3f} "
+                          f"checkpoint={global_best_real_path}")
                 print(f"  real_eval return={real_eval_mean:+.3f} "
                       f"len={real_eval_length:.1f} actions={real_eval_actions} "
                       f"reward_head={{'true': {metrics['reward_true_events']}, "
@@ -764,6 +798,7 @@ def main():
                 payload["actor_dream/real_eval_reward_sign_accuracy"] = float(metrics["reward_sign_accuracy"])
                 payload["actor_dream/real_eval_reward_miss_rate"] = float(metrics["reward_miss_rate"])
                 payload["actor_dream/real_eval_reward_false_positive_rate"] = float(metrics["reward_false_positive_rate"])
+                payload["actor_dream/global_best_real_mean_return"] = float(global_best_real_metric)
                 for action_name, count in real_eval_actions.items():
                     payload[f"actor_dream/real_eval_actions/{action_name}"] = int(count)
             wandb_log(payload)
@@ -774,6 +809,7 @@ def main():
                 "optimizer": optimizer.state_dict(),
                 "rng_state": rng.bit_generator.state,
                 "best_real_mean_return": best_real_metric,
+                "global_best_real_mean_return": global_best_real_metric,
             }, latest)
             if iteration == 1 or iteration % 10 == 0:
                 torch.save(clean_policy, ckpt_dir / "actor_dream_best_effort.pt")
