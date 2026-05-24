@@ -146,6 +146,35 @@ class AtariRolloutDataset(Dataset):
         )
 
 
+class AtariRolloutConsistencyDataset(Dataset):
+    def __init__(self, starts: np.ndarray, tokens: torch.Tensor,
+                 actions: np.ndarray, rewards: np.ndarray, dones: np.ndarray,
+                 context_frames: int, horizon: int):
+        self.starts = np.asarray(starts, dtype=np.int64)
+        self.tokens = tokens
+        self.actions = torch.from_numpy(actions.astype(np.int64))
+        self.rewards = torch.from_numpy(rewards.astype(np.float32))
+        self.dones = torch.from_numpy(dones.astype(np.float32))
+        self.context_frames = int(context_frames)
+        self.horizon = int(horizon)
+
+    def __len__(self):
+        return len(self.starts)
+
+    def __getitem__(self, idx):
+        i = int(self.starts[idx])
+        k = self.context_frames
+        h = self.horizon
+        reward_start = i + k - 1
+        return (
+            self.tokens[i:i + k],
+            self.actions[i:i + k + h],
+            self.tokens[i + k:i + k + h],
+            self.rewards[reward_start:reward_start + h],
+            self.dones[reward_start:reward_start + h],
+        )
+
+
 def split_starts(replay, context_frames: int, max_horizon: int,
                  val_ratio: float, seed: int):
     episode_ids = replay.episode_ids
@@ -217,6 +246,50 @@ def reward_balanced_sampler(starts: np.ndarray, rewards: np.ndarray,
     )
 
 
+def reward_window_balanced_sampler(starts: np.ndarray, rewards: np.ndarray,
+                                   context_frames: int, horizon: int,
+                                   min_gap: int, max_gap: int,
+                                   zero_weight: float, neg_weight: float,
+                                   pos_weight: float):
+    """Oversample rollout windows whose future contains a reward event."""
+    if len(starts) == 0:
+        return None
+    k = int(context_frames)
+    horizon = int(horizon)
+    min_gap = max(0, int(min_gap))
+    max_gap = min(horizon - 1, int(max_gap))
+    weights = np.full(len(starts), float(zero_weight), dtype=np.float64)
+    counts = {"neg": 0, "zero": 0, "pos": 0, "other_event": 0}
+    for row, start in enumerate(starts):
+        reward_start = int(start) + k - 1
+        window = rewards[reward_start:reward_start + horizon]
+        events = np.flatnonzero(window != 0)
+        if len(events) == 0:
+            counts["zero"] += 1
+            continue
+        event_gap = int(events[0])
+        event_sign = float(np.sign(window[event_gap]))
+        if min_gap <= event_gap <= max_gap:
+            if event_sign < 0:
+                weights[row] = float(neg_weight)
+                counts["neg"] += 1
+            else:
+                weights[row] = float(pos_weight)
+                counts["pos"] += 1
+        else:
+            counts["other_event"] += 1
+    print(
+        "Reward-window rollout sampler: "
+        f"counts={counts} gap=[{min_gap},{max_gap}] "
+        f"weights={{neg:{neg_weight}, zero:{zero_weight}, pos:{pos_weight}}}"
+    )
+    return WeightedRandomSampler(
+        torch.as_tensor(weights, dtype=torch.double),
+        num_samples=len(starts),
+        replacement=True,
+    )
+
+
 def reward_event_targets(rewards: torch.Tensor) -> torch.Tensor:
     """Class indices for Pong-style sparse rewards: 0=-1, 1=0, 2=+1."""
     return torch.where(
@@ -241,6 +314,74 @@ def compute_loss(logits, targets, vocab_size, soft_target_matrix,
         soft_target_matrix=soft_target_matrix,
         label_smoothing=label_smoothing if soft_target_matrix is None else 0.0,
     )
+
+
+def compute_rollout_consistency_loss(model, ctx_tokens, actions, target_tokens,
+                                     rewards, dones, vocab_size,
+                                     soft_target_matrix, label_smoothing,
+                                     focal_gamma, args, event_weights):
+    pred_context = ctx_tokens
+    k = int(model.context_frames)
+    horizon = int(target_tokens.size(1))
+    total_token = rewards.new_zeros(())
+    total_reward = rewards.new_zeros(())
+    total_event = rewards.new_zeros(())
+    total_done = rewards.new_zeros(())
+    for step in range(horizon):
+        act_window = actions[:, step:step + k]
+        if args.reward_head_type == "twohot":
+            outputs = model(
+                pred_context, act_window, return_aux=True,
+                return_reward_logits=True,
+                return_event_logits=args.reward_event_head)
+            logits, pred_reward, done_logit, reward_logits = outputs[:4]
+            event_logits = outputs[4] if args.reward_event_head else None
+            reward_targets = twohot_symlog_targets(
+                rewards[:, step], args.reward_twohot_bins,
+                args.reward_twohot_low, args.reward_twohot_high)
+            reward_loss = twohot_cross_entropy(reward_logits, reward_targets)
+        else:
+            outputs = model(
+                pred_context, act_window, return_aux=True,
+                return_event_logits=args.reward_event_head)
+            logits, pred_reward, done_logit = outputs[:3]
+            event_logits = outputs[3] if args.reward_event_head else None
+            reward_loss = F.mse_loss(pred_reward.float(), rewards[:, step])
+        token_loss = compute_loss(
+            logits, target_tokens[:, step], vocab_size,
+            soft_target_matrix, label_smoothing, focal_gamma)
+        if event_logits is not None:
+            event_loss = F.cross_entropy(
+                event_logits.float(), reward_event_targets(rewards[:, step]),
+                weight=event_weights)
+        else:
+            event_loss = rewards.new_zeros(())
+        done_loss = F.binary_cross_entropy_with_logits(
+            done_logit.float(), dones[:, step])
+        total_token = total_token + token_loss
+        total_reward = total_reward + reward_loss
+        total_event = total_event + event_loss
+        total_done = total_done + done_loss
+        pred_next = logits[:, :, :vocab_size].argmax(dim=-1).detach()
+        pred_context = torch.cat(
+            [pred_context[:, 1:], pred_next.unsqueeze(1)], dim=1)
+    inv_horizon = 1.0 / max(horizon, 1)
+    total_token = total_token * inv_horizon
+    total_reward = total_reward * inv_horizon
+    total_event = total_event * inv_horizon
+    total_done = total_done * inv_horizon
+    loss = (
+        float(args.rollout_consistency_token_loss_weight) * total_token
+        + float(args.rollout_consistency_reward_loss_weight) * total_reward
+        + float(args.rollout_consistency_event_loss_weight) * total_event
+        + float(args.rollout_consistency_done_loss_weight) * total_done
+    )
+    return loss, {
+        "token": total_token.detach(),
+        "reward": total_reward.detach(),
+        "event": total_event.detach(),
+        "done": total_done.detach(),
+    }
 
 
 def clean_state_dict(module: nn.Module):
@@ -404,6 +545,18 @@ def main():
     parser.add_argument("--reward-sample-zero-weight", type=float, default=None)
     parser.add_argument("--reward-sample-neg-weight", type=float, default=None)
     parser.add_argument("--reward-sample-pos-weight", type=float, default=None)
+    parser.add_argument("--rollout-consistency-loss-weight", type=float, default=None)
+    parser.add_argument("--rollout-consistency-token-loss-weight", type=float, default=None)
+    parser.add_argument("--rollout-consistency-reward-loss-weight", type=float, default=None)
+    parser.add_argument("--rollout-consistency-event-loss-weight", type=float, default=None)
+    parser.add_argument("--rollout-consistency-done-loss-weight", type=float, default=None)
+    parser.add_argument("--rollout-consistency-batch-size", type=int, default=None)
+    parser.add_argument("--rollout-consistency-horizon", type=int, default=None)
+    parser.add_argument("--rollout-consistency-min-gap", type=int, default=None)
+    parser.add_argument("--rollout-consistency-max-gap", type=int, default=None)
+    parser.add_argument("--rollout-consistency-zero-weight", type=float, default=None)
+    parser.add_argument("--rollout-consistency-neg-weight", type=float, default=None)
+    parser.add_argument("--rollout-consistency-pos-weight", type=float, default=None)
     parser.add_argument("--compile-mode", choices=["none", "default", "reduce-overhead"], default=None)
     parser.add_argument("--amp-dtype", choices=["none", "float16", "bfloat16"], default=None)
     parser.add_argument("--val-interval", type=int, default=None)
@@ -454,6 +607,39 @@ def main():
         args.reward_sample_neg_weight if args.reward_sample_neg_weight is not None else 10.0)
     args.reward_sample_pos_weight = (
         args.reward_sample_pos_weight if args.reward_sample_pos_weight is not None else 500.0)
+    args.rollout_consistency_loss_weight = (
+        args.rollout_consistency_loss_weight
+        if args.rollout_consistency_loss_weight is not None else 0.0)
+    args.rollout_consistency_token_loss_weight = (
+        args.rollout_consistency_token_loss_weight
+        if args.rollout_consistency_token_loss_weight is not None else 1.0)
+    args.rollout_consistency_reward_loss_weight = (
+        args.rollout_consistency_reward_loss_weight
+        if args.rollout_consistency_reward_loss_weight is not None else 1.0)
+    args.rollout_consistency_event_loss_weight = (
+        args.rollout_consistency_event_loss_weight
+        if args.rollout_consistency_event_loss_weight is not None else 1.0)
+    args.rollout_consistency_done_loss_weight = (
+        args.rollout_consistency_done_loss_weight
+        if args.rollout_consistency_done_loss_weight is not None else 0.25)
+    args.rollout_consistency_horizon = (
+        args.rollout_consistency_horizon if args.rollout_consistency_horizon is not None else 15)
+    args.rollout_consistency_batch_size = (
+        args.rollout_consistency_batch_size
+        if args.rollout_consistency_batch_size is not None else max(1, min(args.batch_size, 32)))
+    args.rollout_consistency_min_gap = (
+        args.rollout_consistency_min_gap if args.rollout_consistency_min_gap is not None else 3)
+    args.rollout_consistency_max_gap = (
+        args.rollout_consistency_max_gap if args.rollout_consistency_max_gap is not None else 13)
+    args.rollout_consistency_zero_weight = (
+        args.rollout_consistency_zero_weight
+        if args.rollout_consistency_zero_weight is not None else 1.0)
+    args.rollout_consistency_neg_weight = (
+        args.rollout_consistency_neg_weight
+        if args.rollout_consistency_neg_weight is not None else 20.0)
+    args.rollout_consistency_pos_weight = (
+        args.rollout_consistency_pos_weight
+        if args.rollout_consistency_pos_weight is not None else 200.0)
     args.compile_mode = args.compile_mode or "reduce-overhead"
     args.amp_dtype = args.amp_dtype or "float16"
     args.val_interval = args.val_interval if args.val_interval is not None else 1
@@ -478,7 +664,7 @@ def main():
     fsq_cfg = load_config(args.config, section="fsq")
     model_cfg = load_config(args.config, section="model")
     horizons = [int(h) for h in cfg.get("eval_horizons", [1, 5, 10, 15])]
-    max_horizon = max(horizons)
+    max_horizon = max(max(horizons), int(args.rollout_consistency_horizon))
 
     replay = load_replay_arrays(args.replay_dir)
     metadata = load_metadata(args.replay_dir) or {}
@@ -510,7 +696,35 @@ def main():
         train_starts, tokens, replay.actions, replay.rewards, replay.dones, k)
     val_ds = AtariTokenDataset(
         val_starts, tokens, replay.actions, replay.rewards, replay.dones, k)
-    rollout_ds = AtariRolloutDataset(rollout_val, tokens, replay.actions, replay.obs, k, max_horizon)
+    eval_max_horizon = max(horizons)
+    rollout_ds = AtariRolloutDataset(
+        rollout_val, tokens, replay.actions, replay.obs, k, eval_max_horizon)
+    consistency_loader = None
+    if args.rollout_consistency_loss_weight > 0:
+        consistency_ds = AtariRolloutConsistencyDataset(
+            rollout_train, tokens, replay.actions, replay.rewards, replay.dones,
+            k, int(args.rollout_consistency_horizon))
+        consistency_sampler = reward_window_balanced_sampler(
+            rollout_train, replay.rewards, k, int(args.rollout_consistency_horizon),
+            args.rollout_consistency_min_gap,
+            args.rollout_consistency_max_gap,
+            args.rollout_consistency_zero_weight,
+            args.rollout_consistency_neg_weight,
+            args.rollout_consistency_pos_weight,
+        )
+        consistency_loader = DataLoader(
+            consistency_ds,
+            batch_size=int(args.rollout_consistency_batch_size),
+            shuffle=consistency_sampler is None,
+            sampler=consistency_sampler,
+            num_workers=0,
+        )
+        print(
+            "Rollout consistency enabled: "
+            f"horizon={args.rollout_consistency_horizon} "
+            f"batch={args.rollout_consistency_batch_size} "
+            f"weight={args.rollout_consistency_loss_weight}"
+        )
     train_sampler = None
     if args.reward_balanced_sampler:
         train_sampler = reward_balanced_sampler(
@@ -616,6 +830,7 @@ def main():
     elif args.resume:
         print(f"--resume requested but {latest_path} does not exist; starting fresh")
 
+    rollout_consistency_model = predictor
     if args.compile_mode != "none":
         predictor = torch.compile(predictor, mode=args.compile_mode)
         print(f"torch.compile enabled (mode={args.compile_mode})")
@@ -626,6 +841,11 @@ def main():
     if log_mode == "w":
         log.writerow(["epoch", "train_nll", "train_reward_loss",
                       "train_reward_event_loss", "train_done_loss",
+                      "train_rollout_consistency_loss",
+                      "train_rollout_consistency_token_loss",
+                      "train_rollout_consistency_reward_loss",
+                      "train_rollout_consistency_event_loss",
+                      "train_rollout_consistency_done_loss",
                       "val_nll", "val_acc", "val_fsq_l1_dist",
                       "val_reward_mae", "val_done_acc",
                       *[f"rollout_{h}_l1" for h in horizons], "lr", "time_s"])
@@ -642,12 +862,16 @@ def main():
         predictor.train()
         total_loss = total_tokens = total_reward_loss = 0
         total_reward_event_loss = total_done_loss = total_aux = 0
+        total_consistency_loss = total_consistency_batches = 0
+        total_consistency_token_loss = total_consistency_reward_loss = 0
+        total_consistency_event_loss = total_consistency_done_loss = 0
         event_weights = torch.tensor(
             [args.reward_event_neg_weight, args.reward_event_zero_weight,
              args.reward_event_pos_weight],
             dtype=torch.float32,
             device=device,
         )
+        consistency_iter = iter(consistency_loader) if consistency_loader is not None else None
         for step, (frame_tokens, actions, rewards, dones) in enumerate(train_loader, start=1):
             frame_tokens = frame_tokens.to(device)
             actions = actions.to(device)
@@ -685,6 +909,32 @@ def main():
                 loss = token_loss + float(args.reward_loss_weight) * reward_loss + \
                     float(args.reward_event_loss_weight) * event_loss + \
                     float(args.done_loss_weight) * done_loss
+                consistency_loss = rewards.new_zeros(())
+                consistency_parts = None
+                if consistency_iter is not None:
+                    try:
+                        c_batch = next(consistency_iter)
+                    except StopIteration:
+                        consistency_iter = iter(consistency_loader)
+                        c_batch = next(consistency_iter)
+                    c_ctx, c_actions, c_targets, c_rewards, c_dones = [
+                        item.to(device) for item in c_batch
+                    ]
+                    consistency_loss, consistency_parts = compute_rollout_consistency_loss(
+                        rollout_consistency_model,
+                        c_ctx,
+                        c_actions,
+                        c_targets,
+                        c_rewards,
+                        c_dones,
+                        vocab_size,
+                        soft_target_matrix,
+                        args.label_smoothing,
+                        args.focal_gamma,
+                        args,
+                        event_weights,
+                    )
+                    loss = loss + float(args.rollout_consistency_loss_weight) * consistency_loss
             optimizer.zero_grad(set_to_none=True)
             if scaler.is_enabled():
                 scaler.scale(loss).backward()
@@ -699,6 +949,13 @@ def main():
             total_reward_event_loss += float(event_loss.item()) * rewards.numel()
             total_done_loss += float(done_loss.item()) * dones.numel()
             total_aux += rewards.numel()
+            if consistency_parts is not None:
+                total_consistency_loss += float(consistency_loss.item())
+                total_consistency_token_loss += float(consistency_parts["token"].item())
+                total_consistency_reward_loss += float(consistency_parts["reward"].item())
+                total_consistency_event_loss += float(consistency_parts["event"].item())
+                total_consistency_done_loss += float(consistency_parts["done"].item())
+                total_consistency_batches += 1
             if max_steps and step >= max_steps:
                 break
         scheduler.step()
@@ -713,7 +970,7 @@ def main():
             rollout_metrics = eval_rollouts(
                 predictor, fsq, rollout_loader, horizons, device, vocab_size,
                 amp_dtype, max_batches=args.max_rollout_batches)
-            headline = rollout_metrics[f"rollout_{max_horizon}_l1"]
+            headline = rollout_metrics[f"rollout_{max(horizons)}_l1"]
             if headline < best_rollout:
                 best_rollout = headline
                 torch.save(clean_state_dict(predictor), ckpt_dir / "predictor_best.pt")
@@ -731,12 +988,26 @@ def main():
         train_reward_loss = total_reward_loss / max(total_aux, 1)
         train_reward_event_loss = total_reward_event_loss / max(total_aux, 1)
         train_done_loss = total_done_loss / max(total_aux, 1)
+        train_consistency_loss = total_consistency_loss / max(total_consistency_batches, 1)
+        train_consistency_token_loss = (
+            total_consistency_token_loss / max(total_consistency_batches, 1))
+        train_consistency_reward_loss = (
+            total_consistency_reward_loss / max(total_consistency_batches, 1))
+        train_consistency_event_loss = (
+            total_consistency_event_loss / max(total_consistency_batches, 1))
+        train_consistency_done_loss = (
+            total_consistency_done_loss / max(total_consistency_batches, 1))
         lr = optimizer.param_groups[0]["lr"]
         print(
             f"Epoch {epoch:3d}/{args.epochs} ({dt:.1f}s) | "
             f"train_nll={train_nll:.4f} rloss={train_reward_loss:.4f} "
             f"revent={train_reward_event_loss:.4f} "
-            f"dloss={train_done_loss:.4f} | val_nll={val_metrics['nll']:.4f} "
+            f"dloss={train_done_loss:.4f} "
+            f"rcons={train_consistency_loss:.4f} "
+            f"rc_tok={train_consistency_token_loss:.4f} "
+            f"rc_rew={train_consistency_reward_loss:.4f} "
+            f"rc_evt={train_consistency_event_loss:.4f} | "
+            f"val_nll={val_metrics['nll']:.4f} "
             f"acc={100*val_metrics['acc']:.2f}% fsq_l1={val_metrics['fsq_l1_dist']:.3f} "
             f"rmae={val_metrics['reward_mae']:.3f} done={100*val_metrics['done_acc']:.1f}% | "
             + " ".join(f"r{h}={rollout_metrics[f'rollout_{h}_l1']:.4f}" for h in horizons)
@@ -745,7 +1016,13 @@ def main():
         log.writerow([
             epoch, f"{train_nll:.6f}", f"{train_reward_loss:.6f}",
             f"{train_reward_event_loss:.6f}",
-            f"{train_done_loss:.6f}", f"{val_metrics['nll']:.6f}",
+            f"{train_done_loss:.6f}",
+            f"{train_consistency_loss:.6f}",
+            f"{train_consistency_token_loss:.6f}",
+            f"{train_consistency_reward_loss:.6f}",
+            f"{train_consistency_event_loss:.6f}",
+            f"{train_consistency_done_loss:.6f}",
+            f"{val_metrics['nll']:.6f}",
             f"{val_metrics['acc']:.6f}", f"{val_metrics['fsq_l1_dist']:.6f}",
             f"{val_metrics['reward_mae']:.6f}", f"{val_metrics['done_acc']:.6f}",
             *[f"{rollout_metrics[f'rollout_{h}_l1']:.6f}" for h in horizons],
@@ -758,6 +1035,11 @@ def main():
             f"{args.config_section}/train_reward_loss": train_reward_loss,
             f"{args.config_section}/train_reward_event_loss": train_reward_event_loss,
             f"{args.config_section}/train_done_loss": train_done_loss,
+            f"{args.config_section}/train_rollout_consistency_loss": train_consistency_loss,
+            f"{args.config_section}/train_rollout_consistency_token_loss": train_consistency_token_loss,
+            f"{args.config_section}/train_rollout_consistency_reward_loss": train_consistency_reward_loss,
+            f"{args.config_section}/train_rollout_consistency_event_loss": train_consistency_event_loss,
+            f"{args.config_section}/train_rollout_consistency_done_loss": train_consistency_done_loss,
             f"{args.config_section}/lr": lr,
             f"{args.config_section}/time_s": dt,
         }
@@ -786,7 +1068,7 @@ def main():
       torch.save(clean_state_dict(predictor), ckpt_dir / "predictor_final.pt")
       torch.save(predictor_state_for_world_model(predictor),
                  ckpt_dir / "predictor_final_world_model.pt")
-      print(f"Training complete. Best rollout_{max_horizon}_l1={best_rollout:.6f}")
+      print(f"Training complete. Best rollout_{max(horizons)}_l1={best_rollout:.6f}")
       print(f"Checkpoints saved to {ckpt_dir}")
     finally:
       log_file.close()

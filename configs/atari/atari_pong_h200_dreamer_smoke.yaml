@@ -144,6 +144,55 @@ predictor_sls:
   seed: 42
   checkpoint_dir: checkpoints_atari_pong_h200_dreamer_smoke_predictor_sls
 
+predictor_sls_rollout_consistency:
+  replay_dir: data/atari/Pong_dreamer_smoke/replay
+  fsq_checkpoint: checkpoints_atari_pong_h200_dreamer_smoke_fsq/fsq_best.pt
+  tokenizer_config: configs/atari/atari_pong_h200_dreamer_smoke.yaml
+  init_from: checkpoints_atari_pong_h200_dreamer_smoke_predictor_sls/predictor_best.pt
+  n_actions: 6
+  epochs: 5
+  batch_size: 128
+  lr: 0.0001
+  lr_min: 0.000005
+  warmup_epochs: 1
+  weight_decay: 0.01
+  val_ratio: 0.2
+  eval_horizons: [1, 5, 10, 15]
+  label_smoothing: 0.1
+  fsq_kernel: gaussian
+  fsq_sigma: 0.9
+  focal_gamma: 0.0
+  reward_loss_weight: 1.0
+  reward_head_type: twohot
+  reward_twohot_bins: 255
+  reward_twohot_low: -25.0
+  reward_twohot_high: 25.0
+  reward_event_head: true
+  reward_event_loss_weight: 2.0
+  reward_event_zero_weight: 1.0
+  reward_event_neg_weight: 10.0
+  reward_event_pos_weight: 200.0
+  done_loss_weight: 1.0
+  rollout_consistency_loss_weight: 1.0
+  rollout_consistency_token_loss_weight: 1.0
+  rollout_consistency_reward_loss_weight: 1.0
+  rollout_consistency_event_loss_weight: 2.0
+  rollout_consistency_done_loss_weight: 0.25
+  rollout_consistency_batch_size: 24
+  rollout_consistency_horizon: 15
+  rollout_consistency_min_gap: 3
+  rollout_consistency_max_gap: 13
+  rollout_consistency_zero_weight: 1.0
+  rollout_consistency_neg_weight: 20.0
+  rollout_consistency_pos_weight: 200.0
+  amp_dtype: bfloat16
+  compile_mode: reduce-overhead
+  val_interval: 1
+  max_val_batches: 64
+  max_rollout_batches: 16
+  seed: 42
+  checkpoint_dir: checkpoints_atari_pong_h200_dreamer_smoke_predictor_sls_rollout_consistency
+
 actor_real:
   game: Pong
   replay_dir: data/atari/Pong_dreamer_smoke/replay
