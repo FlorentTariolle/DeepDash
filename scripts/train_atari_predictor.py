@@ -557,6 +557,9 @@ def main():
     parser.add_argument("--rollout-consistency-zero-weight", type=float, default=None)
     parser.add_argument("--rollout-consistency-neg-weight", type=float, default=None)
     parser.add_argument("--rollout-consistency-pos-weight", type=float, default=None)
+    parser.add_argument("--rollout-consistency-event-zero-weight", type=float, default=None)
+    parser.add_argument("--rollout-consistency-event-neg-weight", type=float, default=None)
+    parser.add_argument("--rollout-consistency-event-pos-weight", type=float, default=None)
     parser.add_argument("--compile-mode", choices=["none", "default", "reduce-overhead"], default=None)
     parser.add_argument("--amp-dtype", choices=["none", "float16", "bfloat16"], default=None)
     parser.add_argument("--val-interval", type=int, default=None)
@@ -640,6 +643,18 @@ def main():
     args.rollout_consistency_pos_weight = (
         args.rollout_consistency_pos_weight
         if args.rollout_consistency_pos_weight is not None else 200.0)
+    args.rollout_consistency_event_zero_weight = (
+        args.rollout_consistency_event_zero_weight
+        if args.rollout_consistency_event_zero_weight is not None
+        else args.reward_event_zero_weight)
+    args.rollout_consistency_event_neg_weight = (
+        args.rollout_consistency_event_neg_weight
+        if args.rollout_consistency_event_neg_weight is not None
+        else args.reward_event_neg_weight)
+    args.rollout_consistency_event_pos_weight = (
+        args.rollout_consistency_event_pos_weight
+        if args.rollout_consistency_event_pos_weight is not None
+        else args.reward_event_pos_weight)
     args.compile_mode = args.compile_mode or "reduce-overhead"
     args.amp_dtype = args.amp_dtype or "float16"
     args.val_interval = args.val_interval if args.val_interval is not None else 1
@@ -871,6 +886,13 @@ def main():
             dtype=torch.float32,
             device=device,
         )
+        consistency_event_weights = torch.tensor(
+            [args.rollout_consistency_event_neg_weight,
+             args.rollout_consistency_event_zero_weight,
+             args.rollout_consistency_event_pos_weight],
+            dtype=torch.float32,
+            device=device,
+        )
         consistency_iter = iter(consistency_loader) if consistency_loader is not None else None
         for step, (frame_tokens, actions, rewards, dones) in enumerate(train_loader, start=1):
             frame_tokens = frame_tokens.to(device)
@@ -932,7 +954,7 @@ def main():
                         args.label_smoothing,
                         args.focal_gamma,
                         args,
-                        event_weights,
+                        consistency_event_weights,
                     )
                     loss = loss + float(args.rollout_consistency_loss_weight) * consistency_loss
             optimizer.zero_grad(set_to_none=True)

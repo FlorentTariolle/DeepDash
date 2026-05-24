@@ -185,13 +185,16 @@ predictor_sls_rollout_consistency:
   rollout_consistency_zero_weight: 1.0
   rollout_consistency_neg_weight: 20.0
   rollout_consistency_pos_weight: 200.0
+  rollout_consistency_event_zero_weight: 1.0
+  rollout_consistency_event_neg_weight: 1.0
+  rollout_consistency_event_pos_weight: 1.0
   amp_dtype: bfloat16
   compile_mode: reduce-overhead
   val_interval: 1
   max_val_batches: 64
   max_rollout_batches: 16
   seed: 42
-  checkpoint_dir: checkpoints_atari_pong_h200_dreamer_smoke_predictor_sls_rollout_consistency
+  checkpoint_dir: checkpoints_atari_pong_h200_dreamer_smoke_predictor_sls_rollout_consistency_balanced
 
 actor_real:
   game: Pong
