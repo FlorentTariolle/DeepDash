@@ -1,10 +1,4 @@
-# Atari Pong H200 real-warmup controller rerun.
-#
-# First supercomputer target:
-#   1. collect 10K random-policy replay,
-#   2. train FSQ on cumulative replay,
-#   3. train frozen-token predictors for CE and SLS,
-#   4. use this as the base for the Atari actor/control loop.
+# Cheap H200 smoke for the Dreamer-style Atari controller upgrade.
 
 model:
   vocab_size: 1000
@@ -20,28 +14,26 @@ model:
 
 atari:
   game: Pong
-  out_dir: data/atari/Pong_realwarmup
-  replay_dir: data/atari/Pong_realwarmup/replay
+  out_dir: data/atari/Pong_dreamer_smoke
+  replay_dir: data/atari/Pong_dreamer_smoke/replay
   shard_size: 8192
   warmup_steps: 10000
   cycle_steps: 10000
-  total_budget_steps: 100000
+  total_budget_steps: 30000
   frame_skip: 4
   repeat_action_probability: 0.0
   seed: 42
 
 full_cycle:
-  run_dir: runs/atari_pong_h200_realwarmup_full
+  run_dir: runs/atari_pong_h200_dreamer_smoke
   wandb_project: sls-wm-atari
-  wandb_name: atari-pong-realwarmup-full
+  wandb_name: atari-pong-dreamer-smoke
   warmup_steps: 10000
   cycle_steps: 10000
-  total_budget_steps: 100000
-  final_mode: evaluation_clean  # evaluation_clean or max_performance
+  total_budget_steps: 30000
+  final_mode: evaluation_clean
   skip_real_actor_cycle0: true
-  # Do real-environment PPO collection/update for two policy cycles after
-  # random warmup before letting dream PPO affect the policy.
-  dream_start_steps: 30000
+  dream_start_steps: 20000
   post_dream_real_steps: 10000
   phase_overrides:
     predictor_sls:
@@ -53,14 +45,14 @@ full_cycle:
       entropy_coeff: 0.001
 
 fsq:
-  episodes_dir: data/atari/Pong_realwarmup/episodes
-  replay_dir: data/atari/Pong_realwarmup/replay
-  expert_episodes_dir: data/atari/Pong_realwarmup/_no_expert
+  episodes_dir: data/atari/Pong_dreamer_smoke/episodes
+  replay_dir: data/atari/Pong_dreamer_smoke/replay
+  expert_episodes_dir: data/atari/Pong_dreamer_smoke/_no_expert
   img_channels: 3
   norm_type: group
   levels: [8, 5, 5, 5]
   latent_grid: 16
-  epochs: 100
+  epochs: 20
   batch_size: 256
   lr: 0.0001
   lr_min: 0.000001
@@ -78,18 +70,18 @@ fsq:
   seed: 42
   amp_dtype: bfloat16
   compile_mode: reduce-overhead
-  checkpoint_dir: checkpoints_atari_pong_h200_realwarmup
+  checkpoint_dir: checkpoints_atari_pong_h200_dreamer_smoke_fsq
 
 predictor:
-  replay_dir: data/atari/Pong_realwarmup/replay
-  fsq_checkpoint: checkpoints_atari_pong_h200_realwarmup/fsq_best.pt
-  tokenizer_config: configs/atari/atari_pong_h200_realwarmup.yaml
+  replay_dir: data/atari/Pong_dreamer_smoke/replay
+  fsq_checkpoint: checkpoints_atari_pong_h200_dreamer_smoke_fsq/fsq_best.pt
+  tokenizer_config: configs/atari/atari_pong_h200_dreamer_smoke.yaml
   n_actions: 6
-  epochs: 20
+  epochs: 5
   batch_size: 128
   lr: 0.0002
   lr_min: 0.00001
-  warmup_epochs: 3
+  warmup_epochs: 1
   weight_decay: 0.01
   val_ratio: 0.2
   eval_horizons: [1, 5, 10, 15]
@@ -105,22 +97,22 @@ predictor:
   done_loss_weight: 1.0
   amp_dtype: bfloat16
   compile_mode: reduce-overhead
-  val_interval: 5
+  val_interval: 1
   max_val_batches: 64
   max_rollout_batches: 16
   seed: 42
-  checkpoint_dir: checkpoints_atari_pong_h200_realwarmup_predictor_ce
+  checkpoint_dir: checkpoints_atari_pong_h200_dreamer_smoke_predictor_ce
 
 predictor_sls:
-  replay_dir: data/atari/Pong_realwarmup/replay
-  fsq_checkpoint: checkpoints_atari_pong_h200_realwarmup/fsq_best.pt
-  tokenizer_config: configs/atari/atari_pong_h200_realwarmup.yaml
+  replay_dir: data/atari/Pong_dreamer_smoke/replay
+  fsq_checkpoint: checkpoints_atari_pong_h200_dreamer_smoke_fsq/fsq_best.pt
+  tokenizer_config: configs/atari/atari_pong_h200_dreamer_smoke.yaml
   n_actions: 6
-  epochs: 20
+  epochs: 5
   batch_size: 128
   lr: 0.0002
   lr_min: 0.00001
-  warmup_epochs: 3
+  warmup_epochs: 1
   weight_decay: 0.01
   val_ratio: 0.2
   eval_horizons: [1, 5, 10, 15]
@@ -136,18 +128,17 @@ predictor_sls:
   done_loss_weight: 1.0
   amp_dtype: bfloat16
   compile_mode: reduce-overhead
-  val_interval: 5
+  val_interval: 1
   max_val_batches: 64
   max_rollout_batches: 16
   seed: 42
-  checkpoint_dir: checkpoints_atari_pong_h200_realwarmup_predictor_sls
+  checkpoint_dir: checkpoints_atari_pong_h200_dreamer_smoke_predictor_sls
 
 actor_real:
   game: Pong
-  replay_dir: data/atari/Pong_realwarmup/replay
-  fsq_checkpoint: checkpoints_atari_pong_h200_realwarmup/fsq_best.pt
-  # Start with the SLS predictor for the policy path; override to CE for ablations.
-  predictor_checkpoint: checkpoints_atari_pong_h200_realwarmup_predictor_sls/predictor_best.pt
+  replay_dir: data/atari/Pong_dreamer_smoke/replay
+  fsq_checkpoint: checkpoints_atari_pong_h200_dreamer_smoke_fsq/fsq_best.pt
+  predictor_checkpoint: checkpoints_atari_pong_h200_dreamer_smoke_predictor_sls/predictor_best.pt
   n_steps: 10000
   rollout_steps: 256
   lr: 0.00025
@@ -168,16 +159,16 @@ actor_real:
   amp_dtype: bfloat16
   compile_mode: reduce-overhead
   seed: 42
-  checkpoint_dir: checkpoints_atari_pong_h200_realwarmup_actor_real
+  checkpoint_dir: checkpoints_atari_pong_h200_dreamer_smoke_actor_real
 
 actor_dream:
-  replay_dir: data/atari/Pong_realwarmup/replay
-  fsq_checkpoint: checkpoints_atari_pong_h200_realwarmup/fsq_best.pt
-  predictor_checkpoint: checkpoints_atari_pong_h200_realwarmup_predictor_sls/predictor_best.pt
-  pretrained: checkpoints_atari_pong_h200_realwarmup_actor_real/actor_real_latest.pt
-  n_iterations: 250
-  n_episodes: 256
+  replay_dir: data/atari/Pong_dreamer_smoke/replay
+  fsq_checkpoint: checkpoints_atari_pong_h200_dreamer_smoke_fsq/fsq_best.pt
+  predictor_checkpoint: checkpoints_atari_pong_h200_dreamer_smoke_predictor_sls/predictor_best.pt
+  pretrained: checkpoints_atari_pong_h200_dreamer_smoke_actor_real/actor_real_latest.pt
+  n_iterations: 1
   imagined_to_collected_ratio: 64
+  n_episodes: 256
   max_dream_steps: 15
   temperature: 0.0
   done_threshold: 0.5
@@ -220,11 +211,11 @@ actor_dream:
   amp_dtype: bfloat16
   compile_mode: reduce-overhead
   seed: 42
-  checkpoint_dir: checkpoints_atari_pong_h200_realwarmup_actor_dream
+  checkpoint_dir: checkpoints_atari_pong_h200_dreamer_smoke_actor_dream
 
 evaluation:
   n_episodes: 20
   max_steps_per_episode: 27000
-  actor_checkpoint: checkpoints_atari_pong_h200_realwarmup_actor_dream/actor_dream_best_real.pt
-  output: runs/atari_pong_h200_realwarmup_full/evaluation.json
+  actor_checkpoint: checkpoints_atari_pong_h200_dreamer_smoke_actor_dream/actor_dream_best_real.pt
+  output: runs/atari_pong_h200_dreamer_smoke/evaluation.json
   seed: 10042

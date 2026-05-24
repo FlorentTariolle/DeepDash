@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 import os
 import subprocess
 import sys
@@ -231,8 +232,33 @@ class Orchestrator:
             "--global-best-real-metadata", str(global_best_meta),
         ])
         argv.extend(self.phase_overrides("actor_dream"))
+        ratio = float(deep_get(self.cfg, "actor_dream.imagined_to_collected_ratio", 0.0) or 0.0)
+        if ratio > 0.0:
+            current_steps = replay_steps(self.replay_dir)
+            last_dream_steps = int(self.state.get("last_dream_replay_steps", self.warmup_steps))
+            new_real_steps = max(0, current_steps - last_dream_steps)
+            n_episodes = int(deep_get(self.cfg, "actor_dream.n_episodes", 32) or 32)
+            max_dream_steps = int(deep_get(self.cfg, "actor_dream.max_dream_steps", 15) or 15)
+            dynamic_iterations = max(
+                1,
+                int(math.ceil(new_real_steps * ratio / max(n_episodes * max_dream_steps, 1))),
+            )
+            argv.extend(["--n-iterations", str(dynamic_iterations)])
+            print(
+                "dynamic dream volume: "
+                f"new_real_steps={new_real_steps} ratio={ratio:.1f} "
+                f"n_episodes={n_episodes} horizon={max_dream_steps} "
+                f"iterations={dynamic_iterations}"
+            )
         self.run_cmd(phase, argv)
         ckpt_dir = Path(deep_get(self.cfg, "actor_dream.checkpoint_dir"))
+        gate_path = ckpt_dir / "actor_dream_gate.json"
+        gate = {}
+        if gate_path.exists():
+            try:
+                gate = json.loads(gate_path.read_text())
+            except json.JSONDecodeError:
+                gate = {}
         global_best = self.run_dir / "actor_dream_global_best_real.pt"
         best_real = ckpt_dir / "actor_dream_best_real.pt"
         final_ckpt = ckpt_dir / "actor_dream_final.pt"
@@ -247,6 +273,9 @@ class Orchestrator:
         else:
             selected = final_ckpt
         self.state["selected_checkpoints"]["actor_dream"] = str(selected)
+        self.state["last_dream_replay_steps"] = replay_steps(self.replay_dir)
+        if gate:
+            self.state["last_dream_gate"] = gate
         save_state(self.state_path, self.state)
         return True
 

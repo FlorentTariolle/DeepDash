@@ -29,9 +29,14 @@ from atari.replay_buffer import load_replay_arrays
 from deepdash.config import load_config
 from deepdash.fsq import FSQVAE
 from deepdash.world_model import WorldModel
-from scripts.train_atari_actor_real import encode_frame, load_clean_state, resize_frame_to_64
+from scripts.train_atari_actor_real import (
+    encode_frame,
+    load_clean_state,
+    load_policy_state_flexible,
+    resize_frame_to_64,
+)
 from scripts.train_atari_actor_dream import valid_context_starts
-from scripts.train_atari_predictor import encode_replay_obs
+from scripts.train_atari_predictor import encode_replay_obs, load_matching_state_dict
 
 gym.register_envs(ale_py)
 
@@ -160,14 +165,21 @@ def build_models(args, device):
         use_status_token=False,
         use_cpc=False,
     ).to(device)
-    predictor = AtariPredictorWithHeads(wm, hidden_dim=int(model_cfg.get("embed_dim", 384))).to(device)
+    predictor = AtariPredictorWithHeads(
+        wm,
+        hidden_dim=int(model_cfg.get("embed_dim", 384)),
+        reward_head_type=str(pred_cfg.get("reward_head_type", "scalar")),
+        reward_bins=int(pred_cfg.get("reward_twohot_bins", 255)),
+        reward_low=float(pred_cfg.get("reward_twohot_low", -25.0)),
+        reward_high=float(pred_cfg.get("reward_twohot_high", 25.0)),
+    ).to(device)
     state = load_clean_state(predictor_ckpt, device)
     if "world_model.head.weight" in state:
-        predictor.load_state_dict(state)
+        load_matching_state_dict(predictor, state, strict=False)
     else:
         wm_state, aux_state = split_atari_predictor_state(state)
         predictor.world_model.load_state_dict(wm_state)
-        predictor.load_state_dict(aux_state, strict=False)
+        load_matching_state_dict(predictor, aux_state, strict=False)
     predictor.eval()
 
     policy = None
@@ -177,8 +189,12 @@ def build_models(args, device):
             n_actions=n_actions,
             grid_size=int(fsq_cfg.get("latent_grid", 16)),
             h_dim=int(model_cfg.get("embed_dim", 384)),
+            value_head_type=str(actor_cfg.get("value_head_type", "scalar")),
+            value_bins=int(actor_cfg.get("value_twohot_bins", 255)),
+            value_low=float(actor_cfg.get("value_twohot_low", -25.0)),
+            value_high=float(actor_cfg.get("value_twohot_high", 25.0)),
         ).to(device)
-        policy.load_state_dict(load_clean_state(actor_ckpt, device))
+        load_policy_state_flexible(policy, actor_ckpt, device)
         policy.eval()
 
     return {

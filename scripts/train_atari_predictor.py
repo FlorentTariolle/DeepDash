@@ -27,6 +27,7 @@ from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from atari.predictor import AtariPredictorWithHeads, split_atari_predictor_state
+from atari.rl_targets import twohot_cross_entropy, twohot_symlog_targets
 from atari.replay_buffer import load_metadata, load_replay_arrays
 from deepdash.config import apply_config, load_config
 from deepdash.fsq import FSQVAE
@@ -255,11 +256,26 @@ def load_predictor_weights(predictor: nn.Module, path: str | Path,
     state = payload.get("model", payload) if isinstance(payload, dict) else payload
     state = {k.removeprefix("_orig_mod."): v for k, v in state.items()}
     if "world_model.head.weight" in state:
-        predictor.load_state_dict(state)
+        load_matching_state_dict(predictor, state)
     else:
         wm_state, aux_state = split_atari_predictor_state(state)
         predictor.world_model.load_state_dict(wm_state)
-        predictor.load_state_dict(aux_state, strict=False)
+        load_matching_state_dict(predictor, aux_state, strict=False)
+
+
+def load_matching_state_dict(module: nn.Module, state: dict, strict: bool = False):
+    """Load matching tensors and skip resized heads for scalar/two-hot upgrades."""
+    own = module.state_dict()
+    matched = {
+        k: v for k, v in state.items()
+        if k in own and tuple(own[k].shape) == tuple(v.shape)
+    }
+    skipped = sorted(k for k, v in state.items()
+                     if k in own and tuple(own[k].shape) != tuple(v.shape))
+    result = module.load_state_dict(matched, strict=strict)
+    if skipped:
+        print(f"Skipped resized predictor tensors: {skipped}")
+    return result
 
 
 @torch.no_grad()
@@ -360,6 +376,10 @@ def main():
     parser.add_argument("--focal-gamma", type=float, default=None)
     parser.add_argument("--reward-loss-weight", type=float, default=None)
     parser.add_argument("--done-loss-weight", type=float, default=None)
+    parser.add_argument("--reward-head-type", choices=["scalar", "twohot"], default=None)
+    parser.add_argument("--reward-twohot-bins", type=int, default=None)
+    parser.add_argument("--reward-twohot-low", type=float, default=None)
+    parser.add_argument("--reward-twohot-high", type=float, default=None)
     parser.add_argument("--reward-balanced-sampler", action="store_true",
                         help="Oversample windows by target reward sign.")
     parser.add_argument("--reward-sample-zero-weight", type=float, default=None)
@@ -396,6 +416,10 @@ def main():
     args.focal_gamma = args.focal_gamma if args.focal_gamma is not None else 0.0
     args.reward_loss_weight = args.reward_loss_weight if args.reward_loss_weight is not None else 1.0
     args.done_loss_weight = args.done_loss_weight if args.done_loss_weight is not None else 1.0
+    args.reward_head_type = args.reward_head_type or "scalar"
+    args.reward_twohot_bins = args.reward_twohot_bins or 255
+    args.reward_twohot_low = args.reward_twohot_low if args.reward_twohot_low is not None else -25.0
+    args.reward_twohot_high = args.reward_twohot_high if args.reward_twohot_high is not None else 25.0
     args.reward_sample_zero_weight = (
         args.reward_sample_zero_weight if args.reward_sample_zero_weight is not None else 1.0)
     args.reward_sample_neg_weight = (
@@ -489,7 +513,13 @@ def main():
         use_cpc=False,
     ).to(device)
     predictor = AtariPredictorWithHeads(
-        world_model, hidden_dim=int(model_cfg.get("embed_dim", 384))).to(device)
+        world_model,
+        hidden_dim=int(model_cfg.get("embed_dim", 384)),
+        reward_head_type=args.reward_head_type,
+        reward_bins=args.reward_twohot_bins,
+        reward_low=args.reward_twohot_low,
+        reward_high=args.reward_twohot_high,
+    ).to(device)
     print(f"Predictor parameters: {sum(p.numel() for p in predictor.parameters()):,}")
 
     full_vocab_size = vocab_size
@@ -536,11 +566,11 @@ def main():
         model_state = resume_state.get("model", resume_state)
         model_state = {k.removeprefix("_orig_mod."): v for k, v in model_state.items()}
         if "world_model.head.weight" in model_state:
-            predictor.load_state_dict(model_state)
+            load_matching_state_dict(predictor, model_state, strict=False)
         else:
             wm_state, aux_state = split_atari_predictor_state(model_state)
             predictor.world_model.load_state_dict(wm_state)
-            predictor.load_state_dict(aux_state, strict=False)
+            load_matching_state_dict(predictor, aux_state, strict=False)
         if "optimizer" in resume_state:
             try:
                 optimizer.load_state_dict(resume_state["optimizer"])
@@ -587,12 +617,21 @@ def main():
             rewards = rewards.to(device)
             dones = dones.to(device)
             with torch.amp.autocast("cuda", enabled=amp_dtype is not None, dtype=amp_dtype):
-                logits, pred_reward, done_logit = predictor(
-                    frame_tokens, actions, return_aux=True)
+                if args.reward_head_type == "twohot":
+                    logits, pred_reward, done_logit, reward_logits = predictor(
+                        frame_tokens, actions, return_aux=True,
+                        return_reward_logits=True)
+                    reward_targets = twohot_symlog_targets(
+                        rewards, args.reward_twohot_bins,
+                        args.reward_twohot_low, args.reward_twohot_high)
+                    reward_loss = twohot_cross_entropy(reward_logits, reward_targets)
+                else:
+                    logits, pred_reward, done_logit = predictor(
+                        frame_tokens, actions, return_aux=True)
+                    reward_loss = F.mse_loss(pred_reward.float(), rewards)
                 token_loss = compute_loss(
                     logits, frame_tokens[:, -1], vocab_size,
                     soft_target_matrix, args.label_smoothing, args.focal_gamma)
-                reward_loss = F.mse_loss(pred_reward.float(), rewards)
                 done_loss = F.binary_cross_entropy_with_logits(done_logit.float(), dones)
                 loss = token_loss + float(args.reward_loss_weight) * reward_loss + \
                     float(args.done_loss_weight) * done_loss

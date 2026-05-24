@@ -9,6 +9,7 @@ and appends the same transitions to replay.
 from __future__ import annotations
 
 import argparse
+import copy
 import csv
 import sys
 import time
@@ -25,7 +26,9 @@ import ale_py
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from atari.predictor import split_atari_predictor_state
+from atari.actor_critic import compute_lambda_returns, ppo_update as shared_ppo_update
 from atari.controller import AtariCNNPolicy
+from atari.rl_targets import PercentileNormalizer
 from atari.replay_buffer import ReplayShardWriter, load_metadata
 from deepdash.config import apply_config, load_config
 from deepdash.fsq import FSQVAE
@@ -61,6 +64,24 @@ def load_clean_state(path, device):
     if isinstance(state, dict) and "controller" in state:
         state = state["controller"]
     return {k.removeprefix("_orig_mod."): v for k, v in state.items()}
+
+
+def load_policy_state_flexible(policy, path, device):
+    state = load_clean_state(path, device)
+    load_module_state_matching(policy, state, label="actor")
+
+
+def load_module_state_matching(module, state, label="module"):
+    if state is None:
+        return
+    own = module.state_dict()
+    matched = {k: v for k, v in state.items()
+               if k in own and tuple(own[k].shape) == tuple(v.shape)}
+    skipped = sorted(k for k, v in state.items()
+                     if k in own and tuple(own[k].shape) != tuple(v.shape))
+    module.load_state_dict(matched, strict=False)
+    if skipped:
+        print(f"Skipped resized {label} tensors: {skipped}")
 
 
 def compute_gae(rewards, values, dones, bootstrap_value, gamma, lam, device):
@@ -141,6 +162,12 @@ def main():
     parser.add_argument("--entropy-coeff", type=float, default=None)
     parser.add_argument("--critic-coeff", type=float, default=None)
     parser.add_argument("--max-grad-norm", type=float, default=None)
+    parser.add_argument("--value-head-type", choices=["scalar", "twohot"], default=None)
+    parser.add_argument("--value-twohot-bins", type=int, default=None)
+    parser.add_argument("--value-twohot-low", type=float, default=None)
+    parser.add_argument("--value-twohot-high", type=float, default=None)
+    parser.add_argument("--return-normalizer-momentum", type=float, default=None)
+    parser.add_argument("--ema-decay", type=float, default=None)
     parser.add_argument("--amp-dtype", choices=["none", "float16", "bfloat16"], default=None)
     parser.add_argument("--compile-mode", choices=["none", "default", "reduce-overhead"], default=None)
     parser.add_argument("--wandb-project", default=None)
@@ -165,7 +192,7 @@ def main():
     args.n_steps = args.n_steps or int(atari_cfg.get("cycle_steps", 10000))
     args.rollout_steps = args.rollout_steps or 256
     args.lr = args.lr or 2.5e-4
-    args.gamma = args.gamma if args.gamma is not None else 0.99
+    args.gamma = args.gamma if args.gamma is not None else 0.997
     args.lam = args.lam if args.lam is not None else 0.95
     args.clip_eps = args.clip_eps if args.clip_eps is not None else 0.2
     args.ppo_epochs = args.ppo_epochs or 4
@@ -173,6 +200,13 @@ def main():
     args.entropy_coeff = args.entropy_coeff if args.entropy_coeff is not None else 0.01
     args.critic_coeff = args.critic_coeff if args.critic_coeff is not None else 0.5
     args.max_grad_norm = args.max_grad_norm if args.max_grad_norm is not None else 0.5
+    args.value_head_type = args.value_head_type or "scalar"
+    args.value_twohot_bins = args.value_twohot_bins or 255
+    args.value_twohot_low = args.value_twohot_low if args.value_twohot_low is not None else -25.0
+    args.value_twohot_high = args.value_twohot_high if args.value_twohot_high is not None else 25.0
+    args.return_normalizer_momentum = (
+        args.return_normalizer_momentum if args.return_normalizer_momentum is not None else 0.99)
+    args.ema_decay = args.ema_decay if args.ema_decay is not None else 0.995
     args.amp_dtype = args.amp_dtype or "bfloat16"
     args.compile_mode = args.compile_mode or "reduce-overhead"
     args.wandb_project = args.wandb_project or "sls-wm-atari"
@@ -251,15 +285,25 @@ def main():
         n_actions=n_actions,
         grid_size=int(fsq_cfg.get("latent_grid", 16)),
         h_dim=int(model_cfg.get("embed_dim", 384)),
+        value_head_type=args.value_head_type,
+        value_bins=args.value_twohot_bins,
+        value_low=args.value_twohot_low,
+        value_high=args.value_twohot_high,
     ).to(device)
+    ema_policy = copy.deepcopy(policy).eval() if args.ema_decay > 0 else None
     latest = ckpt_dir / "actor_real_latest.pt"
     start_real_step = int(writer.metadata.get("total_steps", 0))
     if args.init_from:
-        policy.load_state_dict(load_clean_state(args.init_from, device))
+        load_policy_state_flexible(policy, args.init_from, device)
+        if ema_policy is not None:
+            ema_policy.load_state_dict(policy.state_dict())
         print(f"Warm-started actor weights from {args.init_from}; reset optimizer/update state")
     elif args.resume and latest.exists():
         state = torch.load(latest, map_location=device, weights_only=False)
-        policy.load_state_dict(load_clean_state(latest, device))
+        load_policy_state_flexible(policy, latest, device)
+        if ema_policy is not None:
+            load_module_state_matching(
+                ema_policy, state.get("ema_controller", policy.state_dict()), label="ema_actor")
         start_real_step = int(state.get("real_steps", start_real_step))
         print(f"Resumed actor from {latest} real_steps={start_real_step}")
 
@@ -274,6 +318,9 @@ def main():
         state = torch.load(latest, map_location=device, weights_only=False)
         if "optimizer" in state:
             optimizer.load_state_dict(state["optimizer"])
+    return_normalizer = PercentileNormalizer(momentum=args.return_normalizer_momentum)
+    if args.resume and not args.init_from and latest.exists():
+        return_normalizer.load_state_dict(state.get("return_normalizer"))
 
     log_path = ckpt_dir / "actor_real_log.csv"
     log_file = open(log_path, "a" if (args.resume or args.init_from) and log_path.exists() else "w", newline="")
@@ -362,14 +409,21 @@ def main():
                     ctx_a = torch.tensor([ctx_actions[-k:]], dtype=torch.long, device=device)
                     h_t = predictor.encode_context(
                         ctx_t, ctx_a, return_action_hidden=False)
-                    _, bootstrap_value = policy(ctx_t[:, -1], h_t.float())
+                    value_policy = ema_policy if ema_policy is not None else policy
+                    _, bootstrap_value = value_policy(ctx_t[:, -1], h_t.float())
                     bootstrap = bootstrap_value.squeeze(0)
-            adv, returns = compute_gae(
-                rollout["rewards"], rollout["values"], rollout["dones"],
-                bootstrap, args.gamma, args.lam, device)
+            rewards_t = torch.tensor(rollout["rewards"], dtype=torch.float32, device=device)
+            values_t = torch.tensor(rollout["values"], dtype=torch.float32, device=device)
+            dones_t = torch.tensor(rollout["dones"], dtype=torch.float32, device=device)
+            adv, returns = compute_lambda_returns(
+                rewards_t, values_t, dones_t, bootstrap, args.gamma, args.lam)
             rollout["advantages"] = adv.cpu()
             rollout["returns"] = returns.cpu()
-            loss, entropy = ppo_update(policy, optimizer, rollout, args, device, amp)
+            ppo_metrics = shared_ppo_update(
+                policy, optimizer, rollout, args, device, amp,
+                normalizer=return_normalizer, ema_policy=ema_policy)
+            loss = ppo_metrics["loss"]
+            entropy = ppo_metrics["entropy"]
             update_idx += 1
             elapsed = time.time() - t0
             print(f"update={update_idx} real_steps={real_steps}/{args.n_steps} "
@@ -383,13 +437,20 @@ def main():
                 "actor_real/local_real_steps": real_steps,
                 "actor_real/episode_return_open": episode_return,
                 "actor_real/ppo_loss": loss,
+                "actor_real/actor_loss": ppo_metrics["actor_loss"],
+                "actor_real/value_loss": ppo_metrics["critic_loss"],
                 "actor_real/entropy": entropy,
+                "actor_real/value_mean": ppo_metrics["value_mean"],
+                "actor_real/return_normalizer_scale": return_normalizer.scale,
                 "actor_real/time_s": elapsed,
             })
             clean_policy = {k.removeprefix("_orig_mod."): v for k, v in policy.state_dict().items()}
             torch.save({
                 "controller": clean_policy,
                 "optimizer": optimizer.state_dict(),
+                "ema_controller": None if ema_policy is None else {
+                    k.removeprefix("_orig_mod."): v for k, v in ema_policy.state_dict().items()},
+                "return_normalizer": return_normalizer.state_dict(),
                 "real_steps": writer.total_steps,
                 "update": update_idx,
             }, latest)

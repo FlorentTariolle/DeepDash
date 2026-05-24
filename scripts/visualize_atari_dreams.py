@@ -35,6 +35,7 @@ from deepdash.config import apply_config, load_config
 from deepdash.fsq import FSQVAE
 from deepdash.world_model import WorldModel
 from scripts.train_atari_actor_real import load_clean_state
+from scripts.train_atari_predictor import load_matching_state_dict
 
 
 ACTION_NAMES = ["NOOP", "FIRE", "RIGHT", "LEFT", "RIGHTFIRE", "LEFTFIRE"]
@@ -287,16 +288,22 @@ def main():
         use_cpc=False,
     ).to(device)
     predictor = AtariPredictorWithHeads(
-        world_model, hidden_dim=int(model_cfg.get("embed_dim", 384))).to(device)
+        world_model,
+        hidden_dim=int(model_cfg.get("embed_dim", 384)),
+        reward_head_type=str(pred_cfg.get("reward_head_type", "scalar")),
+        reward_bins=int(pred_cfg.get("reward_twohot_bins", 255)),
+        reward_low=float(pred_cfg.get("reward_twohot_low", -25.0)),
+        reward_high=float(pred_cfg.get("reward_twohot_high", 25.0)),
+    ).to(device)
     state = load_clean_state(args.predictor_checkpoint, device)
     if "world_model.head.weight" in state:
-        load_result = predictor.load_state_dict(state)
+        load_result = load_matching_state_dict(predictor, state, strict=False)
         print(f"Loaded full predictor: missing={load_result.missing_keys} "
               f"unexpected={load_result.unexpected_keys}")
     else:
         wm_state, aux_state = split_atari_predictor_state(state)
         wm_result = predictor.world_model.load_state_dict(wm_state)
-        aux_result = predictor.load_state_dict(aux_state, strict=False)
+        aux_result = load_matching_state_dict(predictor, aux_state, strict=False)
         print(f"Loaded split predictor: wm_missing={wm_result.missing_keys} "
               f"wm_unexpected={wm_result.unexpected_keys}")
         print(f"Loaded aux heads: keys={sorted(aux_state)} "

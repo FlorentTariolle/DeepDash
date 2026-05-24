@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import collections
+import copy
 import csv
 import json
 import sys
@@ -19,15 +20,22 @@ import ale_py
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from atari.controller import AtariCNNPolicy
+from atari.actor_critic import compute_lambda_returns, ppo_update as shared_ppo_update
 from atari.predictor import AtariPredictorWithHeads, split_atari_predictor_state
+from atari.rl_targets import PercentileNormalizer
 from atari.replay_buffer import load_metadata, load_replay_arrays
 from deepdash.config import apply_config, load_config
 from deepdash.fsq import FSQVAE
 from deepdash.wandb_utils import wandb_finish, wandb_init, wandb_log
 from deepdash.world_model import WorldModel
-from scripts.train_atari_actor_real import amp_dtype, load_clean_state
+from scripts.train_atari_actor_real import (
+    amp_dtype,
+    load_clean_state,
+    load_module_state_matching,
+    load_policy_state_flexible,
+)
 from scripts.train_atari_actor_real import encode_frame, resize_frame_to_64
-from scripts.train_atari_predictor import encode_replay_obs
+from scripts.train_atari_predictor import encode_replay_obs, load_matching_state_dict
 
 gym.register_envs(ale_py)
 ACTION_NAMES = ["NOOP", "FIRE", "RIGHT", "LEFT", "RIGHTFIRE", "LEFTFIRE"]
@@ -356,7 +364,8 @@ def evaluate_real_env(policy, fsq, predictor, atari_cfg, model_cfg, args, device
 
 
 @torch.no_grad()
-def dream_rollout(predictor, policy, ctx_tokens, ctx_actions, args, device, amp):
+def dream_rollout(predictor, policy, ctx_tokens, ctx_actions, args, device, amp,
+                  value_policy=None):
     ctx_tokens = ctx_tokens.to(device)
     ctx_actions = ctx_actions.to(device)
     bsz = ctx_tokens.size(0)
@@ -413,7 +422,8 @@ def dream_rollout(predictor, policy, ctx_tokens, ctx_actions, args, device, amp)
     if alive.any():
         with torch.amp.autocast("cuda", enabled=amp is not None and device.type == "cuda", dtype=amp):
             h_t = predictor.encode_controller_context(ctx_tokens, ctx_actions)
-            _, bootstrap = policy(ctx_tokens[:, -1], h_t.float())
+            target_policy = value_policy if value_policy is not None else policy
+            _, bootstrap = target_policy(ctx_tokens[:, -1], h_t.float())
         bootstrap = bootstrap * alive.float()
     else:
         bootstrap = torch.zeros(bsz, device=device)
@@ -421,7 +431,7 @@ def dream_rollout(predictor, policy, ctx_tokens, ctx_actions, args, device, amp)
     rewards = torch.stack(rollout["rewards"]).to(device)
     values = torch.stack(rollout["values"]).to(device)
     dones = torch.stack(rollout["dones"]).to(device)
-    adv, returns = compute_gae_sequence(
+    adv, returns = compute_lambda_returns(
         rewards, values, dones, bootstrap, args.gamma, args.lam)
     rollout["advantages"] = adv.cpu()
     rollout["returns"] = returns.cpu()
@@ -467,6 +477,12 @@ def main():
     parser.add_argument("--entropy-coeff", type=float, default=None)
     parser.add_argument("--critic-coeff", type=float, default=None)
     parser.add_argument("--max-grad-norm", type=float, default=None)
+    parser.add_argument("--value-head-type", choices=["scalar", "twohot"], default=None)
+    parser.add_argument("--value-twohot-bins", type=int, default=None)
+    parser.add_argument("--value-twohot-low", type=float, default=None)
+    parser.add_argument("--value-twohot-high", type=float, default=None)
+    parser.add_argument("--return-normalizer-momentum", type=float, default=None)
+    parser.add_argument("--ema-decay", type=float, default=None)
     parser.add_argument("--real-eval-interval", type=int, default=None,
                         help="Run deterministic real-env eval every N dream PPO iterations; 0 disables.")
     parser.add_argument("--real-eval-episodes", type=int, default=None)
@@ -478,6 +494,13 @@ def main():
                         help="JSON metadata storing the full-run best real eval score.")
     parser.add_argument("--reward-calibration-samples", type=int, default=None)
     parser.add_argument("--reward-calibration-horizon", type=int, default=None)
+    parser.add_argument("--dream-gate", action=argparse.BooleanOptionalAction,
+                        default=None,
+                        help="Skip dream PPO when reward-head calibration is not reliable enough.")
+    parser.add_argument("--dream-gate-miss-rate", type=float, default=None)
+    parser.add_argument("--dream-gate-false-positive-rate", type=float, default=None)
+    parser.add_argument("--dream-gate-sign-accuracy", type=float, default=None)
+    parser.add_argument("--dream-gate-real-eval-episodes", type=int, default=None)
     parser.add_argument("--wandb-project", default=None)
     parser.add_argument("--wandb-name", default=None)
     parser.add_argument("--amp-dtype", choices=["none", "float16", "bfloat16"], default=None)
@@ -500,7 +523,7 @@ def main():
     args.predictor_checkpoint = args.predictor_checkpoint or str(Path(pred_cfg.get("checkpoint_dir")) / "predictor_best.pt")
     args.n_iterations = args.n_iterations or 1000
     args.n_episodes = args.n_episodes or 32
-    args.max_dream_steps = args.max_dream_steps or 50
+    args.max_dream_steps = args.max_dream_steps or 15
     args.temperature = args.temperature if args.temperature is not None else 0.0
     args.done_threshold = args.done_threshold if args.done_threshold is not None else 0.5
     args.reward_clip_min = args.reward_clip_min if args.reward_clip_min is not None else -1.0
@@ -520,7 +543,7 @@ def main():
     args.reward_done_epsilon = (
         args.reward_done_epsilon if args.reward_done_epsilon is not None else 0.5)
     args.lr = args.lr or 2.5e-4
-    args.gamma = args.gamma if args.gamma is not None else 0.99
+    args.gamma = args.gamma if args.gamma is not None else 0.997
     args.lam = args.lam if args.lam is not None else 0.95
     args.clip_eps = args.clip_eps if args.clip_eps is not None else 0.2
     args.ppo_epochs = args.ppo_epochs or 4
@@ -528,6 +551,13 @@ def main():
     args.entropy_coeff = args.entropy_coeff if args.entropy_coeff is not None else 0.01
     args.critic_coeff = args.critic_coeff if args.critic_coeff is not None else 0.5
     args.max_grad_norm = args.max_grad_norm if args.max_grad_norm is not None else 0.5
+    args.value_head_type = args.value_head_type or "scalar"
+    args.value_twohot_bins = args.value_twohot_bins or 255
+    args.value_twohot_low = args.value_twohot_low if args.value_twohot_low is not None else -25.0
+    args.value_twohot_high = args.value_twohot_high if args.value_twohot_high is not None else 25.0
+    args.return_normalizer_momentum = (
+        args.return_normalizer_momentum if args.return_normalizer_momentum is not None else 0.99)
+    args.ema_decay = args.ema_decay if args.ema_decay is not None else 0.995
     args.seed = args.seed if args.seed is not None else int(atari_cfg.get("seed", 42))
     args.real_eval_interval = args.real_eval_interval if args.real_eval_interval is not None else 0
     args.real_eval_episodes = args.real_eval_episodes or 5
@@ -538,6 +568,17 @@ def main():
     args.reward_calibration_horizon = (
         args.reward_calibration_horizon if args.reward_calibration_horizon is not None
         else args.max_dream_steps)
+    args.dream_gate = bool(args.dream_gate) if args.dream_gate is not None else False
+    args.dream_gate_miss_rate = (
+        args.dream_gate_miss_rate if args.dream_gate_miss_rate is not None else 0.25)
+    args.dream_gate_false_positive_rate = (
+        args.dream_gate_false_positive_rate
+        if args.dream_gate_false_positive_rate is not None else 0.20)
+    args.dream_gate_sign_accuracy = (
+        args.dream_gate_sign_accuracy if args.dream_gate_sign_accuracy is not None else 0.80)
+    args.dream_gate_real_eval_episodes = (
+        args.dream_gate_real_eval_episodes
+        if args.dream_gate_real_eval_episodes is not None else 0)
     args.wandb_project = args.wandb_project or "sls-wm-atari"
     args.wandb_name = args.wandb_name or f"actor-dream-{Path(args.checkpoint_dir).name}"
     args.amp_dtype = args.amp_dtype or "bfloat16"
@@ -597,14 +638,20 @@ def main():
         use_cpc=False,
     ).to(device)
     predictor = AtariPredictorWithHeads(
-        world_model, hidden_dim=int(model_cfg.get("embed_dim", 384))).to(device)
+        world_model,
+        hidden_dim=int(model_cfg.get("embed_dim", 384)),
+        reward_head_type=str(pred_cfg.get("reward_head_type", "scalar")),
+        reward_bins=int(pred_cfg.get("reward_twohot_bins", 255)),
+        reward_low=float(pred_cfg.get("reward_twohot_low", -25.0)),
+        reward_high=float(pred_cfg.get("reward_twohot_high", 25.0)),
+    ).to(device)
     state = load_clean_state(args.predictor_checkpoint, device)
     if "world_model.head.weight" in state:
-        predictor.load_state_dict(state)
+        load_matching_state_dict(predictor, state, strict=False)
     else:
         wm_state, aux_state = split_atari_predictor_state(state)
         predictor.world_model.load_state_dict(wm_state)
-        predictor.load_state_dict(aux_state, strict=False)
+        load_matching_state_dict(predictor, aux_state, strict=False)
     predictor.eval()
     for p in predictor.parameters():
         p.requires_grad_(False)
@@ -614,9 +661,16 @@ def main():
         n_actions=n_actions,
         grid_size=int(fsq_cfg.get("latent_grid", 16)),
         h_dim=int(model_cfg.get("embed_dim", 384)),
+        value_head_type=args.value_head_type,
+        value_bins=args.value_twohot_bins,
+        value_low=args.value_twohot_low,
+        value_high=args.value_twohot_high,
     ).to(device)
+    ema_policy = copy.deepcopy(policy).eval() if args.ema_decay > 0 else None
     if args.pretrained and Path(args.pretrained).exists():
-        policy.load_state_dict(load_clean_state(args.pretrained, device))
+        load_policy_state_flexible(policy, args.pretrained, device)
+        if ema_policy is not None:
+            ema_policy.load_state_dict(policy.state_dict())
         print(f"Loaded pretrained actor from {args.pretrained}")
     elif args.pretrained:
         print(f"Pretrained actor not found at {args.pretrained}; starting cold")
@@ -638,12 +692,18 @@ def main():
     optimizer = torch.optim.Adam(policy.parameters(), lr=args.lr)
     start_iter = 1
     if args.init_from:
-        policy.load_state_dict(load_clean_state(args.init_from, device))
+        load_policy_state_flexible(policy, args.init_from, device)
+        if ema_policy is not None:
+            ema_policy.load_state_dict(policy.state_dict())
         print(f"Warm-started dream actor weights from {args.init_from}; "
               "reset optimizer/iteration/RNG state")
     elif args.resume and latest.exists():
         ckpt = torch.load(latest, map_location=device, weights_only=False)
-        policy.load_state_dict(ckpt["controller"])
+        load_module_state_matching(policy, ckpt["controller"], label="actor")
+        if ema_policy is not None:
+            load_module_state_matching(
+                ema_policy, ckpt.get("ema_controller", policy.state_dict()),
+                label="ema_actor")
         optimizer.load_state_dict(ckpt["optimizer"])
         start_iter = int(ckpt["iteration"]) + 1
         rng.bit_generator.state = ckpt["rng_state"]
@@ -651,6 +711,9 @@ def main():
         global_best_real_metric = float(ckpt.get(
             "global_best_real_mean_return", global_best_real_metric))
         print(f"Resumed dream actor from iteration {start_iter - 1}")
+    return_normalizer = PercentileNormalizer(momentum=args.return_normalizer_momentum)
+    if args.resume and latest.exists() and not args.init_from:
+        return_normalizer.load_state_dict(ckpt.get("return_normalizer"))
 
     if args.compile_mode != "none" and device.type == "cuda":
         predictor = torch.compile(predictor, mode=args.compile_mode)
@@ -690,6 +753,56 @@ def main():
             "actor_dream/reward_calibration_mean_timing_error": calibration["mean_timing_error"],
         })
 
+    if args.dream_gate:
+        gate = {
+            "dream_ran": True,
+            "passed": True,
+            "reason": "",
+            "thresholds": {
+                "miss_rate": args.dream_gate_miss_rate,
+                "false_positive_rate": args.dream_gate_false_positive_rate,
+                "sign_accuracy": args.dream_gate_sign_accuracy,
+            },
+            "replay_reward_calibration": calibration,
+            "actor_action_reward_calibration": None,
+        }
+        if calibration is None or calibration.get("event_cases", 0) <= 0:
+            gate.update({"passed": False, "reason": "missing_replay_reward_calibration"})
+        elif (
+            calibration["miss_rate"] > args.dream_gate_miss_rate
+            or calibration["false_positive_rate"] > args.dream_gate_false_positive_rate
+            or calibration["sign_accuracy"] < args.dream_gate_sign_accuracy
+        ):
+            gate.update({"passed": False, "reason": "replay_reward_calibration_failed"})
+        if gate["passed"] and args.dream_gate_real_eval_episodes > 0:
+            prev_episodes = args.real_eval_episodes
+            args.real_eval_episodes = int(args.dream_gate_real_eval_episodes)
+            metrics = evaluate_real_env(
+                policy, fsq, predictor, atari_cfg, model_cfg, args, device, amp,
+                n_actions)
+            args.real_eval_episodes = prev_episodes
+            gate["actor_action_reward_calibration"] = metrics
+            if (
+                metrics["reward_miss_rate"] > args.dream_gate_miss_rate
+                or metrics["reward_false_positive_rate"] > args.dream_gate_false_positive_rate
+                or metrics["reward_sign_accuracy"] < args.dream_gate_sign_accuracy
+            ):
+                gate.update({"passed": False, "reason": "actor_action_reward_calibration_failed"})
+        gate_path = ckpt_dir / "actor_dream_gate.json"
+        gate_path.write_text(json.dumps(gate, indent=2))
+        wandb_log({
+            "actor_dream/gate_passed": int(gate["passed"]),
+            "actor_dream/gate_dream_ran": int(gate["dream_ran"] and gate["passed"]),
+        })
+        if not gate["passed"]:
+            clean_policy = {k.removeprefix("_orig_mod."): v for k, v in policy.state_dict().items()}
+            torch.save(clean_policy, ckpt_dir / "actor_dream_final.pt")
+            gate["dream_ran"] = False
+            gate_path.write_text(json.dumps(gate, indent=2))
+            print(f"Dream gate failed ({gate['reason']}); skipped dream PPO. path={gate_path}")
+            wandb_finish()
+            return
+
     log_path = ckpt_dir / "actor_dream_log.csv"
     log_file = open(log_path, "a" if (args.resume or args.init_from) and log_path.exists() else "w", newline="")
     log = csv.writer(log_file)
@@ -713,12 +826,17 @@ def main():
                 args.reward_event_sample_frac, args.reward_event_pos_frac)
             policy.eval()
             rollout, dream_return = dream_rollout(
-                predictor, policy, ctx_tokens, ctx_actions, args, device, amp)
+                predictor, policy, ctx_tokens, ctx_actions, args, device, amp,
+                value_policy=ema_policy)
             if rollout is None:
                 print(f"iteration={iteration} empty dream rollout; skipping")
                 continue
             policy.train()
-            loss, entropy = ppo_update(policy, optimizer, rollout, args, device, amp)
+            ppo_metrics = shared_ppo_update(
+                policy, optimizer, rollout, args, device, amp,
+                normalizer=return_normalizer, ema_policy=ema_policy)
+            loss = ppo_metrics["loss"]
+            entropy = ppo_metrics["entropy"]
             mean_return = float(dream_return.mean().item())
             mean_dream_steps = float(rollout.get("mean_active_steps", 0.0))
             clean_policy = {k.removeprefix("_orig_mod."): v for k, v in policy.state_dict().items()}
@@ -784,6 +902,10 @@ def main():
                 "actor_dream/mean_return": mean_return,
                 "actor_dream/mean_dream_steps": mean_dream_steps,
                 "actor_dream/ppo_loss": loss,
+                "actor_dream/actor_loss": ppo_metrics["actor_loss"],
+                "actor_dream/value_loss": ppo_metrics["critic_loss"],
+                "actor_dream/value_mean": ppo_metrics["value_mean"],
+                "actor_dream/return_normalizer_scale": return_normalizer.scale,
                 "actor_dream/entropy": entropy,
                 "actor_dream/sample_pos": sample_info["pos"],
                 "actor_dream/sample_neg": sample_info["neg"],
@@ -807,6 +929,9 @@ def main():
                 "iteration": iteration,
                 "controller": clean_policy,
                 "optimizer": optimizer.state_dict(),
+                "ema_controller": None if ema_policy is None else {
+                    k.removeprefix("_orig_mod."): v for k, v in ema_policy.state_dict().items()},
+                "return_normalizer": return_normalizer.state_dict(),
                 "rng_state": rng.bit_generator.state,
                 "best_real_mean_return": best_real_metric,
                 "global_best_real_mean_return": global_best_real_metric,

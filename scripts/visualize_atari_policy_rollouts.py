@@ -45,6 +45,7 @@ def load_models(args, device):
     fsq_cfg = load_config(args.config, section="fsq")
     model_cfg = load_config(args.config, section="model")
     pred_cfg = load_config(args.config, section="predictor_sls")
+    actor_cfg = load_config(args.config, section="actor_dream")
 
     fsq = FSQVAE(
         img_channels=int(fsq_cfg.get("img_channels", 3)),
@@ -86,6 +87,10 @@ def load_models(args, device):
         n_actions=n_actions,
         grid_size=int(fsq_cfg.get("latent_grid", 16)),
         h_dim=int(model_cfg.get("embed_dim", 384)),
+        value_head_type=str(actor_cfg.get("value_head_type", "scalar")),
+        value_bins=int(actor_cfg.get("value_twohot_bins", 255)),
+        value_low=float(actor_cfg.get("value_twohot_low", -25.0)),
+        value_high=float(actor_cfg.get("value_twohot_high", 25.0)),
     ).to(device)
     policy.load_state_dict(load_clean_state(args.actor_checkpoint, device))
     policy.eval()

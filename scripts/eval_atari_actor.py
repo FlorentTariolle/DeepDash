@@ -98,6 +98,10 @@ def main():
         n_actions=n_actions,
         grid_size=int(fsq_cfg.get("latent_grid", 16)),
         h_dim=int(model_cfg.get("embed_dim", 384)),
+        value_head_type=str(actor_cfg.get("value_head_type", "scalar")),
+        value_bins=int(actor_cfg.get("value_twohot_bins", 255)),
+        value_low=float(actor_cfg.get("value_twohot_low", -25.0)),
+        value_high=float(actor_cfg.get("value_twohot_high", 25.0)),
     ).to(device)
     policy.load_state_dict(load_clean_state(args.actor_checkpoint, device))
     policy.eval()

@@ -6,15 +6,23 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from atari.rl_targets import decode_twohot_symlog
+
 
 class AtariCNNPolicy(nn.Module):
     """CNN actor-critic on FSQ token grid plus frozen world-model hidden state."""
 
     def __init__(self, vocab_size=1000, n_actions=6, grid_size=16,
-                 token_embed_dim=16, h_dim=384, temporal_dim=64):
+                 token_embed_dim=16, h_dim=384, temporal_dim=64,
+                 value_head_type: str = "scalar", value_bins: int = 255,
+                 value_low: float = -25.0, value_high: float = 25.0):
         super().__init__()
         self.grid_size = int(grid_size)
         self.n_actions = int(n_actions)
+        self.value_head_type = str(value_head_type)
+        self.value_bins = int(value_bins)
+        self.value_low = float(value_low)
+        self.value_high = float(value_high)
 
         self.token_embed = nn.Embedding(vocab_size, token_embed_dim)
         self.conv1 = nn.Conv2d(token_embed_dim, 32, 3, stride=2, padding=1)
@@ -28,7 +36,8 @@ class AtariCNNPolicy(nn.Module):
 
         head_input = cnn_out + temporal_dim
         self.actor = nn.Linear(head_input, n_actions)
-        self.critic = nn.Linear(head_input, 1)
+        critic_out = self.value_bins if self.value_head_type == "twohot" else 1
+        self.critic = nn.Linear(head_input, critic_out)
         self._init_weights()
 
     def _init_weights(self):
@@ -52,10 +61,19 @@ class AtariCNNPolicy(nn.Module):
         h = F.silu(self.h_proj(self.h_norm(h_t)))
         return torch.cat([x, h], dim=1)
 
-    def forward(self, token_ids, h_t):
+    def forward(self, token_ids, h_t, return_value_logits: bool = False):
         features = self._encode(token_ids, h_t)
         logits = self.actor(features)
-        value = self.critic(features).squeeze(-1)
+        value_out = self.critic(features)
+        if self.value_head_type == "twohot":
+            value = decode_twohot_symlog(
+                value_out, self.value_bins, self.value_low, self.value_high)
+            if return_value_logits:
+                return logits, value, value_out
+        else:
+            value = value_out.squeeze(-1)
+            if return_value_logits:
+                return logits, value, None
         return logits, value
 
     def act(self, token_ids, h_t):
