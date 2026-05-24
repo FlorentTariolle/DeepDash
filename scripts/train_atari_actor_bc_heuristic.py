@@ -105,7 +105,10 @@ def heuristic_action(obs: np.ndarray, up_action: int, down_action: int,
     if paddle_y is None:
         return int(last_action)
     target_y = 106.0 if ball_y is None else ball_y
-    return int(up_action if target_y < paddle_y - 2.0 else down_action)
+    error = target_y - paddle_y
+    if abs(error) <= 8.0:
+        return int(down_action if last_action == up_action else up_action)
+    return int(up_action if error < 0.0 else down_action)
 
 
 def eval_heuristic(game: str, atari_cfg: dict, up_action: int, down_action: int,
