@@ -40,29 +40,62 @@ gym.register_envs(ale_py)
 ACTION_NAMES = ["NOOP", "FIRE", "RIGHT", "LEFT", "RIGHTFIRE", "LEFTFIRE"]
 
 
+def largest_component_center(mask: np.ndarray, *, min_area: int, max_area: int,
+                             x_min: int = 0, x_max: int | None = None,
+                             y_min: int = 0, y_max: int | None = None) -> tuple[float, float] | None:
+    """Return center of the largest connected component matching bounds."""
+    h, w = mask.shape
+    x_max = w if x_max is None else int(x_max)
+    y_max = h if y_max is None else int(y_max)
+    bounded = mask.copy()
+    bounded[:y_min] = False
+    bounded[y_max:] = False
+    bounded[:, :x_min] = False
+    bounded[:, x_max:] = False
+
+    seen = np.zeros_like(bounded, dtype=bool)
+    best: tuple[int, float, float] | None = None
+    for y0, x0 in zip(*np.nonzero(bounded)):
+        if seen[y0, x0]:
+            continue
+        stack = [(int(y0), int(x0))]
+        seen[y0, x0] = True
+        xs, ys = [], []
+        while stack:
+            y, x = stack.pop()
+            ys.append(y)
+            xs.append(x)
+            for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                yy, xx = y + dy, x + dx
+                if (
+                    0 <= yy < h and 0 <= xx < w
+                    and bounded[yy, xx]
+                    and not seen[yy, xx]
+                ):
+                    seen[yy, xx] = True
+                    stack.append((yy, xx))
+        area = len(xs)
+        if min_area <= area <= max_area and (best is None or area > best[0]):
+            best = (area, float(np.mean(xs)), float(np.mean(ys)))
+    if best is None:
+        return None
+    return best[1], best[2]
+
+
 def pong_objects(obs: np.ndarray) -> tuple[float | None, float | None]:
     """Return approximate (ball_y, player_paddle_y) from raw ALE RGB Pong."""
-    # Ignore scoreboard and borders. Pong objects are among the brightest
-    # pixels; the right paddle lives near the right side of the playfield.
-    gray = obs.astype(np.float32).mean(axis=2)
-    play = gray.copy()
-    play[:34] = 0
-    play[195:] = 0
-    mask = play > 180
+    # ALE Pong uses stable object colors in RGB. Brightness thresholding sees
+    # the large score/playfield bands, so track only the tiny ball component
+    # and the right-side green paddle component.
+    ball_mask = (obs == np.array([236, 236, 236], dtype=np.uint8)).all(axis=2)
+    paddle_mask = (obs == np.array([92, 186, 92], dtype=np.uint8)).all(axis=2)
 
-    ys, xs = np.nonzero(mask & (np.indices(gray.shape)[1] > 125))
-    paddle_y = float(np.median(ys)) if ys.size else None
-
-    ball_mask = mask.copy()
-    ball_mask[:, :10] = False
-    ball_mask[:, 130:] = False
-    bys, bxs = np.nonzero(ball_mask)
-    if bys.size:
-        # Score digits can leak through; take the brightest connected-ish
-        # small object by preferring pixels away from the very top.
-        ball_y = float(np.median(bys))
-    else:
-        ball_y = None
+    ball = largest_component_center(
+        ball_mask, min_area=4, max_area=32, x_min=8, x_max=152, y_min=34, y_max=194)
+    paddle = largest_component_center(
+        paddle_mask, min_area=32, max_area=96, x_min=128, y_min=34, y_max=194)
+    ball_y = None if ball is None else ball[1]
+    paddle_y = None if paddle is None else paddle[1]
     return ball_y, paddle_y
 
 
