@@ -263,10 +263,13 @@ class Orchestrator:
         best_real = ckpt_dir / "actor_dream_best_real.pt"
         final_ckpt = ckpt_dir / "actor_dream_final.pt"
         real_eval_interval = int(deep_get(self.cfg, "actor_dream.real_eval_interval", 0) or 0)
+        gate_skipped_dream = gate.get("dream_ran") is False
         if global_best.exists():
             selected = global_best
         elif best_real.exists():
             selected = best_real
+        elif gate_skipped_dream and final_ckpt.exists():
+            selected = final_ckpt
         elif real_eval_interval > 0:
             raise RuntimeError(
                 f"actor_dream real eval was enabled but {best_real} was not produced")
