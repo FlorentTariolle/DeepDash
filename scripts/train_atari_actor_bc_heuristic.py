@@ -93,7 +93,7 @@ def pong_objects(obs: np.ndarray) -> tuple[float | None, float | None]:
     ball = largest_component_center(
         ball_mask, min_area=4, max_area=32, x_min=8, x_max=152, y_min=34, y_max=194)
     paddle = largest_component_center(
-        paddle_mask, min_area=32, max_area=96, x_min=128, y_min=34, y_max=194)
+        paddle_mask, min_area=8, max_area=96, x_min=128, y_min=34, y_max=194)
     ball_y = None if ball is None else ball[1]
     paddle_y = None if paddle is None else paddle[1]
     return ball_y, paddle_y
@@ -102,9 +102,10 @@ def pong_objects(obs: np.ndarray) -> tuple[float | None, float | None]:
 def heuristic_action(obs: np.ndarray, up_action: int, down_action: int,
                      last_action: int) -> int:
     ball_y, paddle_y = pong_objects(obs)
-    if ball_y is None or paddle_y is None:
+    if paddle_y is None:
         return int(last_action)
-    return int(up_action if ball_y < paddle_y else down_action)
+    target_y = 106.0 if ball_y is None else ball_y
+    return int(up_action if target_y < paddle_y - 2.0 else down_action)
 
 
 def eval_heuristic(game: str, atari_cfg: dict, up_action: int, down_action: int,
