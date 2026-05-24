@@ -21,7 +21,12 @@ from atari.predictor import split_atari_predictor_state
 from deepdash.config import apply_config, load_config
 from deepdash.fsq import FSQVAE
 from deepdash.world_model import WorldModel
-from scripts.train_atari_actor_real import encode_frame, load_clean_state, resize_frame_to_64
+from scripts.train_atari_actor_real import (
+    encode_frame,
+    load_clean_state,
+    parse_action_subset,
+    resize_frame_to_64,
+)
 
 gym.register_envs(ale_py)
 
@@ -39,6 +44,8 @@ def main():
     parser.add_argument("--max-steps-per-episode", type=int, default=None)
     parser.add_argument("--output", default=None)
     parser.add_argument("--seed", type=int, default=None)
+    parser.add_argument("--policy-action-subset", default=None,
+                        help="Comma-separated ALE env action ids exposed to the policy.")
     parser.add_argument("--stochastic", action="store_true",
                         help="Sample from the policy instead of using argmax.")
     args = parser.parse_args()
@@ -66,6 +73,9 @@ def main():
         repeat_action_probability=float(atari_cfg.get("repeat_action_probability", 0.0)),
     )
     n_actions = int(env.action_space.n)
+    action_subset = parse_action_subset(args.policy_action_subset, n_actions)
+    policy_n_actions = len(action_subset)
+    print(f"Env actions={n_actions} policy_actions={policy_n_actions} subset={action_subset}")
 
     fsq = FSQVAE(
         img_channels=int(fsq_cfg.get("img_channels", 3)),
@@ -95,7 +105,7 @@ def main():
 
     policy = AtariCNNPolicy(
         vocab_size=int(model_cfg.get("vocab_size", 1000)),
-        n_actions=n_actions,
+        n_actions=policy_n_actions,
         grid_size=int(fsq_cfg.get("latent_grid", 16)),
         h_dim=int(model_cfg.get("embed_dim", 384)),
         value_head_type=str(actor_cfg.get("value_head_type", "scalar")),
@@ -128,9 +138,10 @@ def main():
                 logits, _ = policy(ctx_t[:, -1], h_t.float())
                 if args.stochastic:
                     dist = torch.distributions.Categorical(logits=logits)
-                    action = int(dist.sample().item())
+                    policy_action = int(dist.sample().item())
                 else:
-                    action = int(logits.argmax(dim=-1).item())
+                    policy_action = int(logits.argmax(dim=-1).item())
+                action = int(action_subset[policy_action])
                 action_counts[action] += 1
                 ep_action_counts[action] += 1
                 obs, reward, terminated, truncated, _ = env.step(action)

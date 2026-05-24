@@ -33,6 +33,7 @@ from scripts.train_atari_actor_real import (
     load_clean_state,
     load_module_state_matching,
     load_policy_state_flexible,
+    parse_action_subset,
 )
 from scripts.train_atari_actor_real import encode_frame, resize_frame_to_64
 from scripts.train_atari_predictor import encode_replay_obs, load_matching_state_dict
@@ -301,7 +302,7 @@ def calibrate_dream_rewards(predictor, starts, tokens, actions, rewards,
 
 @torch.no_grad()
 def evaluate_real_env(policy, fsq, predictor, atari_cfg, model_cfg, args, device, amp,
-                      n_actions: int):
+                      n_actions: int, action_subset: list[int] | None = None):
     """Deterministic real-env eval used only for checkpoint selection."""
     env = gym.make(
         f"ALE/{atari_cfg.get('game', 'Pong')}-v5",
@@ -312,6 +313,7 @@ def evaluate_real_env(policy, fsq, predictor, atari_cfg, model_cfg, args, device
     rng = np.random.default_rng(args.real_eval_seed)
     returns, lengths = [], []
     action_counts = collections.Counter()
+    action_subset = action_subset or list(range(n_actions))
     reward_true_events = 0
     reward_pred_events = 0
     reward_sign_correct = 0
@@ -335,9 +337,8 @@ def evaluate_real_env(policy, fsq, predictor, atari_cfg, model_cfg, args, device
             with torch.amp.autocast("cuda", enabled=amp is not None and device.type == "cuda", dtype=amp):
                 h_t = predictor.encode_controller_context(ctx_t, ctx_a)
                 logits, _ = policy(ctx_t[:, -1], h_t.float())
-            action = int(logits.argmax(dim=-1).item())
-            if action < 0 or action >= n_actions:
-                raise RuntimeError(f"policy emitted invalid action {action} for n_actions={n_actions}")
+            policy_action = int(logits.argmax(dim=-1).item())
+            action = int(action_subset[policy_action])
             pred_actions = action_window_with_last_action(
                 ctx_a, torch.tensor([action], dtype=torch.long, device=device))
             with torch.amp.autocast("cuda", enabled=amp is not None and device.type == "cuda", dtype=amp):
@@ -394,7 +395,7 @@ def evaluate_real_env(policy, fsq, predictor, atari_cfg, model_cfg, args, device
 
 @torch.no_grad()
 def dream_rollout(predictor, policy, ctx_tokens, ctx_actions, args, device, amp,
-                  value_policy=None):
+                  value_policy=None, action_subset: torch.Tensor | None = None):
     ctx_tokens = ctx_tokens.to(device)
     ctx_actions = ctx_actions.to(device)
     bsz = ctx_tokens.size(0)
@@ -413,7 +414,10 @@ def dream_rollout(predictor, policy, ctx_tokens, ctx_actions, args, device, amp,
             token_t = ctx_tokens[:, -1]
             action_t, logp_t, _, value_t = policy.act(token_t, h_t.float())
 
-            pred_actions = action_window_with_last_action(ctx_actions, action_t)
+            env_action_t = (
+                action_subset[action_t]
+                if action_subset is not None else action_t)
+            pred_actions = action_window_with_last_action(ctx_actions, env_action_t)
             pred_tokens, reward, done_prob, event_logits = predictor.predict_next_frame(
                 ctx_tokens, pred_actions, temperature=args.temperature,
                 return_aux=True, return_event_logits=True)
@@ -444,7 +448,7 @@ def dream_rollout(predictor, policy, ctx_tokens, ctx_actions, args, device, amp,
 
         alive &= ~terminal
         ctx_tokens = torch.cat([ctx_tokens[:, 1:], pred_tokens.unsqueeze(1)], dim=1)
-        ctx_actions = torch.cat([pred_actions[:, 1:], action_t.unsqueeze(1)], dim=1)
+        ctx_actions = torch.cat([pred_actions[:, 1:], env_action_t.unsqueeze(1)], dim=1)
 
     if not rollout["rewards"]:
         return None, episode_return
@@ -533,6 +537,9 @@ def main():
     parser.add_argument("--dream-gate-real-eval-episodes", type=int, default=None)
     parser.add_argument("--wandb-project", default=None)
     parser.add_argument("--wandb-name", default=None)
+    parser.add_argument("--policy-action-subset", default=None,
+                        help="Comma-separated ALE env action ids exposed to the policy. "
+                             "Dream predictor context still receives original env ids.")
     parser.add_argument("--amp-dtype", choices=["none", "float16", "bfloat16"], default=None)
     parser.add_argument("--compile-mode", choices=["none", "default", "reduce-overhead"], default=None)
     parser.add_argument("--seed", type=int, default=None)
@@ -625,6 +632,10 @@ def main():
     replay = load_replay_arrays(args.replay_dir)
     metadata = load_metadata(args.replay_dir) or {}
     n_actions = int(metadata.get("n_actions", pred_cfg.get("n_actions", 6)))
+    action_subset = parse_action_subset(args.policy_action_subset, n_actions)
+    policy_n_actions = len(action_subset)
+    action_subset_t = torch.tensor(action_subset, dtype=torch.long, device=device)
+    print(f"Env actions={n_actions} policy_actions={policy_n_actions} subset={action_subset}")
     print(f"Replay: {args.replay_dir} steps={len(replay.obs)} n_actions={n_actions}")
 
     fsq = FSQVAE(
@@ -689,7 +700,7 @@ def main():
 
     policy = AtariCNNPolicy(
         vocab_size=int(model_cfg.get("vocab_size", 1000)),
-        n_actions=n_actions,
+        n_actions=policy_n_actions,
         grid_size=int(fsq_cfg.get("latent_grid", 16)),
         h_dim=int(model_cfg.get("embed_dim", 384)),
         value_head_type=args.value_head_type,
@@ -810,7 +821,7 @@ def main():
             args.real_eval_episodes = int(args.dream_gate_real_eval_episodes)
             metrics = evaluate_real_env(
                 policy, fsq, predictor, atari_cfg, model_cfg, args, device, amp,
-                n_actions)
+                n_actions, action_subset=action_subset)
             args.real_eval_episodes = prev_episodes
             gate["actor_action_reward_calibration"] = metrics
             if (
@@ -858,7 +869,7 @@ def main():
             policy.eval()
             rollout, dream_return = dream_rollout(
                 predictor, policy, ctx_tokens, ctx_actions, args, device, amp,
-                value_policy=ema_policy)
+                value_policy=ema_policy, action_subset=action_subset_t)
             if rollout is None:
                 print(f"iteration={iteration} empty dream rollout; skipping")
                 continue
@@ -880,7 +891,7 @@ def main():
             ):
                 metrics = evaluate_real_env(
                     policy, fsq, predictor, atari_cfg, model_cfg, args, device, amp,
-                    n_actions)
+                    n_actions, action_subset=action_subset)
                 real_eval_mean = metrics["mean_return"]
                 real_eval_length = metrics["mean_length"]
                 real_eval_actions = metrics["action_counts"]

@@ -84,6 +84,22 @@ def load_module_state_matching(module, state, label="module"):
         print(f"Skipped resized {label} tensors: {skipped}")
 
 
+def parse_action_subset(value, n_actions: int) -> list[int]:
+    if value is None or str(value).strip() == "":
+        return list(range(int(n_actions)))
+    subset = [int(part.strip()) for part in str(value).split(",") if part.strip()]
+    if not subset:
+        raise ValueError("policy action subset is empty")
+    if len(set(subset)) != len(subset):
+        raise ValueError(f"policy action subset has duplicates: {subset}")
+    invalid = [action for action in subset if action < 0 or action >= int(n_actions)]
+    if invalid:
+        raise ValueError(
+            f"policy action subset contains invalid env actions {invalid} "
+            f"for n_actions={n_actions}")
+    return subset
+
+
 def compute_gae(rewards, values, dones, bootstrap_value, gamma, lam, device):
     rewards = torch.tensor(rewards, dtype=torch.float32, device=device)
     values = torch.tensor(values, dtype=torch.float32, device=device)
@@ -172,6 +188,9 @@ def main():
     parser.add_argument("--compile-mode", choices=["none", "default", "reduce-overhead"], default=None)
     parser.add_argument("--wandb-project", default=None)
     parser.add_argument("--wandb-name", default=None)
+    parser.add_argument("--policy-action-subset", default=None,
+                        help="Comma-separated ALE env action ids exposed to the policy. "
+                             "Replay and predictor context still use original env ids.")
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--init-from", default=None,
                         help="Warm-start actor weights from a checkpoint, but reset optimizer/update state.")
@@ -226,6 +245,9 @@ def main():
         repeat_action_probability=float(atari_cfg.get("repeat_action_probability", 0.0)),
     )
     n_actions = int(env.action_space.n)
+    action_subset = parse_action_subset(args.policy_action_subset, n_actions)
+    policy_n_actions = len(action_subset)
+    print(f"Env actions={n_actions} policy_actions={policy_n_actions} subset={action_subset}")
     metadata = load_metadata(args.replay_dir) or {}
     before_replay_steps = int((metadata or {}).get("total_steps", 0))
     if args.target_replay_steps is not None:
@@ -245,6 +267,7 @@ def main():
             "game": args.game,
             "env_id": f"ALE/{args.game}-v5",
             "n_actions": n_actions,
+            "policy_action_subset": action_subset,
             "frame_skip": int(atari_cfg.get("frame_skip", 4)),
             "repeat_action_probability": float(atari_cfg.get("repeat_action_probability", 0.0)),
             "obs_shape": [64, 64, 3],
@@ -282,7 +305,7 @@ def main():
 
     policy = AtariCNNPolicy(
         vocab_size=int(model_cfg.get("vocab_size", 1000)),
-        n_actions=n_actions,
+        n_actions=policy_n_actions,
         grid_size=int(fsq_cfg.get("latent_grid", 16)),
         h_dim=int(model_cfg.get("embed_dim", 384)),
         value_head_type=args.value_head_type,
@@ -359,8 +382,8 @@ def main():
             h_t = predictor.encode_context(
                 ctx_t, ctx_a, return_action_hidden=False)
             token_t = ctx_t[:, -1]
-            action_t, logp_t, _, value_t = policy.act(token_t, h_t.float())
-        action = int(action_t.item())
+            policy_action_t, logp_t, _, value_t = policy.act(token_t, h_t.float())
+        action = int(action_subset[int(policy_action_t.item())])
 
         obs, reward, terminated, truncated, _ = env.step(action)
         done = bool(terminated or truncated)
@@ -374,7 +397,7 @@ def main():
 
         rollout["tokens"].append(token_t.detach().cpu())
         rollout["h"].append(h_t.detach().cpu().float())
-        rollout["actions"].append(action)
+        rollout["actions"].append(int(policy_action_t.item()))
         rollout["logp"].append(float(logp_t.item()))
         rollout["values"].append(float(value_t.item()))
         rollout["rewards"].append(float(reward))
