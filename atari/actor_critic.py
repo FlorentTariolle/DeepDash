@@ -59,6 +59,9 @@ def ppo_update(policy, optimizer, batch: dict, args, device: torch.device,
                amp_dtype=None, normalizer: PercentileNormalizer | None = None,
                ema_policy=None) -> dict:
     """One PPO update shared by real-env and dream Atari actors."""
+    if str(getattr(args, "actor_update", "ppo")) == "iris_pg":
+        return iris_pg_update(policy, optimizer, batch, args, device, amp_dtype, ema_policy)
+
     data = _prepare_batch(batch, device)
     adv = data["advantages"]
     returns = data["returns"]
@@ -140,3 +143,62 @@ def ppo_update(policy, optimizer, batch: dict, args, device: torch.device,
     updates = max(int(metrics["updates"]), 1)
     return {key: (value / updates if key != "updates" else value)
             for key, value in metrics.items()}
+
+
+def iris_pg_update(policy, optimizer, batch: dict, args, device: torch.device,
+                   amp_dtype=None, ema_policy=None) -> dict:
+    """IRIS-style lambda-return actor-critic update, without PPO ratios."""
+    data = _prepare_batch(batch, device)
+    returns = data["returns"]
+    value_head_type = getattr(args, "value_head_type", "scalar")
+
+    with torch.amp.autocast(
+        "cuda",
+        enabled=amp_dtype is not None and device.type == "cuda",
+        dtype=amp_dtype,
+    ):
+        if value_head_type == "twohot":
+            logits, value, value_logits = policy(
+                data["tokens"], data["h"], return_value_logits=True)
+        else:
+            logits, value = policy(data["tokens"], data["h"])
+            value_logits = None
+        dist = torch.distributions.Categorical(logits=logits)
+        logp = dist.log_prob(data["actions"])
+        advantage = returns - value.detach()
+        actor_loss = -(logp * advantage).mean()
+        if value_logits is not None:
+            targets = twohot_symlog_targets(
+                returns,
+                int(args.value_twohot_bins),
+                float(args.value_twohot_low),
+                float(args.value_twohot_high),
+            )
+            critic_loss = twohot_cross_entropy(value_logits, targets)
+        else:
+            critic_loss = F.mse_loss(value.float(), returns)
+        entropy = dist.entropy().mean()
+        loss = actor_loss + float(args.critic_coeff) * critic_loss - \
+            float(args.entropy_coeff) * entropy
+
+    optimizer.zero_grad(set_to_none=True)
+    loss.backward()
+    torch.nn.utils.clip_grad_norm_(policy.parameters(), float(args.max_grad_norm))
+    optimizer.step()
+    if ema_policy is not None and float(getattr(args, "ema_decay", 0.0)) > 0.0:
+        update_ema_module(ema_policy, policy, float(args.ema_decay))
+
+    with torch.no_grad():
+        return {
+            "loss": float(loss.item()),
+            "actor_loss": float(actor_loss.item()),
+            "critic_loss": float(critic_loss.item()),
+            "entropy": float(entropy.item()),
+            "approx_kl": 0.0,
+            "clipfrac": 0.0,
+            "ratio_mean": 1.0,
+            "ratio_min": 1.0,
+            "ratio_max": 1.0,
+            "value_mean": float(value.float().mean().item()),
+            "updates": 1,
+        }

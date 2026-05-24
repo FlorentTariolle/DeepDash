@@ -192,6 +192,7 @@ def main():
     parser.add_argument("--clip-eps", type=float, default=None)
     parser.add_argument("--ppo-epochs", type=int, default=None)
     parser.add_argument("--minibatch-size", type=int, default=None)
+    parser.add_argument("--actor-update", choices=["ppo", "iris_pg"], default=None)
     parser.add_argument("--entropy-coeff", type=float, default=None)
     parser.add_argument("--critic-coeff", type=float, default=None)
     parser.add_argument("--max-grad-norm", type=float, default=None)
@@ -211,6 +212,8 @@ def main():
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--init-from", default=None,
                         help="Warm-start actor weights from a checkpoint, but reset optimizer/update state.")
+    parser.add_argument("--collect-only", action="store_true",
+                        help="Append real replay with the current policy without actor updates.")
     parser.add_argument("--resume", action="store_true")
     args = parser.parse_args()
     apply_config(args, section=args.config_section)
@@ -233,6 +236,7 @@ def main():
     args.clip_eps = args.clip_eps if args.clip_eps is not None else 0.2
     args.ppo_epochs = args.ppo_epochs or 4
     args.minibatch_size = args.minibatch_size or 256
+    args.actor_update = args.actor_update or "ppo"
     args.entropy_coeff = args.entropy_coeff if args.entropy_coeff is not None else 0.01
     args.critic_coeff = args.critic_coeff if args.critic_coeff is not None else 0.5
     args.max_grad_norm = args.max_grad_norm if args.max_grad_norm is not None else 0.5
@@ -445,6 +449,11 @@ def main():
             obs, _ = env.reset(seed=int(rng.integers(0, 2**31 - 1)))
             frame = resize_frame_to_64(obs)
             ctx_tokens, ctx_actions = reset_context(frame)
+
+        if args.collect_only:
+            rollout = {"tokens": [], "h": [], "actions": [], "logp": [], "values": [],
+                       "rewards": [], "dones": []}
+            continue
 
         if len(rollout["rewards"]) >= args.rollout_steps or real_steps >= args.n_steps:
             if len(rollout["rewards"]) < args.rollout_steps and real_steps >= args.n_steps:

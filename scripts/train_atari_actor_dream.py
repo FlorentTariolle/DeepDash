@@ -508,6 +508,7 @@ def main():
     parser.add_argument("--clip-eps", type=float, default=None)
     parser.add_argument("--ppo-epochs", type=int, default=None)
     parser.add_argument("--minibatch-size", type=int, default=None)
+    parser.add_argument("--actor-update", choices=["ppo", "iris_pg"], default=None)
     parser.add_argument("--entropy-coeff", type=float, default=None)
     parser.add_argument("--critic-coeff", type=float, default=None)
     parser.add_argument("--max-grad-norm", type=float, default=None)
@@ -585,6 +586,7 @@ def main():
     args.clip_eps = args.clip_eps if args.clip_eps is not None else 0.2
     args.ppo_epochs = args.ppo_epochs or 4
     args.minibatch_size = args.minibatch_size or 256
+    args.actor_update = args.actor_update or "ppo"
     args.entropy_coeff = args.entropy_coeff if args.entropy_coeff is not None else 0.01
     args.critic_coeff = args.critic_coeff if args.critic_coeff is not None else 0.5
     args.max_grad_norm = args.max_grad_norm if args.max_grad_norm is not None else 0.5
