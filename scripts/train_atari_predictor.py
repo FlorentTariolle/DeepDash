@@ -217,6 +217,19 @@ def reward_balanced_sampler(starts: np.ndarray, rewards: np.ndarray,
     )
 
 
+def reward_event_targets(rewards: torch.Tensor) -> torch.Tensor:
+    """Class indices for Pong-style sparse rewards: 0=-1, 1=0, 2=+1."""
+    return torch.where(
+        rewards < 0,
+        torch.zeros_like(rewards, dtype=torch.long),
+        torch.where(
+            rewards > 0,
+            torch.full_like(rewards, 2, dtype=torch.long),
+            torch.ones_like(rewards, dtype=torch.long),
+        ),
+    )
+
+
 def compute_loss(logits, targets, vocab_size, soft_target_matrix,
                  label_smoothing, focal_gamma):
     visual_logits = logits[:, :, :vocab_size].reshape(-1, vocab_size)
@@ -380,6 +393,12 @@ def main():
     parser.add_argument("--reward-twohot-bins", type=int, default=None)
     parser.add_argument("--reward-twohot-low", type=float, default=None)
     parser.add_argument("--reward-twohot-high", type=float, default=None)
+    parser.add_argument("--reward-event-head", action=argparse.BooleanOptionalAction,
+                        default=None)
+    parser.add_argument("--reward-event-loss-weight", type=float, default=None)
+    parser.add_argument("--reward-event-zero-weight", type=float, default=None)
+    parser.add_argument("--reward-event-neg-weight", type=float, default=None)
+    parser.add_argument("--reward-event-pos-weight", type=float, default=None)
     parser.add_argument("--reward-balanced-sampler", action="store_true",
                         help="Oversample windows by target reward sign.")
     parser.add_argument("--reward-sample-zero-weight", type=float, default=None)
@@ -420,6 +439,15 @@ def main():
     args.reward_twohot_bins = args.reward_twohot_bins or 255
     args.reward_twohot_low = args.reward_twohot_low if args.reward_twohot_low is not None else -25.0
     args.reward_twohot_high = args.reward_twohot_high if args.reward_twohot_high is not None else 25.0
+    args.reward_event_head = bool(args.reward_event_head) if args.reward_event_head is not None else False
+    args.reward_event_loss_weight = (
+        args.reward_event_loss_weight if args.reward_event_loss_weight is not None else 0.0)
+    args.reward_event_zero_weight = (
+        args.reward_event_zero_weight if args.reward_event_zero_weight is not None else 1.0)
+    args.reward_event_neg_weight = (
+        args.reward_event_neg_weight if args.reward_event_neg_weight is not None else 10.0)
+    args.reward_event_pos_weight = (
+        args.reward_event_pos_weight if args.reward_event_pos_weight is not None else 100.0)
     args.reward_sample_zero_weight = (
         args.reward_sample_zero_weight if args.reward_sample_zero_weight is not None else 1.0)
     args.reward_sample_neg_weight = (
@@ -519,6 +547,7 @@ def main():
         reward_bins=args.reward_twohot_bins,
         reward_low=args.reward_twohot_low,
         reward_high=args.reward_twohot_high,
+        reward_event_head=args.reward_event_head,
     ).to(device)
     print(f"Predictor parameters: {sum(p.numel() for p in predictor.parameters()):,}")
 
@@ -595,7 +624,8 @@ def main():
     log_file = open(ckpt_dir / "predictor_log.csv", log_mode, newline="")
     log = csv.writer(log_file)
     if log_mode == "w":
-        log.writerow(["epoch", "train_nll", "train_reward_loss", "train_done_loss",
+        log.writerow(["epoch", "train_nll", "train_reward_loss",
+                      "train_reward_event_loss", "train_done_loss",
                       "val_nll", "val_acc", "val_fsq_l1_dist",
                       "val_reward_mae", "val_done_acc",
                       *[f"rollout_{h}_l1" for h in horizons], "lr", "time_s"])
@@ -610,7 +640,14 @@ def main():
       for epoch in range(start_epoch, args.epochs + 1):
         t0 = time.time()
         predictor.train()
-        total_loss = total_tokens = total_reward_loss = total_done_loss = total_aux = 0
+        total_loss = total_tokens = total_reward_loss = 0
+        total_reward_event_loss = total_done_loss = total_aux = 0
+        event_weights = torch.tensor(
+            [args.reward_event_neg_weight, args.reward_event_zero_weight,
+             args.reward_event_pos_weight],
+            dtype=torch.float32,
+            device=device,
+        )
         for step, (frame_tokens, actions, rewards, dones) in enumerate(train_loader, start=1):
             frame_tokens = frame_tokens.to(device)
             actions = actions.to(device)
@@ -618,22 +655,35 @@ def main():
             dones = dones.to(device)
             with torch.amp.autocast("cuda", enabled=amp_dtype is not None, dtype=amp_dtype):
                 if args.reward_head_type == "twohot":
-                    logits, pred_reward, done_logit, reward_logits = predictor(
+                    outputs = predictor(
                         frame_tokens, actions, return_aux=True,
-                        return_reward_logits=True)
+                        return_reward_logits=True,
+                        return_event_logits=args.reward_event_head)
+                    logits, pred_reward, done_logit, reward_logits = outputs[:4]
+                    event_logits = outputs[4] if args.reward_event_head else None
                     reward_targets = twohot_symlog_targets(
                         rewards, args.reward_twohot_bins,
                         args.reward_twohot_low, args.reward_twohot_high)
                     reward_loss = twohot_cross_entropy(reward_logits, reward_targets)
                 else:
-                    logits, pred_reward, done_logit = predictor(
-                        frame_tokens, actions, return_aux=True)
+                    outputs = predictor(
+                        frame_tokens, actions, return_aux=True,
+                        return_event_logits=args.reward_event_head)
+                    logits, pred_reward, done_logit = outputs[:3]
+                    event_logits = outputs[3] if args.reward_event_head else None
                     reward_loss = F.mse_loss(pred_reward.float(), rewards)
+                if event_logits is not None:
+                    event_loss = F.cross_entropy(
+                        event_logits.float(), reward_event_targets(rewards),
+                        weight=event_weights)
+                else:
+                    event_loss = rewards.new_zeros(())
                 token_loss = compute_loss(
                     logits, frame_tokens[:, -1], vocab_size,
                     soft_target_matrix, args.label_smoothing, args.focal_gamma)
                 done_loss = F.binary_cross_entropy_with_logits(done_logit.float(), dones)
                 loss = token_loss + float(args.reward_loss_weight) * reward_loss + \
+                    float(args.reward_event_loss_weight) * event_loss + \
                     float(args.done_loss_weight) * done_loss
             optimizer.zero_grad(set_to_none=True)
             if scaler.is_enabled():
@@ -646,6 +696,7 @@ def main():
             total_loss += float(token_loss.item()) * frame_tokens[:, -1].numel()
             total_tokens += frame_tokens[:, -1].numel()
             total_reward_loss += float(reward_loss.item()) * rewards.numel()
+            total_reward_event_loss += float(event_loss.item()) * rewards.numel()
             total_done_loss += float(done_loss.item()) * dones.numel()
             total_aux += rewards.numel()
             if max_steps and step >= max_steps:
@@ -678,11 +729,13 @@ def main():
         dt = time.time() - t0
         train_nll = total_loss / max(total_tokens, 1)
         train_reward_loss = total_reward_loss / max(total_aux, 1)
+        train_reward_event_loss = total_reward_event_loss / max(total_aux, 1)
         train_done_loss = total_done_loss / max(total_aux, 1)
         lr = optimizer.param_groups[0]["lr"]
         print(
             f"Epoch {epoch:3d}/{args.epochs} ({dt:.1f}s) | "
             f"train_nll={train_nll:.4f} rloss={train_reward_loss:.4f} "
+            f"revent={train_reward_event_loss:.4f} "
             f"dloss={train_done_loss:.4f} | val_nll={val_metrics['nll']:.4f} "
             f"acc={100*val_metrics['acc']:.2f}% fsq_l1={val_metrics['fsq_l1_dist']:.3f} "
             f"rmae={val_metrics['reward_mae']:.3f} done={100*val_metrics['done_acc']:.1f}% | "
@@ -691,6 +744,7 @@ def main():
         )
         log.writerow([
             epoch, f"{train_nll:.6f}", f"{train_reward_loss:.6f}",
+            f"{train_reward_event_loss:.6f}",
             f"{train_done_loss:.6f}", f"{val_metrics['nll']:.6f}",
             f"{val_metrics['acc']:.6f}", f"{val_metrics['fsq_l1_dist']:.6f}",
             f"{val_metrics['reward_mae']:.6f}", f"{val_metrics['done_acc']:.6f}",
@@ -702,6 +756,7 @@ def main():
             f"{args.config_section}/epoch": epoch,
             f"{args.config_section}/train_nll": train_nll,
             f"{args.config_section}/train_reward_loss": train_reward_loss,
+            f"{args.config_section}/train_reward_event_loss": train_reward_event_loss,
             f"{args.config_section}/train_done_loss": train_done_loss,
             f"{args.config_section}/lr": lr,
             f"{args.config_section}/time_s": dt,

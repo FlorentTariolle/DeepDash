@@ -18,15 +18,19 @@ class AtariPredictorWithHeads(nn.Module):
 
     def __init__(self, world_model: nn.Module, hidden_dim: int,
                  reward_head_type: str = "scalar", reward_bins: int = 255,
-                 reward_low: float = -25.0, reward_high: float = 25.0):
+                 reward_low: float = -25.0, reward_high: float = 25.0,
+                 reward_event_head: bool = False):
         super().__init__()
         self.world_model = world_model
         self.reward_head_type = str(reward_head_type)
         self.reward_bins = int(reward_bins)
         self.reward_low = float(reward_low)
         self.reward_high = float(reward_high)
+        self.reward_event_head_enabled = bool(reward_event_head)
         reward_out = self.reward_bins if self.reward_head_type == "twohot" else 1
         self.reward_head = nn.Linear(hidden_dim, reward_out)
+        self.reward_event_head = (
+            nn.Linear(hidden_dim, 3) if self.reward_event_head_enabled else None)
         self.done_head = nn.Linear(hidden_dim, 1)
 
     @property
@@ -48,15 +52,24 @@ class AtariPredictorWithHeads(nn.Module):
         return reward_out.squeeze(-1)
 
     def forward(self, frame_tokens, actions, return_aux: bool = False,
-                return_reward_logits: bool = False):
+                return_reward_logits: bool = False,
+                return_event_logits: bool = False):
         if not return_aux:
             return self.world_model(frame_tokens, actions)
         logits, h_t = self.world_model(frame_tokens, actions, return_hidden=True)
         reward_out = self.reward_head(h_t.float())
         reward = self._decode_reward(reward_out)
         done_logit = self.done_head(h_t.float()).squeeze(-1)
+        outs = [logits, reward, done_logit]
         if return_reward_logits:
-            return logits, reward, done_logit, reward_out
+            outs.append(reward_out)
+        if return_event_logits:
+            event_logits = (
+                self.reward_event_head(h_t.float())
+                if self.reward_event_head is not None else None)
+            outs.append(event_logits)
+        if len(outs) > 3:
+            return tuple(outs)
         return logits, reward, done_logit
 
     @torch.no_grad()
@@ -71,7 +84,8 @@ class AtariPredictorWithHeads(nn.Module):
     @torch.no_grad()
     def predict_next_frame(self, frame_tokens, actions, temperature=0.0,
                            top_k=0, top_p=0.0, return_hidden=False,
-                           return_aux=False, return_reward_logits=False):
+                           return_aux=False, return_reward_logits=False,
+                           return_event_logits=False):
         pred, _, h_t = self.world_model.predict_next_frame(
             frame_tokens, actions, temperature=temperature, top_k=top_k,
             top_p=top_p, return_hidden=True)
@@ -79,14 +93,18 @@ class AtariPredictorWithHeads(nn.Module):
         reward = self._decode_reward(reward_out)
         done_logit = self.done_head(h_t.float()).squeeze(-1)
         done_prob = torch.sigmoid(done_logit)
-        if return_aux and return_reward_logits and return_hidden:
-            return pred, reward, done_prob, h_t, reward_out
-        if return_aux and return_reward_logits:
-            return pred, reward, done_prob, reward_out
-        if return_aux and return_hidden:
-            return pred, reward, done_prob, h_t
+        event_logits = (
+            self.reward_event_head(h_t.float())
+            if return_event_logits and self.reward_event_head is not None else None)
         if return_aux:
-            return pred, reward, done_prob
+            outs = [pred, reward, done_prob]
+            if return_hidden:
+                outs.append(h_t)
+            if return_reward_logits:
+                outs.append(reward_out)
+            if return_event_logits:
+                outs.append(event_logits)
+            return tuple(outs)
         if return_hidden:
             return pred, done_prob, h_t
         return pred, done_prob
@@ -100,7 +118,7 @@ def split_atari_predictor_state(state: dict) -> tuple[dict, dict]:
         clean = key.removeprefix("_orig_mod.")
         if clean.startswith("world_model."):
             model_state[clean.removeprefix("world_model.")] = value
-        elif clean.startswith(("reward_head.", "done_head.")):
+        elif clean.startswith(("reward_head.", "reward_event_head.", "done_head.")):
             aux_state[clean] = value
         else:
             model_state[clean] = value

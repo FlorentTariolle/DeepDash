@@ -172,6 +172,7 @@ def build_models(args, device):
         reward_bins=int(pred_cfg.get("reward_twohot_bins", 255)),
         reward_low=float(pred_cfg.get("reward_twohot_low", -25.0)),
         reward_high=float(pred_cfg.get("reward_twohot_high", 25.0)),
+        reward_event_head=bool(pred_cfg.get("reward_event_head", False)),
     ).to(device)
     state = load_clean_state(predictor_ckpt, device)
     if "world_model.head.weight" in state:

@@ -192,6 +192,30 @@ def atari_event_reward(reward, threshold: float):
     )
 
 
+def atari_event_reward_from_logits(event_logits: torch.Tensor,
+                                   threshold: float) -> torch.Tensor:
+    """Map event-head logits to Atari -1/0/+1 reward events."""
+    probs = torch.softmax(event_logits.float(), dim=-1)
+    neg = probs[..., 0]
+    zero = probs[..., 1]
+    pos = probs[..., 2]
+    event_conf = torch.maximum(neg, pos)
+    sign = torch.where(pos >= neg, torch.ones_like(pos), -torch.ones_like(neg))
+    return torch.where(
+        (event_conf >= float(threshold)) & (event_conf > zero),
+        sign,
+        torch.zeros_like(sign),
+    )
+
+
+def atari_event_reward_from_outputs(reward: torch.Tensor,
+                                    event_logits: torch.Tensor | None,
+                                    threshold: float) -> torch.Tensor:
+    if event_logits is not None:
+        return atari_event_reward_from_logits(event_logits, threshold)
+    return atari_event_reward(reward, threshold)
+
+
 def action_window_with_last_action(ctx_actions: torch.Tensor,
                                    action: torch.Tensor) -> torch.Tensor:
     """Align a chosen action with the last context frame for next-step prediction."""
@@ -230,11 +254,12 @@ def calibrate_dream_rewards(predictor, starts, tokens, actions, rewards,
             pred_actions = action_window_with_last_action(
                 ctx_actions, torch.tensor([action], dtype=torch.long, device=device))
             with torch.amp.autocast("cuda", enabled=amp is not None and device.type == "cuda", dtype=amp):
-                pred_tokens, pred_reward, _ = predictor.predict_next_frame(
+                pred_tokens, pred_reward, _, event_logits = predictor.predict_next_frame(
                     ctx_tokens, pred_actions, temperature=args.temperature,
-                    return_aux=True)
-            pred_event = atari_event_reward(
+                    return_aux=True, return_event_logits=True)
+            pred_event = atari_event_reward_from_outputs(
                 pred_reward.float().clamp(args.reward_clip_min, args.reward_clip_max),
+                event_logits,
                 args.reward_discrete_threshold,
             )
             if pred_gap is None and bool((pred_event != 0).item()):
@@ -316,11 +341,12 @@ def evaluate_real_env(policy, fsq, predictor, atari_cfg, model_cfg, args, device
             pred_actions = action_window_with_last_action(
                 ctx_a, torch.tensor([action], dtype=torch.long, device=device))
             with torch.amp.autocast("cuda", enabled=amp is not None and device.type == "cuda", dtype=amp):
-                _, pred_reward, _ = predictor.predict_next_frame(
+                _, pred_reward, _, event_logits = predictor.predict_next_frame(
                     ctx_t, pred_actions, temperature=args.temperature,
-                    return_aux=True)
-            pred_event = atari_event_reward(
+                    return_aux=True, return_event_logits=True)
+            pred_event = atari_event_reward_from_outputs(
                 pred_reward.float().clamp(args.reward_clip_min, args.reward_clip_max),
+                event_logits,
                 args.reward_discrete_threshold,
             )
             action_counts[action] += 1
@@ -388,13 +414,14 @@ def dream_rollout(predictor, policy, ctx_tokens, ctx_actions, args, device, amp,
             action_t, logp_t, _, value_t = policy.act(token_t, h_t.float())
 
             pred_actions = action_window_with_last_action(ctx_actions, action_t)
-            pred_tokens, reward, done_prob = predictor.predict_next_frame(
+            pred_tokens, reward, done_prob, event_logits = predictor.predict_next_frame(
                 ctx_tokens, pred_actions, temperature=args.temperature,
-                return_aux=True)
+                return_aux=True, return_event_logits=True)
 
         reward = reward.float().clamp(args.reward_clip_min, args.reward_clip_max)
         if args.reward_mode == "discrete":
-            reward = atari_event_reward(reward, args.reward_discrete_threshold)
+            reward = atari_event_reward_from_outputs(
+                reward, event_logits, args.reward_discrete_threshold)
         reward_event = reward.abs() > args.reward_done_epsilon
         done = done_prob >= args.done_threshold
         terminal = done | (reward_event if args.stop_on_reward else torch.zeros_like(done))
@@ -647,6 +674,7 @@ def main():
         reward_bins=int(pred_cfg.get("reward_twohot_bins", 255)),
         reward_low=float(pred_cfg.get("reward_twohot_low", -25.0)),
         reward_high=float(pred_cfg.get("reward_twohot_high", 25.0)),
+        reward_event_head=bool(pred_cfg.get("reward_event_head", False)),
     ).to(device)
     state = load_clean_state(args.predictor_checkpoint, device)
     if "world_model.head.weight" in state:
