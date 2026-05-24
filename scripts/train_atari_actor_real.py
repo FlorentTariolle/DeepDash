@@ -156,6 +156,23 @@ def ppo_update(policy, optimizer, batch, args, device, amp):
     return total_loss / max(updates, 1), total_entropy / max(updates, 1)
 
 
+def scalar_stats(values, prefix: str) -> dict[str, float]:
+    values = torch.as_tensor(values, dtype=torch.float32)
+    if values.numel() == 0:
+        return {
+            f"{prefix}_mean": 0.0,
+            f"{prefix}_std": 0.0,
+            f"{prefix}_min": 0.0,
+            f"{prefix}_max": 0.0,
+        }
+    return {
+        f"{prefix}_mean": float(values.mean().item()),
+        f"{prefix}_std": float(values.std(unbiased=False).item()),
+        f"{prefix}_min": float(values.min().item()),
+        f"{prefix}_max": float(values.max().item()),
+    }
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", default="configs/atari/atari_pong_h200.yaml")
@@ -349,7 +366,13 @@ def main():
     log_file = open(log_path, "a" if (args.resume or args.init_from) and log_path.exists() else "w", newline="")
     log = csv.writer(log_file)
     if log_file.tell() == 0:
-        log.writerow(["update", "real_steps", "episode_return", "ppo_loss", "entropy", "time_s"])
+        log.writerow([
+            "update", "real_steps", "episode_return", "rollout_reward_sum",
+            "nonzero_rewards", "adv_mean", "adv_std", "adv_min", "adv_max",
+            "return_mean", "return_std", "value_mean_before", "value_std_before",
+            "ppo_loss", "actor_loss", "value_loss", "entropy", "approx_kl",
+            "clipfrac", "ratio_mean", "ratio_min", "ratio_max", "time_s",
+        ])
     wandb_init(
         project=args.wandb_project,
         name=args.wandb_name,
@@ -442,6 +465,15 @@ def main():
                 rewards_t, values_t, dones_t, bootstrap, args.gamma, args.lam)
             rollout["advantages"] = adv.cpu()
             rollout["returns"] = returns.cpu()
+            reward_sum = float(rewards_t.sum().item())
+            nonzero_rewards = int((rewards_t != 0).sum().item())
+            diag = {
+                **scalar_stats(adv.cpu(), "adv"),
+                **scalar_stats(returns.cpu(), "return"),
+                **scalar_stats(values_t.cpu(), "value_before"),
+                "rollout_reward_sum": reward_sum,
+                "nonzero_rewards": nonzero_rewards,
+            }
             ppo_metrics = shared_ppo_update(
                 policy, optimizer, rollout, args, device, amp,
                 normalizer=return_normalizer, ema_policy=ema_policy)
@@ -450,9 +482,22 @@ def main():
             update_idx += 1
             elapsed = time.time() - t0
             print(f"update={update_idx} real_steps={real_steps}/{args.n_steps} "
-                  f"loss={loss:.4f} entropy={entropy:.3f} replay_steps={writer.total_steps}")
-            log.writerow([update_idx, writer.total_steps, f"{episode_return:.3f}",
-                          f"{loss:.6f}", f"{entropy:.6f}", f"{elapsed:.1f}"])
+                  f"loss={loss:.4f} entropy={entropy:.3f} kl={ppo_metrics['approx_kl']:.5f} "
+                  f"clip={ppo_metrics['clipfrac']:.3f} adv={diag['adv_mean']:.3f}/{diag['adv_std']:.3f} "
+                  f"r_sum={reward_sum:+.1f} nz_r={nonzero_rewards} replay_steps={writer.total_steps}")
+            log.writerow([
+                update_idx, writer.total_steps, f"{episode_return:.3f}",
+                f"{reward_sum:.3f}", nonzero_rewards,
+                f"{diag['adv_mean']:.6f}", f"{diag['adv_std']:.6f}",
+                f"{diag['adv_min']:.6f}", f"{diag['adv_max']:.6f}",
+                f"{diag['return_mean']:.6f}", f"{diag['return_std']:.6f}",
+                f"{diag['value_before_mean']:.6f}", f"{diag['value_before_std']:.6f}",
+                f"{loss:.6f}", f"{ppo_metrics['actor_loss']:.6f}",
+                f"{ppo_metrics['critic_loss']:.6f}", f"{entropy:.6f}",
+                f"{ppo_metrics['approx_kl']:.6f}", f"{ppo_metrics['clipfrac']:.6f}",
+                f"{ppo_metrics['ratio_mean']:.6f}", f"{ppo_metrics['ratio_min']:.6f}",
+                f"{ppo_metrics['ratio_max']:.6f}", f"{elapsed:.1f}",
+            ])
             log_file.flush()
             wandb_log({
                 "actor_real/update": update_idx,
@@ -463,7 +508,22 @@ def main():
                 "actor_real/actor_loss": ppo_metrics["actor_loss"],
                 "actor_real/value_loss": ppo_metrics["critic_loss"],
                 "actor_real/entropy": entropy,
+                "actor_real/approx_kl": ppo_metrics["approx_kl"],
+                "actor_real/clipfrac": ppo_metrics["clipfrac"],
+                "actor_real/ratio_mean": ppo_metrics["ratio_mean"],
+                "actor_real/ratio_min": ppo_metrics["ratio_min"],
+                "actor_real/ratio_max": ppo_metrics["ratio_max"],
                 "actor_real/value_mean": ppo_metrics["value_mean"],
+                "actor_real/rollout_reward_sum": reward_sum,
+                "actor_real/nonzero_rewards": nonzero_rewards,
+                "actor_real/adv_mean": diag["adv_mean"],
+                "actor_real/adv_std": diag["adv_std"],
+                "actor_real/adv_min": diag["adv_min"],
+                "actor_real/adv_max": diag["adv_max"],
+                "actor_real/return_mean": diag["return_mean"],
+                "actor_real/return_std": diag["return_std"],
+                "actor_real/value_mean_before": diag["value_before_mean"],
+                "actor_real/value_std_before": diag["value_before_std"],
                 "actor_real/return_normalizer_scale": return_normalizer.scale,
                 "actor_real/time_s": elapsed,
             })

@@ -75,6 +75,10 @@ def ppo_update(policy, optimizer, batch: dict, args, device: torch.device,
         "critic_loss": 0.0,
         "entropy": 0.0,
         "approx_kl": 0.0,
+        "clipfrac": 0.0,
+        "ratio_mean": 0.0,
+        "ratio_min": 0.0,
+        "ratio_max": 0.0,
         "value_mean": 0.0,
         "updates": 0,
     }
@@ -121,11 +125,16 @@ def ppo_update(policy, optimizer, batch: dict, args, device: torch.device,
             if ema_policy is not None and float(getattr(args, "ema_decay", 0.0)) > 0.0:
                 update_ema_module(ema_policy, policy, float(args.ema_decay))
             with torch.no_grad():
+                clipped = (ratio - 1.0).abs() > float(args.clip_eps)
                 metrics["loss"] += float(loss.item())
                 metrics["actor_loss"] += float(actor_loss.item())
                 metrics["critic_loss"] += float(critic_loss.item())
                 metrics["entropy"] += float(entropy.item())
                 metrics["approx_kl"] += float((data["old_logp"][mb] - logp).mean().item())
+                metrics["clipfrac"] += float(clipped.float().mean().item())
+                metrics["ratio_mean"] += float(ratio.mean().item())
+                metrics["ratio_min"] += float(ratio.min().item())
+                metrics["ratio_max"] += float(ratio.max().item())
                 metrics["value_mean"] += float(value.float().mean().item())
                 metrics["updates"] += 1
     updates = max(int(metrics["updates"]), 1)
