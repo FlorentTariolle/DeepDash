@@ -49,8 +49,30 @@ full_cycle:
       reward_sample_neg_weight: 10
       reward_sample_pos_weight: 1000
       reward_loss_weight: 10
+      rollout_consistency_loss_weight: 1.0
+      rollout_consistency_token_loss_weight: 1.0
+      rollout_consistency_reward_loss_weight: 1.0
+      rollout_consistency_event_loss_weight: 2.0
+      rollout_consistency_done_loss_weight: 0.25
+      rollout_consistency_batch_size: 24
+      rollout_consistency_horizon: 15
+      rollout_consistency_min_gap: 3
+      rollout_consistency_max_gap: 13
+      rollout_consistency_event_quota_sampler: true
+      rollout_consistency_event_fraction: 0.9
+      rollout_consistency_pos_fraction: 0.5
+      rollout_consistency_event_zero_weight: 1.0
+      rollout_consistency_event_neg_weight: 1.0
+      rollout_consistency_event_pos_weight: 1.0
     actor_real:
+      actor_update: iris_pg
       entropy_coeff: 0.001
+      policy_action_subset: "4,5"
+    actor_dream:
+      actor_update: iris_pg
+      policy_action_subset: "4,5"
+    evaluation:
+      policy_action_subset: "4,5"
 
 fsq:
   episodes_dir: data/atari/Pong_realwarmup/episodes
