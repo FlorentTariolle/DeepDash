@@ -188,7 +188,7 @@ predictor_sls_rollout_consistency:
   rollout_consistency_zero_weight: 1.0
   rollout_consistency_neg_weight: 20.0
   rollout_consistency_pos_weight: 200.0
-  rollout_consistency_event_zero_weight: 1.0
+  rollout_consistency_event_zero_weight: 0.05
   rollout_consistency_event_neg_weight: 1.0
   rollout_consistency_event_pos_weight: 1.0
   amp_dtype: bfloat16
