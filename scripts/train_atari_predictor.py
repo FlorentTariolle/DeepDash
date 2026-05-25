@@ -22,7 +22,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
+from torch.utils.data import DataLoader, Dataset, Sampler, WeightedRandomSampler
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -288,6 +288,104 @@ def reward_window_balanced_sampler(starts: np.ndarray, rewards: np.ndarray,
         num_samples=len(starts),
         replacement=True,
     )
+
+
+def _reward_window_event_labels(starts: np.ndarray, rewards: np.ndarray,
+                                context_frames: int, horizon: int,
+                                min_gap: int, max_gap: int) -> tuple[np.ndarray, dict[str, int]]:
+    k = int(context_frames)
+    horizon = int(horizon)
+    min_gap = max(0, int(min_gap))
+    max_gap = min(horizon - 1, int(max_gap))
+    labels = np.zeros(len(starts), dtype=np.int8)
+    counts = {"neg": 0, "zero": 0, "pos": 0, "other_event": 0}
+    for row, start in enumerate(starts):
+        reward_start = int(start) + k - 1
+        window = rewards[reward_start:reward_start + horizon]
+        events = np.flatnonzero(window != 0)
+        if len(events) == 0:
+            counts["zero"] += 1
+            continue
+        event_gap = int(events[0])
+        event_sign = float(np.sign(window[event_gap]))
+        if min_gap <= event_gap <= max_gap:
+            if event_sign < 0:
+                labels[row] = -1
+                counts["neg"] += 1
+            else:
+                labels[row] = 1
+                counts["pos"] += 1
+        else:
+            counts["other_event"] += 1
+    return labels, counts
+
+
+class RewardWindowQuotaBatchSampler(Sampler[list[int]]):
+    """Build rollout batches with fixed positive/negative reward-event quotas."""
+
+    def __init__(self, starts: np.ndarray, rewards: np.ndarray,
+                 context_frames: int, horizon: int, min_gap: int, max_gap: int,
+                 batch_size: int, event_fraction: float, pos_fraction: float,
+                 num_batches: int | None = None, seed: int = 42):
+        self.starts = np.asarray(starts, dtype=np.int64)
+        self.batch_size = max(1, int(batch_size))
+        self.event_fraction = min(1.0, max(0.0, float(event_fraction)))
+        self.pos_fraction = min(1.0, max(0.0, float(pos_fraction)))
+        self.num_batches = (
+            max(1, int(num_batches))
+            if num_batches is not None and int(num_batches) > 0
+            else max(1, math.ceil(len(self.starts) / self.batch_size))
+        )
+        self.seed = int(seed)
+        self.epoch = 0
+        labels, counts = _reward_window_event_labels(
+            self.starts, rewards, context_frames, horizon, min_gap, max_gap)
+        self.pos_indices = np.flatnonzero(labels > 0).astype(np.int64)
+        self.neg_indices = np.flatnonzero(labels < 0).astype(np.int64)
+        self.zero_indices = np.flatnonzero(labels == 0).astype(np.int64)
+        self.all_indices = np.arange(len(self.starts), dtype=np.int64)
+        print(
+            "Reward-window quota batch sampler: "
+            f"counts={counts} gap=[{max(0, int(min_gap))},{min(int(horizon) - 1, int(max_gap))}] "
+            f"batch={self.batch_size} event_fraction={self.event_fraction:.2f} "
+            f"pos_fraction={self.pos_fraction:.2f} batches={self.num_batches}"
+        )
+
+    def __len__(self):
+        return self.num_batches
+
+    @staticmethod
+    def _draw(rng: np.random.Generator, pool: np.ndarray, n: int) -> list[int]:
+        if n <= 0 or len(pool) == 0:
+            return []
+        replace = len(pool) < n
+        return rng.choice(pool, size=n, replace=replace).astype(np.int64).tolist()
+
+    def __iter__(self):
+        rng = np.random.default_rng(self.seed + self.epoch)
+        self.epoch += 1
+        for _ in range(self.num_batches):
+            n_event = int(round(self.batch_size * self.event_fraction))
+            n_pos = int(round(n_event * self.pos_fraction))
+            n_neg = n_event - n_pos
+            n_zero = self.batch_size - n_event
+
+            pos_pool = self.pos_indices if len(self.pos_indices) else self.neg_indices
+            neg_pool = self.neg_indices if len(self.neg_indices) else self.pos_indices
+            zero_pool = self.zero_indices if len(self.zero_indices) else self.all_indices
+            if len(pos_pool) == 0:
+                pos_pool = self.all_indices
+            if len(neg_pool) == 0:
+                neg_pool = self.all_indices
+
+            batch = []
+            batch.extend(self._draw(rng, pos_pool, n_pos))
+            batch.extend(self._draw(rng, neg_pool, n_neg))
+            batch.extend(self._draw(rng, zero_pool, n_zero))
+            if len(batch) < self.batch_size:
+                batch.extend(self._draw(rng, self.all_indices, self.batch_size - len(batch)))
+            rng.shuffle(batch)
+            yield batch
 
 
 def reward_event_targets(rewards: torch.Tensor) -> torch.Tensor:
@@ -557,6 +655,15 @@ def main():
     parser.add_argument("--rollout-consistency-zero-weight", type=float, default=None)
     parser.add_argument("--rollout-consistency-neg-weight", type=float, default=None)
     parser.add_argument("--rollout-consistency-pos-weight", type=float, default=None)
+    parser.add_argument("--rollout-consistency-event-quota-sampler",
+                        action=argparse.BooleanOptionalAction, default=None,
+                        help="Build rollout-consistency batches with fixed near-reward quotas.")
+    parser.add_argument("--rollout-consistency-event-fraction", type=float, default=None,
+                        help="Fraction of each rollout-consistency batch drawn near reward events.")
+    parser.add_argument("--rollout-consistency-pos-fraction", type=float, default=None,
+                        help="Positive-event fraction inside the reward-event quota.")
+    parser.add_argument("--rollout-consistency-batches-per-epoch", type=int, default=None,
+                        help="Override number of rollout-consistency quota batches per epoch.")
     parser.add_argument("--rollout-consistency-event-zero-weight", type=float, default=None)
     parser.add_argument("--rollout-consistency-event-neg-weight", type=float, default=None)
     parser.add_argument("--rollout-consistency-event-pos-weight", type=float, default=None)
@@ -647,6 +754,15 @@ def main():
     args.rollout_consistency_pos_weight = (
         args.rollout_consistency_pos_weight
         if args.rollout_consistency_pos_weight is not None else 200.0)
+    args.rollout_consistency_event_quota_sampler = (
+        bool(args.rollout_consistency_event_quota_sampler)
+        if args.rollout_consistency_event_quota_sampler is not None else False)
+    args.rollout_consistency_event_fraction = (
+        args.rollout_consistency_event_fraction
+        if args.rollout_consistency_event_fraction is not None else 0.9)
+    args.rollout_consistency_pos_fraction = (
+        args.rollout_consistency_pos_fraction
+        if args.rollout_consistency_pos_fraction is not None else 0.5)
     args.rollout_consistency_event_zero_weight = (
         args.rollout_consistency_event_zero_weight
         if args.rollout_consistency_event_zero_weight is not None
@@ -726,26 +842,44 @@ def main():
         consistency_ds = AtariRolloutConsistencyDataset(
             rollout_train, tokens, replay.actions, replay.rewards, replay.dones,
             k, int(args.rollout_consistency_horizon))
-        consistency_sampler = reward_window_balanced_sampler(
-            rollout_train, replay.rewards, k, int(args.rollout_consistency_horizon),
-            args.rollout_consistency_min_gap,
-            args.rollout_consistency_max_gap,
-            args.rollout_consistency_zero_weight,
-            args.rollout_consistency_neg_weight,
-            args.rollout_consistency_pos_weight,
-        )
-        consistency_loader = DataLoader(
-            consistency_ds,
-            batch_size=int(args.rollout_consistency_batch_size),
-            shuffle=consistency_sampler is None,
-            sampler=consistency_sampler,
-            num_workers=0,
-        )
+        if args.rollout_consistency_event_quota_sampler:
+            consistency_batch_sampler = RewardWindowQuotaBatchSampler(
+                rollout_train, replay.rewards, k, int(args.rollout_consistency_horizon),
+                args.rollout_consistency_min_gap,
+                args.rollout_consistency_max_gap,
+                int(args.rollout_consistency_batch_size),
+                args.rollout_consistency_event_fraction,
+                args.rollout_consistency_pos_fraction,
+                args.rollout_consistency_batches_per_epoch,
+                args.seed,
+            )
+            consistency_loader = DataLoader(
+                consistency_ds,
+                batch_sampler=consistency_batch_sampler,
+                num_workers=0,
+            )
+        else:
+            consistency_sampler = reward_window_balanced_sampler(
+                rollout_train, replay.rewards, k, int(args.rollout_consistency_horizon),
+                args.rollout_consistency_min_gap,
+                args.rollout_consistency_max_gap,
+                args.rollout_consistency_zero_weight,
+                args.rollout_consistency_neg_weight,
+                args.rollout_consistency_pos_weight,
+            )
+            consistency_loader = DataLoader(
+                consistency_ds,
+                batch_size=int(args.rollout_consistency_batch_size),
+                shuffle=consistency_sampler is None,
+                sampler=consistency_sampler,
+                num_workers=0,
+            )
         print(
             "Rollout consistency enabled: "
             f"horizon={args.rollout_consistency_horizon} "
             f"batch={args.rollout_consistency_batch_size} "
-            f"weight={args.rollout_consistency_loss_weight}"
+            f"weight={args.rollout_consistency_loss_weight} "
+            f"quota_sampler={args.rollout_consistency_event_quota_sampler}"
         )
     train_sampler = None
     if args.reward_balanced_sampler:

@@ -6,6 +6,7 @@ from atari.predictor import AtariPredictorWithHeads
 from deepdash.world_model import WorldModel
 from scripts.train_atari_predictor import (
     AtariRolloutConsistencyDataset,
+    RewardWindowQuotaBatchSampler,
     compute_rollout_consistency_loss,
     reward_window_balanced_sampler,
 )
@@ -65,6 +66,35 @@ def test_reward_window_sampler_prefers_configured_event_gap():
 
     assert sampler is not None
     assert torch.as_tensor(sampler.weights).max().item() == 20.0
+
+
+def test_reward_window_quota_batch_sampler_balances_event_signs():
+    starts = np.asarray([0, 8, 16, 24, 32, 40])
+    rewards = np.zeros(64, dtype=np.float32)
+    context_frames = 2
+    horizon = 5
+    for start in starts[:2]:
+        rewards[start + context_frames - 1 + 2] = 1.0
+    for start in starts[2:4]:
+        rewards[start + context_frames - 1 + 2] = -1.0
+
+    sampler = RewardWindowQuotaBatchSampler(
+        starts, rewards, context_frames=context_frames, horizon=horizon,
+        min_gap=2, max_gap=3, batch_size=10,
+        event_fraction=0.8, pos_fraction=0.5,
+        num_batches=1, seed=7)
+
+    batch = next(iter(sampler))
+    signs = []
+    for idx in batch:
+        start = starts[idx]
+        window = rewards[start + context_frames - 1:start + context_frames - 1 + horizon]
+        signs.append(np.sign(window[2]))
+
+    assert len(batch) == 10
+    assert signs.count(1.0) == 4
+    assert signs.count(-1.0) == 4
+    assert signs.count(0.0) == 2
 
 
 def test_rollout_consistency_loss_is_finite_and_backprops():

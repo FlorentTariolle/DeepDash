@@ -182,6 +182,9 @@ predictor_sls_rollout_consistency:
   rollout_consistency_horizon: 15
   rollout_consistency_min_gap: 3
   rollout_consistency_max_gap: 13
+  rollout_consistency_event_quota_sampler: true
+  rollout_consistency_event_fraction: 0.9
+  rollout_consistency_pos_fraction: 0.5
   rollout_consistency_zero_weight: 1.0
   rollout_consistency_neg_weight: 20.0
   rollout_consistency_pos_weight: 200.0
