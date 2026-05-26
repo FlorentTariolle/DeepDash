@@ -39,6 +39,17 @@ full_cycle:
   total_budget_steps: 100000
   final_mode: evaluation_clean  # evaluation_clean or max_performance
   skip_real_actor_cycle0: true
+  # Keep full-cycle debugging focused on controller transfer. Train the world
+  # model after random warmup and after meaningful replay shifts, then spend
+  # the rest of the budget on policy improvement/evaluation instead of
+  # repeating multi-hour SLS refreshes on every 10K step boundary.
+  wm_refresh_steps: [10000, 30000, 60000]
+  skip_wm_at_budget: true
+  fsq_warmstart_epochs: 10
+  predictor_warmstart_epochs: 5
+  predictor_warmstart_warmup_epochs: 1
+  predictor_sls_warmstart_epochs: 5
+  predictor_sls_warmstart_warmup_epochs: 1
   # Do real-environment PPO collection/update for two policy cycles after
   # random warmup before letting dream PPO affect the policy.
   dream_start_steps: 30000

@@ -11,6 +11,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Iterable
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -68,6 +69,18 @@ def first_existing(*paths: str | Path | None) -> Path | None:
     return None
 
 
+def int_list(value) -> list[int] | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        if not value.strip():
+            return []
+        return [int(part.strip()) for part in value.split(",") if part.strip()]
+    if isinstance(value, Iterable):
+        return [int(part) for part in value]
+    return [int(value)]
+
+
 class Orchestrator:
     def __init__(self, config_path: str, force_phase: str | None = None):
         self.config_path = config_path
@@ -86,6 +99,9 @@ class Orchestrator:
         self.skip_real_actor_cycle0 = bool(full.get("skip_real_actor_cycle0", True))
         self.dream_start_steps = int(full.get("dream_start_steps", 0))
         self.post_dream_real_steps = int(full.get("post_dream_real_steps", 0))
+        self.wm_refresh_interval_steps = int(full.get("wm_refresh_interval_steps", self.cycle_steps))
+        self.wm_refresh_steps = int_list(full.get("wm_refresh_steps"))
+        self.skip_wm_at_budget = bool(full.get("skip_wm_at_budget", True))
         self.python = sys.executable
         self.wandb_project = str(full.get("wandb_project", "sls-wm-atari"))
         self.wandb_name = str(full.get("wandb_name", Path(config_path).stem))
@@ -152,6 +168,32 @@ class Orchestrator:
                 args.extend([cli_key, str(value)])
         return args
 
+    def world_model_refresh_due(self, cycle: int) -> tuple[bool, str]:
+        steps = replay_steps(self.replay_dir)
+        last_steps = int(self.state.get("last_world_model_replay_steps", 0) or 0)
+        if cycle == 0 and not self.state.get("selected_checkpoints", {}).get("predictor_sls"):
+            return True, "initial_world_model"
+        if steps <= last_steps:
+            return False, f"no new replay since last WM refresh ({steps} <= {last_steps})"
+        if self.skip_wm_at_budget and steps >= self.total_budget:
+            return False, f"budget reached ({steps} >= {self.total_budget})"
+        if self.wm_refresh_steps is not None:
+            due_steps = [step for step in self.wm_refresh_steps if last_steps < step <= steps]
+            if due_steps:
+                return True, f"crossed configured WM milestone(s): {due_steps}"
+            return False, f"no configured WM milestone crossed (last={last_steps}, current={steps})"
+        if self.wm_refresh_interval_steps <= 0:
+            return False, "WM interval disabled"
+        if steps - last_steps >= self.wm_refresh_interval_steps:
+            return True, (
+                f"WM interval reached ({steps - last_steps} >= "
+                f"{self.wm_refresh_interval_steps})"
+            )
+        return False, (
+            f"WM interval not reached ({steps - last_steps} < "
+            f"{self.wm_refresh_interval_steps})"
+        )
+
     def collect_random(self):
         target = min(self.warmup_steps, self.total_budget)
         current = replay_steps(self.replay_dir)
@@ -181,6 +223,9 @@ class Orchestrator:
         argv = [self.python, "-u", "scripts/train_fsq.py", "--config", self.config_path]
         if ckpt.exists():
             argv.extend(["--resume", str(ckpt)])
+            warmstart_epochs = self.cfg.get("full_cycle", {}).get("fsq_warmstart_epochs")
+            if warmstart_epochs is not None:
+                argv.extend(["--epochs", str(warmstart_epochs)])
         argv.extend(self.phase_overrides("fsq"))
         self.run_cmd(phase, argv)
         self.state["selected_checkpoints"]["fsq"] = str(Path(deep_get(self.cfg, "fsq.checkpoint_dir")) / "fsq_best.pt")
@@ -196,10 +241,46 @@ class Orchestrator:
             # predictor weights, but reset optimizer/scheduler/epoch/best metric
             # so the model actually adapts to the new tokenizer.
             argv.extend(["--init-from", str(latest)])
+            full = self.cfg.get("full_cycle", {})
+            warmstart_epochs = full.get(f"{section}_warmstart_epochs", full.get("predictor_warmstart_epochs"))
+            warmstart_warmup = full.get(
+                f"{section}_warmstart_warmup_epochs",
+                full.get("predictor_warmstart_warmup_epochs"),
+            )
+            if warmstart_epochs is not None:
+                argv.extend(["--epochs", str(warmstart_epochs)])
+            if warmstart_warmup is not None:
+                argv.extend(["--warmup-epochs", str(warmstart_warmup)])
         argv.extend(self.phase_overrides(section))
         self.run_cmd(phase, argv)
         self.state["selected_checkpoints"][section] = str(Path(deep_get(self.cfg, f"{section}.checkpoint_dir")) / "predictor_best.pt")
         save_state(self.state_path, self.state)
+
+    def refresh_world_model(self, cycle: int) -> bool:
+        due, reason = self.world_model_refresh_due(cycle)
+        if not due:
+            print(f"skip world model refresh cycle={cycle}: {reason}")
+            wandb_log({
+                "full_cycle/world_model_refresh_due": 0,
+                "full_cycle/world_model_refresh_skipped": 1,
+                "full_cycle/replay_steps": replay_steps(self.replay_dir),
+                "full_cycle/current_cycle": cycle,
+            })
+            return False
+        print(f"world model refresh cycle={cycle}: {reason}")
+        wandb_log({
+            "full_cycle/world_model_refresh_due": 1,
+            "full_cycle/world_model_refresh_skipped": 0,
+            "full_cycle/replay_steps": replay_steps(self.replay_dir),
+            "full_cycle/current_cycle": cycle,
+        })
+        self.train_fsq(cycle)
+        self.train_predictor("predictor", cycle)
+        self.train_predictor("predictor_sls", cycle)
+        self.state["last_world_model_replay_steps"] = replay_steps(self.replay_dir)
+        self.state["last_world_model_cycle"] = cycle
+        save_state(self.state_path, self.state)
+        return True
 
     def train_dream_actor(self, cycle: int, final: bool = False) -> bool:
         phase = f"{'final_' if final else ''}cycle_{cycle}_actor_dream"
@@ -372,15 +453,16 @@ class Orchestrator:
                 "dream_start_steps": self.dream_start_steps,
                 "post_dream_real_steps": self.post_dream_real_steps,
                 "final_mode": self.final_mode,
+                "wm_refresh_interval_steps": self.wm_refresh_interval_steps,
+                "wm_refresh_steps": self.wm_refresh_steps,
+                "skip_wm_at_budget": self.skip_wm_at_budget,
             },
         )
         self.run_dir.mkdir(parents=True, exist_ok=True)
         try:
             save_state(self.state_path, self.state)
             self.collect_random()
-            self.train_fsq(0)
-            self.train_predictor("predictor", 0)
-            self.train_predictor("predictor_sls", 0)
+            self.refresh_world_model(0)
             dream_ran = self.train_dream_actor(0)
             if dream_ran and self.post_dream_real_steps > 0:
                 self.collect_policy(
@@ -396,9 +478,14 @@ class Orchestrator:
                 save_state(self.state_path, self.state)
                 wandb_log({"full_cycle/current_cycle": cycle})
                 self.collect_policy(cycle)
-                self.train_fsq(cycle)
-                self.train_predictor("predictor", cycle)
-                self.train_predictor("predictor_sls", cycle)
+                if replay_steps(self.replay_dir) >= self.total_budget:
+                    print(
+                        f"budget reached after collection "
+                        f"({replay_steps(self.replay_dir)} >= {self.total_budget}); "
+                        "skipping remaining training phases"
+                    )
+                    break
+                self.refresh_world_model(cycle)
                 dream_ran = self.train_dream_actor(cycle)
                 if dream_ran and self.post_dream_real_steps > 0:
                     self.collect_policy(
@@ -406,6 +493,13 @@ class Orchestrator:
                         target_steps=replay_steps(self.replay_dir) + self.post_dream_real_steps,
                         phase_name=f"cycle_{cycle}_actor_real_post_dream",
                     )
+                    if replay_steps(self.replay_dir) >= self.total_budget:
+                        print(
+                            f"budget reached after post-dream real anchoring "
+                            f"({replay_steps(self.replay_dir)} >= {self.total_budget}); "
+                            "ending cycle loop"
+                        )
+                        break
             if replay_steps(self.replay_dir) != self.total_budget:
                 raise RuntimeError(f"final training budget mismatch: replay={replay_steps(self.replay_dir)} budget={self.total_budget}")
             if self.final_mode == "max_performance":
