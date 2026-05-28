@@ -11,6 +11,8 @@ Atari 100k convention (Kaiser et al. 2020):
 
 Frames are resized from native (210, 160, 3) to (64, 64, 3) RGB uint8 via
 PIL bilinear resizing, matching the released IRIS / delta-IRIS Atari wrappers.
+Each replay row stores the observation before the action, then that action's
+reward and done flag. This matches the actor collection path.
 
 Usage::
 
@@ -57,9 +59,8 @@ def collect_episode(env, max_steps, rng):
     frames, actions, dones, rewards = [], [], [], []
     for _ in range(max_steps):
         action = int(env.action_space.sample())
-        obs, reward, terminated, truncated, _ = env.step(action)
-        # Resize 210x160 -> 64x64, keep RGB channels-last uint8.
         frame64 = resize_frame_to_64(obs)
+        obs, reward, terminated, truncated, _ = env.step(action)
         frames.append(frame64)
         actions.append(action)
         rewards.append(float(reward))
@@ -128,6 +129,7 @@ def main():
                 "n_actions": int(n_actions),
                 "frame_skip": int(args.frame_skip),
                 "repeat_action_probability": float(args.repeat_action_probability),
+                "frame_action_semantics": "obs_before_action",
                 "obs_shape": [64, 64, 3],
                 "obs_dtype": "uint8",
                 "seed": int(args.seed),

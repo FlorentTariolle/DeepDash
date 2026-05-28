@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH -J "atari_full"
-#SBATCH -o slurm/logs/atari_train_full_cycle.out
-#SBATCH -e slurm/logs/atari_train_full_cycle.err
+#SBATCH -o slurm/logs/atari_train_full_cycle_%j.out
+#SBATCH -e slurm/logs/atari_train_full_cycle_%j.err
 #SBATCH -p ar_h200
 #SBATCH --gres=gpu:h200:1
 #SBATCH -n 1
@@ -16,6 +16,11 @@
 #   sbatch slurm/atari_train_full_cycle.sl configs/atari/atari_pong_h200.yaml
 
 CONFIG=${1:-configs/atari/atari_pong_h200.yaml}
+
+export PATH="/soft/AIDL/conda_envs/pytorch210/bin:$HOME/.local/bin:$PATH"
+export WANDB_PROJECT=sls-wm-atari
+export PYTHONPATH="$HOME/.python3-3.12-torch210/site-packages/lib/python3.12/site-packages:${PYTHONPATH:-}"
+
 RUN_DIR=$(python -c "import yaml; cfg=yaml.safe_load(open('$CONFIG')) or {}; print(cfg.get('full_cycle',{}).get('run_dir','runs/atari_pong_h200_full'))")
 RESUME_FLAG="$RUN_DIR/.resume_full_cycle"
 
@@ -32,9 +37,6 @@ handle_timeout() {
 }
 trap handle_timeout USR1
 
-export PATH="/soft/AIDL/conda_envs/pytorch210/bin:$HOME/.local/bin:$PATH"
-export WANDB_PROJECT=sls-wm-atari
-export PYTHONPATH="$HOME/.python3-3.12-torch210/site-packages/lib/python3.12/site-packages:${PYTHONPATH:-}"
 pip install --user --upgrade wandb "protobuf>=6.32" "gymnasium[atari,accept-rom-license]>=1.0.0" 2>/dev/null
 
 if [ -f "$RESUME_FLAG" ]; then

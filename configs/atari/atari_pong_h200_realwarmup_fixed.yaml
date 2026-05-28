@@ -1,4 +1,4 @@
-# Atari Pong H200 real-warmup controller rerun.
+# Atari Pong H200 fixed real-warmup controller rerun.
 #
 # First supercomputer target:
 #   1. collect 10K random-policy replay,
@@ -20,8 +20,8 @@ model:
 
 atari:
   game: Pong
-  out_dir: data/atari/Pong_realwarmup
-  replay_dir: data/atari/Pong_realwarmup/replay
+  out_dir: data/atari/Pong_realwarmup_fixed
+  replay_dir: data/atari/Pong_realwarmup_fixed/replay
   shard_size: 8192
   warmup_steps: 10000
   cycle_steps: 10000
@@ -31,9 +31,9 @@ atari:
   seed: 42
 
 full_cycle:
-  run_dir: runs/atari_pong_h200_realwarmup_full
+  run_dir: runs/atari_pong_h200_realwarmup_fixed_full
   wandb_project: sls-wm-atari
-  wandb_name: atari-pong-realwarmup-full
+  wandb_name: atari-pong-realwarmup-fixed-full
   warmup_steps: 10000
   cycle_steps: 10000
   total_budget_steps: 100000
@@ -78,17 +78,19 @@ full_cycle:
     actor_real:
       actor_update: iris_pg
       entropy_coeff: 0.01
-      policy_action_subset: "4,5"
+      policy_action_subset: ""
+      random_action_prob: 0.25
     actor_dream:
       actor_update: iris_pg
-      policy_action_subset: "4,5"
+      entropy_coeff: 0.01
+      policy_action_subset: ""
     evaluation:
-      policy_action_subset: "4,5"
+      policy_action_subset: ""
 
 fsq:
-  episodes_dir: data/atari/Pong_realwarmup/episodes
-  replay_dir: data/atari/Pong_realwarmup/replay
-  expert_episodes_dir: data/atari/Pong_realwarmup/_no_expert
+  episodes_dir: data/atari/Pong_realwarmup_fixed/episodes
+  replay_dir: data/atari/Pong_realwarmup_fixed/replay
+  expert_episodes_dir: data/atari/Pong_realwarmup_fixed/_no_expert
   img_channels: 3
   norm_type: group
   levels: [8, 5, 5, 5]
@@ -111,12 +113,12 @@ fsq:
   seed: 42
   amp_dtype: bfloat16
   compile_mode: reduce-overhead
-  checkpoint_dir: checkpoints_atari_pong_h200_realwarmup
+  checkpoint_dir: checkpoints_atari_pong_h200_realwarmup_fixed
 
 predictor:
-  replay_dir: data/atari/Pong_realwarmup/replay
-  fsq_checkpoint: checkpoints_atari_pong_h200_realwarmup/fsq_best.pt
-  tokenizer_config: configs/atari/atari_pong_h200_realwarmup.yaml
+  replay_dir: data/atari/Pong_realwarmup_fixed/replay
+  fsq_checkpoint: checkpoints_atari_pong_h200_realwarmup_fixed/fsq_best.pt
+  tokenizer_config: configs/atari/atari_pong_h200_realwarmup_fixed.yaml
   n_actions: 6
   epochs: 20
   batch_size: 128
@@ -147,12 +149,12 @@ predictor:
   max_val_batches: 64
   max_rollout_batches: 16
   seed: 42
-  checkpoint_dir: checkpoints_atari_pong_h200_realwarmup_predictor_ce
+  checkpoint_dir: checkpoints_atari_pong_h200_realwarmup_fixed_predictor_ce
 
 predictor_sls:
-  replay_dir: data/atari/Pong_realwarmup/replay
-  fsq_checkpoint: checkpoints_atari_pong_h200_realwarmup/fsq_best.pt
-  tokenizer_config: configs/atari/atari_pong_h200_realwarmup.yaml
+  replay_dir: data/atari/Pong_realwarmup_fixed/replay
+  fsq_checkpoint: checkpoints_atari_pong_h200_realwarmup_fixed/fsq_best.pt
+  tokenizer_config: configs/atari/atari_pong_h200_realwarmup_fixed.yaml
   n_actions: 6
   epochs: 20
   batch_size: 128
@@ -183,14 +185,14 @@ predictor_sls:
   max_val_batches: 64
   max_rollout_batches: 16
   seed: 42
-  checkpoint_dir: checkpoints_atari_pong_h200_realwarmup_predictor_sls
+  checkpoint_dir: checkpoints_atari_pong_h200_realwarmup_fixed_predictor_sls
 
 actor_real:
   game: Pong
-  replay_dir: data/atari/Pong_realwarmup/replay
-  fsq_checkpoint: checkpoints_atari_pong_h200_realwarmup/fsq_best.pt
+  replay_dir: data/atari/Pong_realwarmup_fixed/replay
+  fsq_checkpoint: checkpoints_atari_pong_h200_realwarmup_fixed/fsq_best.pt
   # Start with the SLS predictor for the policy path; override to CE for ablations.
-  predictor_checkpoint: checkpoints_atari_pong_h200_realwarmup_predictor_sls/predictor_best.pt
+  predictor_checkpoint: checkpoints_atari_pong_h200_realwarmup_fixed_predictor_sls/predictor_best.pt
   n_steps: 10000
   rollout_steps: 256
   lr: 0.00025
@@ -200,6 +202,7 @@ actor_real:
   ppo_epochs: 4
   minibatch_size: 256
   entropy_coeff: 0.01
+  random_action_prob: 0.25
   critic_coeff: 0.5
   max_grad_norm: 0.5
   value_head_type: twohot
@@ -211,13 +214,13 @@ actor_real:
   amp_dtype: bfloat16
   compile_mode: reduce-overhead
   seed: 42
-  checkpoint_dir: checkpoints_atari_pong_h200_realwarmup_actor_real
+  checkpoint_dir: checkpoints_atari_pong_h200_realwarmup_fixed_actor_real
 
 actor_dream:
-  replay_dir: data/atari/Pong_realwarmup/replay
-  fsq_checkpoint: checkpoints_atari_pong_h200_realwarmup/fsq_best.pt
-  predictor_checkpoint: checkpoints_atari_pong_h200_realwarmup_predictor_sls/predictor_best.pt
-  pretrained: checkpoints_atari_pong_h200_realwarmup_actor_real/actor_real_latest.pt
+  replay_dir: data/atari/Pong_realwarmup_fixed/replay
+  fsq_checkpoint: checkpoints_atari_pong_h200_realwarmup_fixed/fsq_best.pt
+  predictor_checkpoint: checkpoints_atari_pong_h200_realwarmup_fixed_predictor_sls/predictor_best.pt
+  pretrained: checkpoints_atari_pong_h200_realwarmup_fixed_actor_real/actor_real_latest.pt
   n_iterations: 250
   n_episodes: 256
   imagined_to_collected_ratio: 64
@@ -240,7 +243,7 @@ actor_dream:
   clip_eps: 0.2
   ppo_epochs: 4
   minibatch_size: 512
-  entropy_coeff: 0.001
+  entropy_coeff: 0.01
   critic_coeff: 0.5
   max_grad_norm: 0.5
   value_head_type: twohot
@@ -264,15 +267,15 @@ actor_dream:
   amp_dtype: bfloat16
   compile_mode: reduce-overhead
   seed: 42
-  checkpoint_dir: checkpoints_atari_pong_h200_realwarmup_actor_dream
+  checkpoint_dir: checkpoints_atari_pong_h200_realwarmup_fixed_actor_dream
 
 actor_iris:
-  replay_dir: data/atari/Pong_realwarmup/replay
-  fsq_checkpoint: checkpoints_atari_pong_h200_realwarmup/fsq_best.pt
-  predictor_checkpoint: checkpoints_atari_pong_h200_realwarmup_predictor_sls/predictor_best.pt
+  replay_dir: data/atari/Pong_realwarmup_fixed/replay
+  fsq_checkpoint: checkpoints_atari_pong_h200_realwarmup_fixed/fsq_best.pt
+  predictor_checkpoint: checkpoints_atari_pong_h200_realwarmup_fixed_predictor_sls/predictor_best.pt
   # IRIS-style policy path: recurrent CNN over reconstructed frames,
   # event-balanced lambda-return actor-critic in dreams.
-  policy_action_subset: "4,5"
+  policy_action_subset: ""
   n_iterations: 2000
   batch_num_samples: 128
   imagine_horizon: 20
@@ -303,11 +306,11 @@ actor_iris:
   eval_seed: 20042
   amp_dtype: bfloat16
   seed: 42
-  checkpoint_dir: checkpoints_atari_pong_h200_realwarmup_actor_iris_fixed
+  checkpoint_dir: checkpoints_atari_pong_h200_realwarmup_fixed_actor_iris
 
 evaluation:
   n_episodes: 20
   max_steps_per_episode: 27000
-  actor_checkpoint: checkpoints_atari_pong_h200_realwarmup_actor_dream/actor_dream_best_real.pt
-  output: runs/atari_pong_h200_realwarmup_full/evaluation.json
+  actor_checkpoint: checkpoints_atari_pong_h200_realwarmup_fixed_actor_dream/actor_dream_best_real.pt
+  output: runs/atari_pong_h200_realwarmup_fixed_full/evaluation.json
   seed: 10042

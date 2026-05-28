@@ -86,6 +86,27 @@ def reward_event_context_starts(replay, context_frames: int,
     }
 
 
+def reward_neutral_context_starts(replay, context_frames: int, horizon: int):
+    """Context starts with no reward event in the calibration horizon."""
+    episode_ids = replay.episode_ids
+    dones = replay.dones
+    rewards = replay.rewards
+    limit = len(episode_ids) - int(context_frames) - max(int(horizon), 1)
+    starts = []
+    for i in range(max(limit, 0)):
+        context_end = i + int(context_frames)
+        reward_start = context_end - 1
+        reward_end = reward_start + int(horizon)
+        if not np.all(episode_ids[i:reward_end] == episode_ids[i]):
+            continue
+        if np.any(dones[i:reward_end - 1]):
+            continue
+        if np.any(rewards[reward_start:reward_end] != 0):
+            continue
+        starts.append(i)
+    return np.asarray(starts, dtype=np.int64)
+
+
 def _choice(values, n, rng):
     if n <= 0 or len(values) == 0:
         return np.empty(0, dtype=np.int64)
@@ -536,6 +557,9 @@ def main():
     parser.add_argument("--dream-gate-false-positive-rate", type=float, default=None)
     parser.add_argument("--dream-gate-sign-accuracy", type=float, default=None)
     parser.add_argument("--dream-gate-real-eval-episodes", type=int, default=None)
+    parser.add_argument("--dream-gate-require-positive-events",
+                        action=argparse.BooleanOptionalAction, default=None,
+                        help="Require positive reward-event calibration to pass before dream PPO.")
     parser.add_argument("--wandb-project", default=None)
     parser.add_argument("--wandb-name", default=None)
     parser.add_argument("--policy-action-subset", default=None,
@@ -618,6 +642,9 @@ def main():
     args.dream_gate_real_eval_episodes = (
         args.dream_gate_real_eval_episodes
         if args.dream_gate_real_eval_episodes is not None else 0)
+    args.dream_gate_require_positive_events = (
+        bool(args.dream_gate_require_positive_events)
+        if args.dream_gate_require_positive_events is not None else True)
     args.wandb_project = args.wandb_project or "sls-wm-atari"
     args.wandb_name = args.wandb_name or f"actor-dream-{Path(args.checkpoint_dir).name}"
     args.amp_dtype = args.amp_dtype or "bfloat16"
@@ -772,13 +799,32 @@ def main():
     calibration = calibrate_dream_rewards(
         predictor, calibration_starts, tokens, replay.actions, replay.rewards, context_frames,
         args, device, amp, rng)
+    neutral_starts = reward_neutral_context_starts(
+        replay, context_frames, int(args.reward_calibration_horizon))
+    stratified_calibration = {
+        "positive": calibrate_dream_rewards(
+            predictor, event_starts[1], tokens, replay.actions, replay.rewards,
+            context_frames, args, device, amp, rng),
+        "negative": calibrate_dream_rewards(
+            predictor, event_starts[-1], tokens, replay.actions, replay.rewards,
+            context_frames, args, device, amp, rng),
+        "neutral": calibrate_dream_rewards(
+            predictor, neutral_starts, tokens, replay.actions, replay.rewards,
+            context_frames, args, device, amp, rng),
+    }
     if calibration is not None:
         cal_path = ckpt_dir / "reward_calibration.csv"
         with open(cal_path, "w", newline="") as f:
             writer = csv.DictWriter(
-                f, fieldnames=["start", "true_gap", "true_sign", "pred_gap", "pred_sign"])
+                f, fieldnames=[
+                    "split", "start", "true_gap", "true_sign", "pred_gap", "pred_sign"])
             writer.writeheader()
-            writer.writerows(calibration["rows"])
+            writer.writerows({"split": "mixed", **row} for row in calibration["rows"])
+            for split, split_calibration in stratified_calibration.items():
+                if split_calibration is not None:
+                    writer.writerows(
+                        {"split": split, **row}
+                        for row in split_calibration["rows"])
         print(
             "Reward calibration: "
             f"events={calibration['event_cases']} neutral={calibration['neutral_cases']} "
@@ -796,6 +842,27 @@ def main():
             "actor_dream/reward_calibration_false_positive_rate": calibration["false_positive_rate"],
             "actor_dream/reward_calibration_mean_timing_error": calibration["mean_timing_error"],
         })
+    for split, split_calibration in stratified_calibration.items():
+        if split_calibration is None:
+            print(f"Reward calibration {split}: unavailable")
+            continue
+        print(
+            f"Reward calibration {split}: "
+            f"events={split_calibration['event_cases']} "
+            f"neutral={split_calibration['neutral_cases']} "
+            f"sign_acc={split_calibration['sign_accuracy']:.3f} "
+            f"miss_rate={split_calibration['miss_rate']:.3f} "
+            f"false_pos={split_calibration['false_positive_rate']:.3f} "
+            f"timing_err={split_calibration['mean_timing_error']:.2f}"
+        )
+        wandb_log({
+            f"actor_dream/reward_calibration_{split}_event_cases": split_calibration["event_cases"],
+            f"actor_dream/reward_calibration_{split}_neutral_cases": split_calibration["neutral_cases"],
+            f"actor_dream/reward_calibration_{split}_sign_accuracy": split_calibration["sign_accuracy"],
+            f"actor_dream/reward_calibration_{split}_miss_rate": split_calibration["miss_rate"],
+            f"actor_dream/reward_calibration_{split}_false_positive_rate": split_calibration["false_positive_rate"],
+            f"actor_dream/reward_calibration_{split}_mean_timing_error": split_calibration["mean_timing_error"],
+        })
 
     if args.dream_gate:
         gate = {
@@ -808,6 +875,7 @@ def main():
                 "sign_accuracy": args.dream_gate_sign_accuracy,
             },
             "replay_reward_calibration": calibration,
+            "stratified_reward_calibration": stratified_calibration,
             "actor_action_reward_calibration": None,
         }
         if calibration is None or calibration.get("event_cases", 0) <= 0:
@@ -818,6 +886,37 @@ def main():
             or calibration["sign_accuracy"] < args.dream_gate_sign_accuracy
         ):
             gate.update({"passed": False, "reason": "replay_reward_calibration_failed"})
+        for split in ("positive", "negative"):
+            split_calibration = stratified_calibration.get(split)
+            if not gate["passed"]:
+                break
+            if split == "positive" and not args.dream_gate_require_positive_events:
+                continue
+            if split_calibration is None or split_calibration.get("event_cases", 0) <= 0:
+                gate.update({
+                    "passed": False,
+                    "reason": f"missing_{split}_reward_calibration",
+                })
+                break
+            if (
+                split_calibration["miss_rate"] > args.dream_gate_miss_rate
+                or split_calibration["sign_accuracy"] < args.dream_gate_sign_accuracy
+            ):
+                gate.update({
+                    "passed": False,
+                    "reason": f"{split}_reward_calibration_failed",
+                })
+                break
+        neutral_calibration = stratified_calibration.get("neutral")
+        if (
+            gate["passed"]
+            and neutral_calibration is not None
+            and neutral_calibration["false_positive_rate"] > args.dream_gate_false_positive_rate
+        ):
+            gate.update({
+                "passed": False,
+                "reason": "neutral_reward_calibration_failed",
+            })
         if gate["passed"] and args.dream_gate_real_eval_episodes > 0:
             prev_episodes = args.real_eval_episodes
             args.real_eval_episodes = int(args.dream_gate_real_eval_episodes)

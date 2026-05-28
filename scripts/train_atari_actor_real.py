@@ -209,6 +209,9 @@ def main():
     parser.add_argument("--policy-action-subset", default=None,
                         help="Comma-separated ALE env action ids exposed to the policy. "
                              "Replay and predictor context still use original env ids.")
+    parser.add_argument("--random-action-prob", type=float, default=None,
+                        help="Probability of replacing the sampled policy action with "
+                             "a uniform policy-action-space action during real collection.")
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--init-from", default=None,
                         help="Warm-start actor weights from a checkpoint, but reset optimizer/update state.")
@@ -252,6 +255,8 @@ def main():
     args.wandb_project = args.wandb_project or "sls-wm-atari"
     args.wandb_name = args.wandb_name or f"actor-real-{Path(args.checkpoint_dir).name}"
     args.seed = args.seed if args.seed is not None else int(atari_cfg.get("seed", 42))
+    args.random_action_prob = (
+        args.random_action_prob if args.random_action_prob is not None else 0.0)
 
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
@@ -291,6 +296,7 @@ def main():
             "policy_action_subset": action_subset,
             "frame_skip": int(atari_cfg.get("frame_skip", 4)),
             "repeat_action_probability": float(atari_cfg.get("repeat_action_probability", 0.0)),
+            "frame_action_semantics": "obs_before_action",
             "obs_shape": [64, 64, 3],
             "obs_dtype": "uint8",
             "seed": args.seed,
@@ -409,7 +415,16 @@ def main():
             h_t = predictor.encode_context(
                 ctx_t, ctx_a, return_action_hidden=False)
             token_t = ctx_t[:, -1]
-            policy_action_t, logp_t, _, value_t = policy.act(token_t, h_t.float())
+            logits_t, value_t = policy(token_t, h_t.float())
+            dist_t = torch.distributions.Categorical(logits=logits_t)
+            policy_action_t = dist_t.sample()
+            if float(args.random_action_prob) > 0.0 and rng.random() < float(args.random_action_prob):
+                policy_action_t = torch.tensor(
+                    [int(rng.integers(0, policy_n_actions))],
+                    dtype=torch.long,
+                    device=device,
+                )
+            logp_t = dist_t.log_prob(policy_action_t)
         action = int(action_subset[int(policy_action_t.item())])
 
         obs, reward, terminated, truncated, _ = env.step(action)

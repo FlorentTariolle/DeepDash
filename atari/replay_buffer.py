@@ -76,7 +76,16 @@ class ReplayShardWriter:
                 )
             if metadata:
                 for key, value in metadata.items():
-                    existing.setdefault(key, value)
+                    if key in existing:
+                        if key == "frame_action_semantics" and existing[key] != value:
+                            raise ValueError(
+                                "existing replay frame_action_semantics="
+                                f"{existing[key]!r} does not match requested {value!r}"
+                            )
+                        continue
+                    if key == "frame_action_semantics" and int(existing.get("total_steps", 0)) > 0:
+                        continue
+                    existing[key] = value
 
         self.metadata = existing
         self._obs = []

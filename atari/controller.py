@@ -85,3 +85,103 @@ class AtariCNNPolicy(nn.Module):
     def act_deterministic(self, token_ids, h_t):
         logits, _ = self.forward(token_ids, h_t)
         return logits.argmax(dim=-1)
+
+
+class AtariIrisPolicy(nn.Module):
+    """IRIS-style recurrent actor-critic on reconstructed Atari frames.
+
+    This policy is intentionally separate from ``AtariCNNPolicy``.  It follows
+    the controller interface used by IRIS more closely: the actor reads a
+    decoded 64x64 RGB observation, keeps an LSTM state across imagined or real
+    time, and predicts policy logits plus a scalar value.
+    """
+
+    def __init__(self, n_actions=6, input_channels=3, lstm_dim=512):
+        super().__init__()
+        self.n_actions = int(n_actions)
+        self.input_channels = int(input_channels)
+        self.lstm_dim = int(lstm_dim)
+
+        self.conv1 = nn.Conv2d(self.input_channels, 32, 3, stride=1, padding=1)
+        self.pool1 = nn.MaxPool2d(2, 2)
+        self.conv2 = nn.Conv2d(32, 32, 3, stride=1, padding=1)
+        self.pool2 = nn.MaxPool2d(2, 2)
+        self.conv3 = nn.Conv2d(32, 64, 3, stride=1, padding=1)
+        self.pool3 = nn.MaxPool2d(2, 2)
+        self.conv4 = nn.Conv2d(64, 64, 3, stride=1, padding=1)
+        self.pool4 = nn.MaxPool2d(2, 2)
+
+        self.lstm = nn.LSTMCell(1024, self.lstm_dim)
+        self.actor = nn.Linear(self.lstm_dim, self.n_actions)
+        self.critic = nn.Linear(self.lstm_dim, 1)
+
+        self.hx: torch.Tensor | None = None
+        self.cx: torch.Tensor | None = None
+        self._init_weights()
+
+    def _init_weights(self):
+        for module in (self.conv1, self.conv2, self.conv3, self.conv4):
+            nn.init.orthogonal_(module.weight, gain=2 ** 0.5)
+            nn.init.zeros_(module.bias)
+        nn.init.orthogonal_(self.lstm.weight_ih, gain=1.0)
+        nn.init.orthogonal_(self.lstm.weight_hh, gain=1.0)
+        nn.init.zeros_(self.lstm.bias_ih)
+        nn.init.zeros_(self.lstm.bias_hh)
+        nn.init.orthogonal_(self.actor.weight, gain=0.01)
+        nn.init.zeros_(self.actor.bias)
+        nn.init.orthogonal_(self.critic.weight, gain=1.0)
+        nn.init.zeros_(self.critic.bias)
+
+    def clear(self):
+        self.hx = None
+        self.cx = None
+
+    def reset(self, n: int, device: torch.device | None = None):
+        device = device or self.conv1.weight.device
+        self.hx = torch.zeros(int(n), self.lstm_dim, device=device)
+        self.cx = torch.zeros(int(n), self.lstm_dim, device=device)
+
+    def _features(self, obs: torch.Tensor) -> torch.Tensor:
+        if obs.ndim != 4:
+            raise ValueError(f"expected obs shape (B,C,64,64), got {tuple(obs.shape)}")
+        if obs.size(1) != self.input_channels or obs.size(2) != 64 or obs.size(3) != 64:
+            raise ValueError(f"expected obs shape (B,{self.input_channels},64,64), got {tuple(obs.shape)}")
+        x = obs.float().clamp(0.0, 1.0).mul(2.0).sub(1.0)
+        x = F.relu(self.pool1(self.conv1(x)))
+        x = F.relu(self.pool2(self.conv2(x)))
+        x = F.relu(self.pool3(self.conv3(x)))
+        x = F.relu(self.pool4(self.conv4(x)))
+        return torch.flatten(x, start_dim=1)
+
+    def forward(self, obs: torch.Tensor):
+        if self.hx is None or self.cx is None or self.hx.size(0) != obs.size(0):
+            self.reset(obs.size(0), obs.device)
+        x = self._features(obs)
+        self.hx, self.cx = self.lstm(x, (self.hx, self.cx))
+        logits = self.actor(self.hx)
+        value = self.critic(self.hx).squeeze(-1)
+        return logits, value
+
+    @torch.no_grad()
+    def burn_in(self, observations: torch.Tensor):
+        """Advance the recurrent state on a batch of observation prefixes."""
+        if observations.numel() == 0:
+            return
+        if observations.ndim != 5:
+            raise ValueError(
+                f"expected burn-in shape (B,T,C,64,64), got {tuple(observations.shape)}")
+        bsz, steps = observations.shape[:2]
+        self.reset(bsz, observations.device)
+        was_training = self.training
+        self.eval()
+        for step in range(steps):
+            self(observations[:, step])
+        if was_training:
+            self.train()
+
+    def act(self, obs: torch.Tensor, temperature: float = 1.0, sample: bool = True):
+        logits, value = self.forward(obs)
+        scaled_logits = logits / max(float(temperature), 1e-6)
+        dist = torch.distributions.Categorical(logits=scaled_logits)
+        action = dist.sample() if sample else scaled_logits.argmax(dim=-1)
+        return action, dist.log_prob(action), dist.entropy(), value, logits

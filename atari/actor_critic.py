@@ -166,6 +166,8 @@ def iris_pg_update(policy, optimizer, batch: dict, args, device: torch.device,
         dist = torch.distributions.Categorical(logits=logits)
         logp = dist.log_prob(data["actions"])
         advantage = returns - value.detach()
+        advantage = (advantage - advantage.mean()) / (
+            advantage.std(unbiased=False) + 1e-8)
         actor_loss = -(logp * advantage).mean()
         if value_logits is not None:
             targets = twohot_symlog_targets(
