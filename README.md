@@ -23,7 +23,7 @@
 >
 > **What stays, what changes.** The locked GD instantiation is **V7**: the V3-deploy architecture (the project's strongest GD play, originally trained on older code with an FSQ-augmentation-pipeline bug) retrained on current code with the bug fixed and multi-directional shifts restored, reaching V3-deploy deploy-survival parity reproducibly from HEAD. V7 is retained as a real-time application showcase: the full pipeline measures **~15 ms total inference per frame on RTX 2060 SUPER** (~67 FPS achievable; deployed at 30 FPS conservatively for capture-rate stability). Primary evaluation moves to a reactive subset of Atari 100k. Two paper questions guide ongoing work: **(Q1)** does SLS improve over standard CE on a standard benchmark? **(Q2)** is SLS FSQ-specific, or principle-level (validated via a VQ-VAE adaptation)?
 
-> **Status:** V7 (Geometry Dash) is frozen as the application showcase, no further iteration. Benchmark instantiation is pre-freeze and the active research track. NeurIPS 2026 workshop submission target. Numerical results and ablation tables will land with the benchmark freeze; this repository currently describes the method and architecture, not outcomes.
+> **Status:** V7 (Geometry Dash) is frozen as the application showcase, no further iteration. Benchmark instantiation is pre-freeze and the active research track. Any conference/workshop venue will be decided after the benchmark freeze. Numerical results and ablation tables will land with the benchmark freeze; this repository currently describes the method and architecture, not outcomes.
 
 ## Using the code
 
