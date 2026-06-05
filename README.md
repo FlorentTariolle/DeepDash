@@ -1,7 +1,7 @@
 # SLS-WM
 ### Structured Label Smoothing over Finite Scalar Quantization for Discrete World Models
 
-[Florent Tariolle](mailto:florent.tariolle@insa-rouen.fr)
+[Florent Tariolle](https://tariolle.github.io/)
 
 **Abstract:** Discrete World Models tokenize observations with a learned quantizer and predict next-frame tokens with a transformer, but standard cross-entropy treats every incorrect prediction as equally wrong. Finite Scalar Quantization (FSQ) makes a richer signal available by construction: each code sits on an integer coordinate lattice, so a token one step away in one dimension is a near-miss while a token at the opposite corner is a gross error. We introduce *Structured Label Smoothing* (SLS), which replaces the one-hot training target with a kernel over codebook coordinates, so a near-miss prediction is treated as a near-miss rather than a gross error. An isotropic kernel with bandwidth fixed by a first-neighbour rule gives a zero-calibration hyperparameter that is robust to codebook drift. We integrate SLS into a complete Vision-Model-Controller pipeline for Geometry Dash, where the controller is trained entirely in imagination and deployed at 30 FPS on the real game via screen capture.
 
