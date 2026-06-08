@@ -59,7 +59,7 @@
 \newcommand{\focalgamma}{2.0}
 \newcommand{\ctrlparams}{\sim\!45\text{K}}
 
-\title{Structured Label Smoothing\\over Finite Scalar Quantization\\for Discrete World Models}
+\title{Annealed Structured Label Smoothing\\for Discrete World Models}
 
 \author{%
   Florent Tariolle\thanks{\normalsize Correspondence to \texttt{florent.tariolle@insa-rouen.fr}} \\
@@ -78,21 +78,19 @@
 
 \begin{abstract}
 Discrete World Models tokenize observations with a learned quantizer and predict next-frame tokens with a transformer, but standard cross-entropy treats every incorrect prediction as equally wrong.
-Finite Scalar Quantization (FSQ) makes a richer signal available by construction: each code sits on an integer coordinate lattice, so a token one step away in one dimension is a near-miss while a token at the opposite corner is a gross error.
-We introduce \emph{Structured Label Smoothing} (SLS), which replaces the one-hot training target with a kernel over codebook coordinates, so a near-miss prediction is treated as a near-miss rather than a gross error.
-An isotropic kernel with bandwidth fixed by a first-neighbour rule gives a zero-calibration hyperparameter that has a single principled choice independent of codebook size.
-We integrate SLS into a complete real-time Vision-Model-Controller (V-M-C) pipeline for Geometry Dash: an FSQ-VAE tokenizer, a causal transformer dynamics model with action tokens interleaved in the sequence, and a CNN actor-critic in the predicted-token-grid space, trained entirely in imagination on dreamed rollouts and deployed at 30\,FPS on the real game via screen capture.
+We introduce \emph{Structured Label Smoothing} (SLS), a tokenizer-metric-aware soft-target objective that distributes smoothing mass over nearby tokens instead of uniformly over the vocabulary.
+Finite Scalar Quantization (FSQ) provides one natural metric through its integer code lattice, while VQ-style tokenizers can use codebook or embedding distance.
+The current method is \emph{annealed SLS}: structured smoothing is used early to reduce brittle optimization, then the smoothing mass is annealed to zero so the late objective becomes ordinary CE.
+We evaluate SLS as a minimal objective change on an accepted discrete world-model baseline, and present Geometry Dash as the domain-specific application where FSQ originally exposed the near-miss problem: a real-time Vision-Model-Controller (V-M-C) pipeline trained in imagination and deployed at 30\,FPS via screen capture.
 \end{abstract}
 
-\paragraph{Draft note (2026-04-29).}
-This paper is being reframed from a system contribution (real-time world model for Geometry Dash) toward a method contribution centered on Structured Label Smoothing.
-SLS originated from an observed anomaly during transformer training: predicted frames matched ground truth almost perfectly while next-token accuracy stayed below 30\%, revealing that FSQ's coordinate-grid structure makes neighbor codes semantically near-identical and that standard CE was actively penalizing semantically-correct near-miss predictions as gross errors.
-Once SLS was identified as the principled fix, evaluating it properly required moving to a benchmark with parallel-counted metrics: Geometry Dash's deploy metric (\% of level reached) is a serial-difficulty cut whose SNR is too low to detect SLS effect sizes, and offers no comparable WM baselines.
-The pivot is methodological, not aesthetic.
-Geometry Dash is retained as a real-time application showcase: the full pipeline measures $\sim$15\,ms total inference per frame on RTX 2060 SUPER ($\sim$67\,FPS achievable; deployed at 30\,FPS conservatively for capture-rate stability).
-Primary evaluation is moving to a reactive subset of Atari 100k; two open questions guide ongoing experiments: (Q1) does SLS improve over standard CE on a standard benchmark? (Q2) is SLS FSQ-specific, or principle-level (cross-validated on a VQ-VAE codebook)?
-Both environments sit in the same data-scarce regime: roughly two hours of gameplay per environment (Geometry Dash: $\sim$250K recorded frames at 30\,FPS $\approx$ 2h19; Atari 100k: 100k environment steps with 4-frame skip at 60\,Hz $\approx$ 1h51), aligning the cross-environment evaluation budget with published sample-efficient world-model baselines (DreamerV3, IRIS, TWISTER) on Atari 100k.
-Updated experimental tables and intro framing will land progressively as the benchmark instantiation matures.
+\paragraph{Draft note (2026-06-08).}
+This paper is now framed as a split contribution: annealed SLS as the method, and Geometry Dash V7 as the application.
+SLS originated from an FSQ-specific observation in Geometry Dash: predicted frames could look visually correct while next-token accuracy stayed low, because neighbouring FSQ codes were penalized like unrelated codes.
+That remains the motivating special case, but the benchmarkable claim is broader: SLS applies to any discrete tokenizer with a meaningful token metric, and annealing the smoothing mass back to zero avoids the late-training bias of fixed soft targets.
+The full V7-native Atari controller path is retired for this paper; Atari is used only through accepted-baseline validation.
+The current IRIS/Pong single-seed result shows the intended pattern: fixed SLS improves the unstable early window but fails asymptotically, while annealed SLS preserves much of the stability/sample-efficiency benefit and recovers near-CE final performance.
+Additional seeds and at least one more game remain necessary before this becomes a reviewer-grade benchmark result.
 
 % ===========================================================================
 \section{Introduction}
@@ -101,22 +99,27 @@ Updated experimental tables and intro framing will land progressively as the ben
 
 Learning WMs that predict future observations from actions is central to model-based reinforcement learning~\citep{ha2018world}.
 Recent approaches tokenize visual frames into discrete codes and train autoregressive transformers to predict token sequences~\citep{micheli2023iris, hafner2025dreamerv3}.
-Finite Scalar Quantization~\citep{mentzer2024fsq} offers a simple alternative to VQ-VAE codebooks: each latent vector is independently rounded to one of $L$ levels per dimension, yielding $\prod_d L_d$ implicit codes with no codebook collapse and no auxiliary losses.
+These models usually optimize hard cross-entropy over tokenizer indices.
+That objective is indifferent to token geometry: a near-miss token and a semantically unrelated token receive the same penalty whenever neither is the target.
+This is wasteful when the tokenizer has a meaningful neighbourhood structure, as is common in structured discrete latents.
 
-A key property of FSQ, largely unexploited in downstream tasks, is that its codebook has a natural coordinate structure.
-Each code maps to a point on a $D$-dimensional integer lattice, and the distance between two codes in this space is semantically meaningful: codes that differ by one step in one dimension represent visually similar patches.
-Yet discrete WMs supervise next-token prediction with one-hot cross-entropy on tokenizer indices~\citep{micheli2023iris}, which exploits no coordinate metric on the latent space and treats a near-miss (one lattice step from the target) and a gross error (opposite corner of the codebook) as equally informative training signals.
+Finite Scalar Quantization~\citep{mentzer2024fsq} makes this issue especially visible.
+Each latent vector is independently rounded to one of $L$ levels per dimension, yielding $\prod_d L_d$ implicit codes with no codebook collapse and no auxiliary losses.
+Each code maps to a point on a $D$-dimensional integer lattice, so codes that differ by one step in one dimension often represent visually similar patches.
+However, the same principle is not restricted to FSQ: any tokenizer with a meaningful token metric, such as VQ codebook or embedding distance, can define a neighbourhood over alternatives.
 
 This places SLS-WM in contrast with diffusion-based generative latent prediction (GLP) methods.
 Discrete latent spaces have proven effective for sample-efficient Atari world models, most notably in IRIS~\citep{micheli2023iris}, but discreteness removes the continuous latent geometry that diffusion-style denoising uses to express smooth predictive uncertainty.
-SLS-WM preserves the discrete classification formulation while recovering a notion of smooth prediction from the FSQ lattice itself: instead of assigning all probability mass to a single token or denoising in continuous space, it distributes target probability over nearby lattice states.
+SLS-WM preserves the discrete classification formulation while recovering a notion of smooth prediction from a token metric: instead of assigning all probability mass to a single token or denoising in continuous space, it distributes target probability over nearby discrete states.
 In this sense, SLS capitalizes on the discreteness that makes tokenized Atari WMs effective while avoiding the structureless penalty imposed by one-hot supervision.
 
-We propose \emph{Structured Label Smoothing} (SLS), a soft-target objective whose target distribution is a kernel over FSQ coordinate distances, so the supervision signal reflects the geometry the quantizer has already learned.
+We propose \emph{Structured Label Smoothing} (SLS), a soft-target objective whose target distribution is a kernel over token distances, so the supervision signal reflects geometry already present in the tokenizer.
 Classical uniform label smoothing~\citep{szegedy2016rethinking} is the structureless limit of this construction and a natural ablation, not the baseline SLS improves over.
+Our current objective anneals the smoothing mass to zero late in training.
+The anneal is central: fixed smoothing can stabilize early optimization while biasing the late optimum, whereas annealed SLS becomes exact CE asymptotically.
 
 This can be viewed as part of a broader shift from data-agnostic heuristics to structure derived from learned representations, analogous to how learned strided convolutions replaced fixed max-pooling for spatial downsampling~\citep{springenberg2015striving}.
-Unlike knowledge distillation, which requires a separate teacher model to produce soft targets, SLS exploits geometry already present in the FSQ codebook at no additional cost.
+Unlike knowledge distillation, which requires a separate teacher model to produce soft targets, SLS exploits geometry already present in the tokenizer at no additional cost.
 
 Our use of a discrete, reconstruction-anchored tokenizer is deliberate rather than incidental.
 In real-world video, much of the pixel stream is either unpredictable from the available context or irrelevant to control: lighting variation, sensor noise, sub-pixel texture, camera motion, and unobserved causes can make pixel-level prediction waste compute and even push the representation toward nuisance detail.
@@ -125,13 +128,15 @@ For this reason, representation-space objectives such as JEPA are attractive in 
 Geometry Dash and Atari are different: they are rendered by deterministic, low-entropy state machines, so the pixels are a repeatable projection of the underlying discrete game state.
 In this setting, pixel reconstruction provides a useful ground-truth anchor for tokenizing the space, and preserving predictable pixel-level information can help rather than hurt downstream action.
 
-We evaluate SLS within a complete Vision-Model-Controller (V-M-C) pipeline for Geometry Dash, a fast-paced platformer that demands frame-accurate predictions under a 33\,ms latency budget.
+We present SLS in two settings.
+First, we evaluate annealed SLS as a minimal objective change in an accepted discrete world-model baseline, holding architecture and training budget fixed.
+Second, we present the Geometry Dash Vision-Model-Controller (V-M-C) pipeline as the application that motivated the method, a fast-paced platformer that demands frame-accurate predictions under a 33\,ms latency budget.
 Our system consists of three components: (1) an FSQ tokenizer that encodes $\imgsize$ Sobel edge maps into $\gridsize$ grids of discrete tokens, (2) a causal transformer that interleaves action tokens with frame tokens in a single sequence and predicts the next frame's tokens via parallel decoding, and (3) a lightweight CNN actor-critic on the predicted token grid, warm-started with Behavioural Cloning and fine-tuned with PPO~\citep{schulman2017ppo} entirely in dreamed rollouts.
 The three components are trained sequentially -- each on the frozen output of the previous one -- and the full pipeline runs in real time at 30\,FPS on consumer hardware.
 
 Our contributions are:
 \begin{enumerate}
-  \item \textbf{Structured Label Smoothing (SLS)}: a training objective that exploits FSQ coordinate geometry to distribute smoothing mass according to codebook distance. We study three kernel families and adopt an isotropic bandwidth set by a first-neighbour rule, giving a zero-calibration hyperparameter with a single principled choice independent of codebook size. The formulation generalizes to any discrete latent space with a coordinate metric.
+  \item \textbf{Annealed Structured Label Smoothing (SLS)}: a tokenizer-metric-aware training objective that distributes smoothing mass according to token distance early in training, then anneals back to hard CE. FSQ lattice distance is one instantiation; embedding or codebook distance gives the corresponding instantiation for VQ-style tokenizers.
   \item \textbf{A real-time discrete WM system}: a complete V-M-C pipeline for Geometry Dash running at 30\,FPS, combining FSQ tokenization, a transformer with action tokens interleaved in the sequence and an action-conditional contrastive auxiliary loss~\citep{burchi2025twister}, and a CNN actor-critic trained via BC + PPO-in-dreams.
 \end{enumerate}
 
@@ -142,10 +147,10 @@ Our contributions are:
 
 \paragraph{Discrete WMs.}
 The Vision-Model-Controller paradigm~\citep{ha2018world} introduced encoding frames with a VAE, modeling dynamics with an RNN, and training a controller in dreamed rollouts.
-IRIS~\citep{micheli2023iris} replaced the VAE with a discrete tokenizer and an autoregressive transformer, alternating tokenizer and dynamics updates; we follow IRIS's architectural template most closely, with a frozen FSQ tokenizer and a transformer trained on top of it.
+IRIS~\citep{micheli2023iris} replaced the VAE with a discrete tokenizer and an autoregressive transformer, alternating tokenizer and dynamics updates. It provides the accepted-baseline path for CE vs.\ SLS evaluation, while our Geometry Dash system follows the same broad tokenizer-plus-transformer template with a frozen FSQ tokenizer.
 DreamerV3~\citep{hafner2025dreamerv3} demonstrated that categorical RSSM latents generalize across diverse domains; this approach was scaled further in~\citep{hafner2025dreamer4}.
 TWISTER~\citep{burchi2025twister} added action-conditioned contrastive predictive coding to improve temporal coherence; we adopt their AC-CPC auxiliary loss.
-FSQ~\citep{mentzer2024fsq} is typically positioned as a frozen tokenizer for downstream tasks, and its coordinate-lattice structure has not been exploited at training time. SLS exploits exactly this structure on the loss side, without modifying the tokenizer or its training.
+FSQ~\citep{mentzer2024fsq} is typically positioned as a frozen tokenizer for downstream tasks, and its coordinate-lattice structure has not been exploited at training time. In this paper, FSQ supplies one concrete token metric for SLS, without modifying the tokenizer or its training.
 
 \paragraph{Finite Scalar Quantization.}
 FSQ~\citep{mentzer2024fsq} replaces learned codebooks with per-dimension rounding to fixed levels, eliminating codebook collapse and commitment losses.
@@ -162,7 +167,7 @@ We view this as domain-dependent rather than as evidence against JEPA: in natura
 Label smoothing~\citep{szegedy2016rethinking} proposed replacing one-hot targets with a uniform mixture to reduce overconfidence.
 While effective as a regularizer, uniform smoothing ignores class relationships.
 Knowledge distillation and soft-target methods distribute mass based on teacher predictions, but require a separate teacher model.
-We instead derive the target distribution from the codebook geometry itself, requiring no additional model.
+We instead derive the target distribution from tokenizer geometry itself, requiring no additional model, and anneal the smoothing mass away so the late objective returns to CE.
 
 \paragraph{Adaptive conditioning.}
 FiLM~\citep{perez2018film} introduced adaptive affine conditioning via scale and shift.
@@ -210,16 +215,18 @@ Standard label smoothing~\citep{szegedy2016rethinking} replaces a one-hot target
 where $V = \vocabsize$ is the vocabulary size and $\varepsilon$ controls the smoothing strength.
 This distributes $\varepsilon$ uniformly across all alternatives, ignoring codebook geometry.
 
-\paragraph{FSQ coordinate distance.}
-An FSQ codebook with levels $\mathbf{L} = (L_1, \dots, L_D)$ assigns each code $i$ a coordinate vector $\mathbf{c}(i) = (c_1(i), \dots, c_D(i))$ on a $D$-dimensional integer lattice.
-We define the squared lattice distance
+\paragraph{Token metric.}
+SLS assumes a distance $d(i,j)$ between target token $i$ and alternative token $j$.
+For FSQ, a codebook with levels $\mathbf{L} = (L_1, \dots, L_D)$ assigns each code $i$ a coordinate vector $\mathbf{c}(i) = (c_1(i), \dots, c_D(i))$ on a $D$-dimensional integer lattice, giving the squared lattice distance
 \begin{equation}
   d^2(i, j) = \sum_{d=1}^{D} \left( c_d(i) - c_d(j) \right)^2.
   \label{eq:fsq_dist}
 \end{equation}
+For a learned VQ codebook or an IRIS-style tokenizer, the same construction can use codebook-vector or embedding distance instead.
+The method is therefore tokenizer-metric-aware rather than FSQ-specific.
 
 \paragraph{Kernel-family study.}
-We compare three kernels over $d = \sqrt{d^2(i, j)}$:
+Given $d(i,j)$, we compare three kernels:
 \begin{equation}
   k_{\text{Gauss}}(d) = e^{-d^2/2\sigma^2}, \qquad
   k_{\text{Laplace}}(d) = e^{-d/\sigma}, \qquad
@@ -228,39 +235,44 @@ We compare three kernels over $d = \sqrt{d^2(i, j)}$:
 \end{equation}
 The three families differ in tail behaviour.
 Cauchy has polynomial tails and leaks meaningful mass to distant neighbours; Laplace has a cusp at $d=0$ and an exponential tail; Gaussian has the thinnest tails, decaying faster than either alternative once $d$ exceeds the bandwidth.
-We take Gaussian with $\sigma = 0.7$ as the current default: thin tails ensure distant neighbours receive negligible mass ($k(2) \approx 0.02$), while the bandwidth still places meaningful mass on the immediate lattice neighbour ($k(1) \approx 0.37$, matching Laplace at $\sigma = 1$).
+We take Gaussian with a small top-$k$ neighbourhood as the current default: thin tails ensure distant neighbours receive negligible mass while the nearest alternatives still receive meaningful target probability.
 
-\paragraph{Isotropic first-neighbour bandwidth.}
+\paragraph{Metric calibration.}
 A natural alternative is per-dimension weights $\alpha_d$ calibrated from an empirical sensitivity probe: perturbing each FSQ dimension by $\pm 1$, decoding, and measuring reconstruction MSE.
 The probe gives data-dependent weights, but ties the smoothing target to a particular trained codebook and varies across training runs.
-We instead use an isotropic kernel and fix $\sigma$ by a geometric rule: choose the bandwidth so that the immediate integer lattice neighbour sits near the kernel's half-maximum.
-This gives a zero-calibration hyperparameter with a single principled choice, independent of the codebook size or the realized dimension scales.
+For the FSQ Geometry Dash system, we use an isotropic kernel and fix $\sigma$ by a geometric rule: choose the bandwidth so that the immediate integer lattice neighbour sits near the kernel's half-maximum.
+For embedding-distance baselines, the corresponding hyperparameters are the smoothing mass, kernel temperature or width, and top-$k$ truncation.
 The sensitivity probe is retained as an analysis tool to characterize a learned codebook's anisotropy and cross-dimension coupling, but not as a hyperparameter source.
 
 \paragraph{Structured smooth target.}
-We replace the uniform distribution in Equation~\ref{eq:uniform_ls} with a kernel over FSQ distances:
+We replace the uniform distribution in Equation~\ref{eq:uniform_ls} with a kernel over token distances:
 \begin{equation}
-  q_\text{SLS}(j \mid i) =
+  q_t(j \mid i) =
   \begin{cases}
-    1 - \varepsilon & \text{if } j = i, \\[4pt]
-    \displaystyle \varepsilon \cdot \frac{k(d(i,j))}{\sum_{l \neq i} k(d(i, l))} & \text{otherwise}.
+    1 - \varepsilon_t & \text{if } j = i, \\[4pt]
+    \displaystyle \varepsilon_t \cdot \frac{k(d(i,j))}{\sum_{l \neq i} k(d(i, l))} & \text{otherwise}.
   \end{cases}
   \label{eq:sls}
 \end{equation}
-The full target matrix $\mathbf{Q} \in \mathbb{R}^{V \times V}$ is precomputed once per kernel choice and stored on GPU (Figure~\ref{fig:sls_kernel}).
-We use $\varepsilon = 0.1$.
+The full target matrix $\mathbf{Q} \in \mathbb{R}^{V \times V}$ can be precomputed once per kernel choice when the vocabulary is small, or truncated to the top-$k$ neighbours for larger codebooks (Figure~\ref{fig:sls_kernel}).
+
+\paragraph{Annealing to CE.}
+The smoothing mass $\varepsilon_t$ is scheduled during training.
+The current benchmark schedule uses $\varepsilon_t = 0.1$ through the early training phase, cosine-anneals from $0.1$ to $0$ during the middle phase, and then trains with pure CE.
+This makes the optimization a curriculum: early targets encode neighbourhood structure and reduce brittleness, while the final objective is exactly the hard CE baseline.
+Fixed SLS is retained as an ablation because it isolates the stabilizing effect but can over-regularize the asymptotic solution.
 
 \begin{figure}[t]
   \centering
   \includegraphics[width=\textwidth]{figures/sls_kernel.pdf}
-  \caption{SLS target distribution for a token near the centre of the codebook. \textbf{(a)} 2D slice over two lattice dimensions with the remaining two held at the target's values: weights decay as a Gaussian kernel over lattice distance, red square marks the target. \textbf{(b)} All $V-1$ alternative tokens sorted by SLS weight (log scale) vs.\ uniform label smoothing. SLS concentrates mass on near-miss tokens while suppressing distant ones.}
+  \caption{Illustrative SLS target distribution for an FSQ token near the centre of the codebook. \textbf{(a)} 2D slice over two lattice dimensions with the remaining two held at the target's values: weights decay as a Gaussian kernel over lattice distance, red square marks the target. \textbf{(b)} All $V-1$ alternative tokens sorted by SLS weight (log scale) vs.\ uniform label smoothing. SLS concentrates mass on near-miss tokens while suppressing distant ones.}
   \label{fig:sls_kernel}
 \end{figure}
 
 \paragraph{Integration with focal loss.}
 To handle class imbalance (background tokens dominate over obstacle and spike tokens), we combine SLS with focal loss~\citep{lin2017focal}:
 \begin{equation}
-  \mathcal{L}_\text{SLS-focal} = -\sum_{j=1}^{V} (1 - p_j)^\gamma \, q_\text{SLS}(j \mid i) \, \log p_j,
+  \mathcal{L}_\text{SLS-focal} = -\sum_{j=1}^{V} (1 - p_j)^\gamma \, q_t(j \mid i) \, \log p_j,
   \label{eq:sls_focal}
 \end{equation}
 where $p_j = \text{softmax}(\mathbf{z})_j$ and $\gamma = \focalgamma$.
@@ -377,25 +389,37 @@ We evaluate on: (1) next-token prediction accuracy and cross-entropy on held-out
 \label{sec:results}
 % ===========================================================================
 
-% TODO: This entire section will be written after model freeze (deadline: May 31, 2026).
-% Expected contents:
-% - Table 1: Main results (level progress %, accuracy, Death F1) on the V3-style sequential baseline
-% - Table 2: SLS ablation (with vs without, kernel family, sigma sweep, isotropic vs per-dim)
-% - Table 3: Architectural ablations off the V3 baseline -- joint FSQ+M training, AdaLN-Zero action conditioning, embed dim sweep, MLPPolicy on h_t alone, AC-CPC weight sweep
-% - Table 4: Context length, death oversampling, BC pretraining, jump penalty
-% - Table 5: Baselines (random, open-loop, heuristic, BC-only)
-% - Figure: dreamed rollout vs ground truth frames
-% - Figure: inference latency breakdown per component
-% - Table: per-GPU latency comparison
+\paragraph{Current benchmark result.}
+The first matched IRIS/Pong seed compares CE, fixed SLS, and annealed SLS under the same architecture, data, training budget, BF16 precision, and \texttt{torch.compile} mode.
+This is not yet a final benchmark table: more seeds and at least one additional game are required before submission.
+It is nevertheless useful for deciding the paper framing.
 
-\textit{Results pending model freeze and ablation experiments.}
+\begin{center}
+\begin{tabular}{lrrl}
+\toprule
+Condition & Final return & Best return & Interpretation \\
+\midrule
+CE & 20.9375 & 20.9375 & strong final performance, unstable mid-training \\
+Fixed SLS & 0.125 & low single digits & stabilizes early training but over-regularizes late \\
+Annealed SLS & 19.625 & 19.8125 & recovers near-CE final performance with better early/mid stability \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+On the common CE-vs-annealed-SLS curve, annealed SLS improves the mean return over the unstable epoch 250--420 window by $+7.15625$ and improves eval-return AUC from $-993.0208$ to $-408.90625$.
+CE remains slightly better in the final tail (mean return after epoch 500: $19.6042$ for CE vs.\ $17.0923$ for annealed SLS; final return $20.9375$ vs.\ $19.625$).
+This supports a stability/sample-efficiency claim, not a claim that SLS universally improves final return.
+
+\paragraph{Planned result table.}
+The final paper table should report CE, fixed SLS, and annealed SLS over multiple seeds, with return AUC, collapse-window return, rolling variance, first epoch to return thresholds, final return, and tail mean return.
+Fixed SLS should remain in the table as a negative ablation showing why annealing is part of the method.
 
 % ---------------------------------------------------------------------------
 \subsection{Ablations and negative results}
 \label{sec:ablations}
 % ---------------------------------------------------------------------------
 
-We report a set of architectural changes which, on paper, were expected to improve over the baseline of Section~\ref{sec:method}, but did not yield real-game gains in our experiments. Together they motivate the deliberately conservative system design of the current paper. Detailed per-ablation tables are pending model freeze.
+We report a set of architectural changes which, on paper, were expected to improve over the baseline of Section~\ref{sec:method}, but did not yield real-game gains in our experiments. Together they motivate the deliberately conservative system design of the current paper. Detailed per-ablation tables are pending.
 
 \paragraph{Joint training of FSQ and transformer.}
 We trained a JEPA-style variant in which the FSQ encoder and the transformer are optimized together in a single AdamW group, with prediction gradients routed back into the encoder through a learnable straight-through projection (\texttt{fsq\_grad\_proj}) inserted between the pre-rounding continuous latents and the transformer input.
@@ -425,7 +449,10 @@ This MLP variant converges 2--$5\times$ faster in PPO and has the smallest train
 \label{sec:limitations}
 % ===========================================================================
 
-Our evaluation is limited to a single game (Geometry Dash) with a binary action space and deterministic level layouts.
+The current benchmark evidence for annealed SLS is limited to one IRIS/Pong seed and must be expanded before submission.
+The present result supports the choice of framing and the need for annealing, but not yet a broad claim across Atari games or random seeds.
+The full V7-native Atari controller path did not become a reliable evaluation vehicle and is explicitly out of scope for this paper.
+Geometry Dash remains a single-game application with a binary action space and deterministic level layouts; its deploy-survival metric is useful for the system section but too noisy to be the primary SLS effect-size benchmark.
 The generalization of SLS to environments with higher-dimensional actions, stochastic dynamics, or RGB observations remains to be validated.
 The system is trained sequentially -- FSQ, then transformer, then controller -- which is operationally simple but forfeits the possibility of prediction gradients shaping the codebook. Our preliminary attempts at a JEPA-style joint-training variant did not produce real-game gains over this sequential baseline (Section~\ref{sec:ablations}); whether a more careful version of joint training, or a stronger decoder-free anti-collapse signal, would close this gap is open work.
 The reconstruction anchor is also domain-specific: it is appropriate here because the rendered observations are predictable projections of a discrete game state, but the same objective may be wasteful or counterproductive in real-world video where much of the pixel information is not predictable from the agent's context.
@@ -435,13 +462,14 @@ The reconstruction anchor is also domain-specific: it is appropriate here becaus
 \label{sec:conclusion}
 % ===========================================================================
 
-We introduced Structured Label Smoothing, a training objective that exploits the coordinate geometry of FSQ codebooks.
-A kernel-family study over Gaussian, Laplace, and Cauchy families, combined with an isotropic first-neighbour bandwidth, gives a zero-calibration hyperparameter with a single principled choice independent of codebook size.
-We integrate SLS into a real-time discrete-WM system on Geometry Dash: an FSQ-VAE tokenizer, a causal transformer with action tokens interleaved in the sequence and a TWISTER-style action-conditional contrastive auxiliary loss, and a CNN actor-critic on the predicted token grid trained via BC and PPO entirely in dreamed rollouts.
+We introduced annealed Structured Label Smoothing, a tokenizer-metric-aware objective for discrete-token world models.
+SLS replaces hard CE targets with a kernel over nearby tokens early in training, then anneals the smoothing mass to zero so the final objective becomes CE.
+FSQ lattice distance gives the Geometry Dash instantiation; codebook or embedding distance gives the corresponding instantiation for VQ-style tokenizers.
+We also integrate SLS into a real-time discrete-WM system on Geometry Dash: an FSQ-VAE tokenizer, a causal transformer with action tokens interleaved in the sequence and a TWISTER-style action-conditional contrastive auxiliary loss, and a CNN actor-critic on the predicted token grid trained via BC and PPO entirely in dreamed rollouts.
 The three components are trained sequentially, and the full pipeline runs at 30\,FPS on consumer hardware.
 A set of architectural variants (joint FSQ+M training, AdaLN-Zero action conditioning, scaling to a larger transformer, an MLP controller on the hidden state) is reported as ablations: each is more elegant on paper but did not improve real-game level progress in our experiments, motivating the deliberately conservative baseline of this paper.
-SLS is in principle applicable to any model that predicts over a discrete latent space with a coordinate metric.
-A natural extension is to make the kernel bandwidth $\sigma$ learnable and jointly optimized with the WM, moving SLS from a fixed prior to a fully end-to-end objective; care must be taken to prevent degenerate solutions in which the learned targets collapse to uniform smoothing.
+The remaining paper-critical work is to expand the IRIS benchmark beyond the first Pong seed and report stability, sample-efficiency, and final-performance KPIs under matched CE, fixed-SLS, and annealed-SLS conditions.
+A natural extension is to make the kernel bandwidth or schedule learnable and jointly optimized with the WM; care must be taken to prevent degenerate solutions in which the learned targets collapse to uniform smoothing or preserve late smoothing after CE should dominate.
 
 \begin{ack}
   We thank Ma{\"e}l Planchot for contributing gameplay data.
