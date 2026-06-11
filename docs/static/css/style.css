@@ -170,12 +170,6 @@ figure.centered figcaption {
   font-size: 1.05rem;
 }
 
-hr.divider {
-  border: none;
-  border-top: 1px solid #e5e5e5;
-  margin: 0;
-}
-
 pre.bibtex {
   background: #f7f7f7;
   border-radius: 6px;
