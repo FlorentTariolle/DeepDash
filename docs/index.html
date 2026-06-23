@@ -76,7 +76,7 @@
       </h1>
 
       <div class="publication-authors">
-        <span>Florent Tariolle</span>
+        <span><a href="https://tariolle.github.io/" target="_blank" rel="noopener">Florent Tariolle</a></span>
         <div class="affiliation">INSA Rouen Normandy</div>
         <div class="correspondence">
           Correspondence to <code>florent.tariolle@insa-rouen.fr</code>
@@ -189,7 +189,7 @@
       <li><strong>Action-conditional contrastive coding.</strong> A TWISTER-style AC-CPC auxiliary loss predicts future hidden states from past states and actions in latent space, sharpening the temporal coherence of dreams without a second decoder.</li>
       <li><strong>Tokenizer-metric-aware SLS.</strong> FSQ uses lattice distance; VQ-style tokenizers can use codebook or embedding distance. The method requires a meaningful token neighbourhood, not a specific encoder architecture.</li>
       <li><strong>CNN actor-critic in latent space.</strong> A small CNN reads the predicted token grid alongside the transformer's hidden state and emits a jump probability and value estimate. BC pretraining on expert demonstrations warm-starts the policy, which is then fine-tuned with PPO entirely on dreamed rollouts.</li>
-      <li><strong>Real-time deployment.</strong> The full V-M-C pipeline runs at a fixed 30&nbsp;FPS cadence on consumer hardware. Within each frame, pinned-memory non-blocking H2D transfers let the CPU queue GPU work without stalling on the upload, a GPU-resident token ring buffer eliminates round-trips, the encoder is wrapped in a CUDA Graph after warm-up, and the model graph is compiled with <code>torch.compile</code> in <code>reduce-overhead</code> mode.</li>
+      <li><strong>Real-time deployment.</strong> The full V-M-C pipeline runs at a fixed 30&nbsp;FPS cadence on consumer hardware. Within each frame, pinned-memory non-blocking H2D transfers let the CPU queue GPU work without stalling on the upload, and a GPU-resident token ring buffer eliminates round-trips.</li>
     </ul>
   </div>
 </section>
