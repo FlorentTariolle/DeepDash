@@ -167,8 +167,9 @@ iFSQ~\citep{vali2026ifsq} introduces a simple modification of the FSQ bounding f
 \paragraph{Joint-Embedding Predictive Architectures (JEPA).}
 LeWorldModel~\citep{maes2026leworldmodel} recently demonstrated a stable end-to-end JEPA WM from pixels using continuous latents and a SIGReg anti-collapse regularizer.
 We explored a JEPA-style joint-embedding variant of our system, in which context and target frames are encoded by a single online FSQ encoder into a shared discrete latent space and prediction gradients flow back into the encoder through a straight-through path, with the pixel decoder retained only as an anti-collapse regularizer.
-This variant did not improve on the sequentially-trained baseline reported here; we summarize the negative result and the SIGReg adaptation we attempted in Section~\ref{sec:ablations}.
-We view this as domain-dependent rather than as evidence against JEPA: in natural video, avoiding reconstruction of unpredictable pixels is often a feature~\citep{vanassel2025joint}, while in deterministic game domains the rendered pixels are a predictable supervision signal tied closely to the latent state.
+This was a constrained FSQ-token hybrid, not a faithful LeWorldModel reproduction: canonical SIGReg regularizes continuous Gaussian embeddings, whereas our dynamics model and controller consume bounded FSQ coordinates and hard token IDs.
+The variant did not improve on the sequentially-trained baseline reported here; we summarize the negative result and the FSQ-compatible anti-collapse surrogate we attempted in Section~\ref{sec:ablations}.
+We view this as a domain- and architecture-specific observation rather than as evidence against JEPA: in natural video, avoiding reconstruction of unpredictable pixels is often a feature~\citep{vanassel2025joint}, while in deterministic game domains the rendered pixels are a predictable supervision signal tied closely to the latent state.
 
 \paragraph{Label smoothing.}
 Label smoothing~\citep{szegedy2016rethinking} proposed replacing one-hot targets with a uniform mixture to reduce overconfidence.
@@ -434,11 +435,13 @@ We report a set of architectural changes which, on paper, were expected to impro
 We trained a JEPA-style variant in which the FSQ encoder and the transformer are optimized together in a single AdamW group, with prediction gradients routed back into the encoder through a learnable straight-through projection (\texttt{fsq\_grad\_proj}) inserted between the pre-rounding continuous latents and the transformer input.
 A light pixel-MSE loss is retained as an anti-collapse regularizer on the encoder, and a single global gradient-norm clip is applied to the combined parameter set following~\citep{maes2026leworldmodel}.
 This setup trains stably and produces lower validation cross-entropy than the sequentially-trained baseline, but the resulting FSQ codebook drifts toward a representation that is harder to act on: real-game level progress consistently dropped relative to the sequentially-trained baseline of identical capacity.
-Removing the pixel-MSE anchor (pure-JEPA) causes the encoder to collapse; our adaptation of SIGReg~\citep{maes2026leworldmodel} to the discrete factorized FSQ case, using a Cramér-von-Mises test against a factorized uniform target, was insufficient to prevent joint-distribution degeneracy when the prediction target comes from the online encoder.
+Removing the pixel-MSE anchor (pure joint embedding) causes the encoder to collapse.
+We did not run canonical SIGReg in this discrete variant: LeWorldModel regularizes continuous embeddings toward an isotropic Gaussian, while our tokenizer exposes bounded FSQ coordinates and hard token IDs.
+Instead, we tried an FSQ-compatible distribution-matching surrogate inspired by SIGReg, using a Cramér-von-Mises-style test against factorized code utilization; it was insufficient to prevent joint-distribution degeneracy when the prediction target comes from the online encoder.
 We therefore keep the reconstruction-anchored tokenizer for the reported system.
-This choice should not be read as a claim that pixel prediction is generally preferable to JEPA: in natural videos, forcing a model to spend capacity on unpredictable pixel detail can waste compute and degrade the representation, consistent with theoretical and empirical evidence favoring joint-embedding objectives when irrelevant input components are high-magnitude~\citep{vanassel2025joint}.
+This choice should not be read as a faithful comparison to LeWorldModel or as a claim that pixel prediction is generally preferable to JEPA: in natural videos, forcing a model to spend capacity on unpredictable pixel detail can waste compute and degrade the representation, consistent with theoretical and empirical evidence favoring joint-embedding objectives when irrelevant input components are high-magnitude~\citep{vanassel2025joint}.
 Our claim is narrower: in deterministic discrete games, where pixels are predictable outputs of the simulator and small pixel errors often correspond to state errors, reconstruction is a useful anchor for a token space that the dynamics model and controller can share.
-Finding a decoder-free discrete anti-collapse signal that preserves these control-relevant state distinctions remains open work.
+Finding a faithful decoder-free discrete anti-collapse signal, or a full continuous-latent LeWorldModel-style Geometry Dash system, remains open work.
 
 \paragraph{AdaLN-Zero action conditioning.}
 Rather than inserting actions as tokens, we conditioned each transformer block on the action history via Adaptive Layer Normalization~\citep{peebles2023dit, perez2018film}.
@@ -464,7 +467,7 @@ The full V7-native Atari controller path did not become a reliable evaluation ve
 Geometry Dash remains a single-game application with a binary action space and deterministic level layouts; its deploy-survival metric is useful for the system section but too noisy to be the primary SLS effect-size benchmark.
 The level-generation claim is likewise scoped to autoregressive visual continuations sampled from the learned dynamics model, not to exporting editor-valid Geometry Dash levels with guaranteed playability.
 The generalization of SLS to environments with higher-dimensional actions, stochastic dynamics, or RGB observations remains to be validated.
-The system is trained sequentially -- FSQ, then transformer, then controller -- which is operationally simple but forfeits the possibility of prediction gradients shaping the codebook. Our preliminary attempts at a JEPA-style joint-training variant did not produce real-game gains over this sequential baseline (Section~\ref{sec:ablations}); whether a more careful version of joint training, or a stronger decoder-free anti-collapse signal, would close this gap is open work.
+The system is trained sequentially -- FSQ, then transformer, then controller -- which is operationally simple but forfeits the possibility of prediction gradients shaping the codebook. Our preliminary attempts at a JEPA-style joint-training variant inside the existing FSQ-token architecture did not produce real-game gains over this sequential baseline (Section~\ref{sec:ablations}); whether a faithful continuous-latent LeWorldModel adaptation, a more careful version of joint FSQ training, or a stronger decoder-free discrete anti-collapse signal would close this gap is open work.
 The reconstruction anchor is also domain-specific: it is appropriate here because the rendered observations are predictable projections of a discrete game state, but the same objective may be wasteful or counterproductive in real-world video where much of the pixel information is not predictable from the agent's context.
 
 % ===========================================================================
@@ -501,8 +504,8 @@ A natural extension is to make the kernel bandwidth or schedule learnable and jo
 % C. Per-position accuracy analysis
 % D. Inference latency breakdown
 % E. AdaLN training-stability progression (no-gates / zero-init / gate-bias=1 / +tanh / +QK-norm)
-% F. Anti-collapse loss ablations from the joint-training variant (SIGReg adaptations, CvM factorized-uniform)
-% G. Pure-JEPA collapse analysis (joint-distribution degeneracy diagnostics)
+% F. Anti-collapse loss ablations from the joint-training variant (FSQ-compatible SIGReg-inspired surrogates, CvM factorized-uniform)
+% G. Decoder-free FSQ joint-embedding collapse analysis (joint-distribution degeneracy diagnostics)
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
