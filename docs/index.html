@@ -6,11 +6,11 @@
   <meta name="color-scheme" content="light only" />
   <title>SLS-WM</title>
 
-  <meta name="description" content="Annealed Structured Label Smoothing (SLS) is a tokenizer-metric-aware objective for discrete world models. Geometry Dash V7 remains the real-time Vision-Model-Controller application where FSQ lattice structure motivated the method." />
+  <meta name="description" content="Annealed Structured Label Smoothing (SLS) is a tokenizer-metric-aware objective for discrete world models. Geometry Dash V7 remains the real-time Vision-Model-Controller application where FSQ lattice structure motivated the method, with dreamed rollouts and level-continuation generation." />
   <meta name="author" content="Florent Tariolle" />
 
   <meta property="og:title" content="Annealed Structured Label Smoothing for Discrete World Models" />
-  <meta property="og:description" content="A tokenizer-metric-aware soft-target objective for discrete world models, with Geometry Dash V7 as the real-time FSQ-based application system." />
+  <meta property="og:description" content="A tokenizer-metric-aware soft-target objective for discrete world models, with Geometry Dash V7 as the real-time FSQ-based application system for dreamed control and level-continuation generation." />
   <meta property="og:image" content="static/images/pipeline.png" />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://tariolle.github.io/sls-wm/" />
@@ -95,7 +95,7 @@
       </div>
 
       <div class="notice">
-        <strong>Research status, 2026-06-08.</strong> The method is now framed as annealed SLS: structured smoothing early, pure CE late. Geometry Dash V7 is the application showcase; IRIS/Pong is the first accepted-baseline benchmark for CE vs. fixed SLS vs. annealed SLS. Conference/workshop venue will be decided after the benchmark freeze.
+        <strong>Research status, 2026-06-08.</strong> The method is now framed as annealed SLS: structured smoothing early, pure CE late. Geometry Dash V7 is the application showcase; IRIS/Pong is the first accepted-baseline benchmark for CE vs. annealed SLS, with fixed SLS retained as a negative-control ablation. Conference/workshop venue will be decided after the benchmark freeze.
       </div>
     </div>
   </div>
@@ -112,7 +112,7 @@
       The current method is <em>annealed Structured Label Smoothing</em>: structured smoothing is used early to reduce brittle optimization, then the smoothing mass is annealed to zero so the late objective is ordinary CE. FSQ provides a natural integer-lattice distance; VQ-style tokenizers can use codebook or embedding distance.
     </p>
     <p class="abstract">
-      Geometry Dash V7 remains the application showcase. The FSQ-VAE tokenizes Sobel edge maps, a causal transformer predicts next-frame tokens, and a CNN actor-critic on the predicted token grid drives the agent. The controller is trained entirely in imagination on dreamed rollouts and deployed at 30&nbsp;FPS on the real game via screen capture.
+      Geometry Dash V7 remains the application showcase. The FSQ-VAE tokenizes Sobel edge maps, a causal transformer predicts next-frame tokens, and a CNN actor-critic on the predicted token grid drives the agent. The controller is trained entirely in imagination on dreamed rollouts and deployed at 30&nbsp;FPS on the real game via screen capture. The same action-conditioned dynamics can be seeded with real gameplay prefixes to generate plausible visual continuations of a level segment.
     </p>
     <p class="tldr">
       <strong>TL;DR.</strong> SLS is now framed as an annealed, tokenizer-metric-aware CE replacement. FSQ lattice smoothing is the Geometry Dash special case; IRIS/Pong is the first accepted-baseline CE vs. SLS benchmark.
@@ -148,7 +148,7 @@
     <figure class="centered">
       <img src="static/images/pipeline.svg" alt="Vision-Model-Controller pipeline overview" />
       <figcaption>
-        Vision-Model-Controller pipeline. The FSQ-VAE <strong>(V)</strong> tokenizes Sobel edge maps into a grid of discrete codes, the causal transformer <strong>(M)</strong> predicts next-frame tokens with action tokens interleaved in the sequence, and the CNN controller <strong>(C)</strong> reads the predicted token grid alongside the transformer hidden state to select actions. The action feedback loop enables autoregressive dreaming.
+        Vision-Model-Controller pipeline. The FSQ-VAE <strong>(V)</strong> tokenizes Sobel edge maps into a grid of discrete codes, the causal transformer <strong>(M)</strong> predicts next-frame tokens with action tokens interleaved in the sequence, and the CNN controller <strong>(C)</strong> reads the predicted token grid alongside the transformer hidden state to select actions. The same autoregressive loop supports control dreams and generated level continuations from real prefixes.
       </figcaption>
     </figure>
   </div>
@@ -182,11 +182,12 @@
   <div class="container-narrow">
     <h2 class="section-title">Method highlights</h2>
     <ul>
-      <li><strong>Annealed metric-aware targets.</strong> SLS replaces hard CE with a local soft target early in training, then anneals the smoothing mass to zero so the final objective is exactly CE. The current benchmark uses CE, fixed SLS, and annealed SLS to isolate this effect.</li>
+      <li><strong>Annealed metric-aware targets.</strong> SLS replaces hard CE with a local soft target early in training, then anneals the smoothing mass to zero so the final objective is exactly CE. The current benchmark prioritizes CE vs. annealed SLS, with fixed SLS retained as a negative control showing why annealing matters.</li>
       <li><strong>FSQ tokenization for sharp dreams.</strong> An FSQ-VAE with levels [8,&nbsp;5,&nbsp;5,&nbsp;5] (1000 implicit codes) encodes Sobel edge maps into an 8&times;8 grid of discrete tokens. No codebook collapse, no commitment loss, 100% utilization by construction.</li>
       <li><strong>Reconstruction as a domain-specific anchor.</strong> Pixel prediction is not assumed to be universally optimal: in natural videos it can waste capacity on unpredictable detail. Here the game renderer is deterministic, so reconstructing pixels preserves control-relevant state information before the dynamics model learns over tokens.</li>
       <li><strong>Discrete dynamics transformer.</strong> A causal transformer (384d, 8 heads, 8 layers) predicts the next frame's tokens given a context window of past frames and actions. Actions are interleaved as tokens in the sequence; the target frame is replaced by a learnable mask embedding so the model never peeks at the ground truth. 3D-RoPE positional encoding factorises row, column, and frame indices, and block-causal attention is bidirectional within a frame block and causal across frames.</li>
       <li><strong>Action-conditional contrastive coding.</strong> A TWISTER-style AC-CPC auxiliary loss predicts future hidden states from past states and actions in latent space, sharpening the temporal coherence of dreams without a second decoder.</li>
+      <li><strong>Procedural level continuations.</strong> Seeded with a short real gameplay prefix and a candidate action sequence, the action-conditioned dynamics model can roll forward future token grids and decoded frames. This is visual continuation generation from the learned world model, not a claim of exporting editor-valid levels with guaranteed playability.</li>
       <li><strong>Tokenizer-metric-aware SLS.</strong> FSQ uses lattice distance; VQ-style tokenizers can use codebook or embedding distance. The method requires a meaningful token neighbourhood, not a specific encoder architecture.</li>
       <li><strong>CNN actor-critic in latent space.</strong> A small CNN reads the predicted token grid alongside the transformer's hidden state and emits a jump probability and value estimate. BC pretraining on expert demonstrations warm-starts the policy, which is then fine-tuned with PPO entirely on dreamed rollouts.</li>
       <li><strong>Real-time deployment.</strong> The full V-M-C pipeline runs at a fixed 30&nbsp;FPS cadence on consumer hardware. Within each frame, pinned-memory non-blocking H2D transfers let the CPU queue GPU work without stalling on the upload, and a GPU-resident token ring buffer eliminates round-trips.</li>

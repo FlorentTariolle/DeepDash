@@ -81,7 +81,7 @@ Discrete World Models tokenize observations with a learned quantizer and predict
 We introduce \emph{Structured Label Smoothing} (SLS), a tokenizer-metric-aware soft-target objective that distributes smoothing mass over nearby tokens instead of uniformly over the vocabulary.
 Finite Scalar Quantization (FSQ) provides one natural metric through its integer code lattice, while VQ-style tokenizers can use codebook or embedding distance.
 The current method is \emph{annealed SLS}: structured smoothing is used early to reduce brittle optimization, then the smoothing mass is annealed to zero so the late objective becomes ordinary CE.
-We evaluate SLS as a minimal objective change on an accepted discrete world-model baseline, and present Geometry Dash as the domain-specific application where FSQ originally exposed the near-miss problem: a real-time Vision-Model-Controller (V-M-C) pipeline trained in imagination and deployed at 30\,FPS via screen capture.
+We evaluate SLS as a minimal objective change on an accepted discrete world-model baseline, and present Geometry Dash as the domain-specific application where FSQ originally exposed the near-miss problem: a real-time Vision-Model-Controller (V-M-C) pipeline trained in imagination, deployed at 30\,FPS via screen capture, and able to generate plausible level continuations by rolling its action-conditioned dynamics forward from real gameplay prefixes.
 \end{abstract}
 
 \paragraph{Draft note (2026-06-08).}
@@ -132,12 +132,13 @@ We present SLS in two settings.
 First, we evaluate annealed SLS as a minimal objective change in an accepted discrete world-model baseline, holding architecture and training budget fixed.
 Second, we present the Geometry Dash Vision-Model-Controller (V-M-C) pipeline as the application that motivated the method, a fast-paced platformer that demands frame-accurate predictions under a 33\,ms latency budget.
 Our system consists of three components: (1) an FSQ tokenizer that encodes $\imgsize$ Sobel edge maps into $\gridsize$ grids of discrete tokens, (2) a causal transformer that interleaves action tokens with frame tokens in a single sequence and predicts the next frame's tokens via parallel decoding, and (3) a lightweight CNN actor-critic on the predicted token grid, warm-started with Behavioural Cloning and fine-tuned with PPO~\citep{schulman2017ppo} entirely in dreamed rollouts.
+Because the dynamics model is action-conditioned and autoregressive, it also acts as a procedural level-continuation generator: seeded with a short observed prefix and a candidate action sequence, it samples future token grids that decode into plausible continuations of the current Geometry Dash segment.
 The three components are trained sequentially -- each on the frozen output of the previous one -- and the full pipeline runs in real time at 30\,FPS on consumer hardware.
 
 Our contributions are:
 \begin{enumerate}
   \item \textbf{Annealed Structured Label Smoothing (SLS)}: a tokenizer-metric-aware training objective that distributes smoothing mass according to token distance early in training, then anneals back to hard CE. FSQ lattice distance is one instantiation; embedding or codebook distance gives the corresponding instantiation for VQ-style tokenizers.
-  \item \textbf{A real-time discrete WM system}: a complete V-M-C pipeline for Geometry Dash running at 30\,FPS, combining FSQ tokenization, a transformer with action tokens interleaved in the sequence and an action-conditional contrastive auxiliary loss~\citep{burchi2025twister}, and a CNN actor-critic trained via BC + PPO-in-dreams.
+  \item \textbf{A real-time discrete WM system}: a complete V-M-C pipeline for Geometry Dash running at 30\,FPS, combining FSQ tokenization, a transformer with action tokens interleaved in the sequence and an action-conditional contrastive auxiliary loss~\citep{burchi2025twister}, a CNN actor-critic trained via BC + PPO-in-dreams, and autoregressive generation of plausible level continuations from real prefixes.
 \end{enumerate}
 
 % ===========================================================================
@@ -389,6 +390,7 @@ BC is retained in the pipeline on this basis.
 
 \paragraph{Evaluation metrics.}
 We evaluate on: (1) next-token prediction accuracy and cross-entropy on held-out episodes, (2) death prediction F1 score, and (3) real-environment gameplay performance measured as percentage of level completed (mean over $N = 100$ automated runs).
+For the application section, we also retain qualitative generated rollouts: the WM is seeded with real gameplay frames and action tokens, then rolled forward to visualize level continuations and failure/survival branches in token space.
 
 % ===========================================================================
 \section{Results}
@@ -417,8 +419,8 @@ CE remains slightly better in the final tail (mean return after epoch 500: $19.6
 This supports a stability/sample-efficiency claim, not a claim that SLS universally improves final return.
 
 \paragraph{Planned result table.}
-The final paper table should report CE, fixed SLS, and annealed SLS over multiple seeds, with return AUC, collapse-window return, rolling variance, first epoch to return thresholds, final return, and tail mean return.
-Fixed SLS should remain in the table as a negative ablation showing why annealing is part of the method.
+The final paper table should report CE vs.\ annealed SLS over multiple seeds, with return AUC, collapse-window return, rolling variance, first epoch to return thresholds, final return, and tail mean return.
+Fixed SLS should remain as a diagnostic negative ablation from the first seed, showing why annealing is part of the method, but it is not a compute priority for replication.
 
 % ---------------------------------------------------------------------------
 \subsection{Ablations and negative results}
@@ -459,6 +461,7 @@ The current benchmark evidence for annealed SLS is limited to one IRIS/Pong seed
 The present result supports the choice of framing and the need for annealing, but not yet a broad claim across Atari games or random seeds.
 The full V7-native Atari controller path did not become a reliable evaluation vehicle and is explicitly out of scope for this paper.
 Geometry Dash remains a single-game application with a binary action space and deterministic level layouts; its deploy-survival metric is useful for the system section but too noisy to be the primary SLS effect-size benchmark.
+The level-generation claim is likewise scoped to autoregressive visual continuations sampled from the learned dynamics model, not to exporting editor-valid Geometry Dash levels with guaranteed playability.
 The generalization of SLS to environments with higher-dimensional actions, stochastic dynamics, or RGB observations remains to be validated.
 The system is trained sequentially -- FSQ, then transformer, then controller -- which is operationally simple but forfeits the possibility of prediction gradients shaping the codebook. Our preliminary attempts at a JEPA-style joint-training variant did not produce real-game gains over this sequential baseline (Section~\ref{sec:ablations}); whether a more careful version of joint training, or a stronger decoder-free anti-collapse signal, would close this gap is open work.
 The reconstruction anchor is also domain-specific: it is appropriate here because the rendered observations are predictable projections of a discrete game state, but the same objective may be wasteful or counterproductive in real-world video where much of the pixel information is not predictable from the agent's context.
@@ -472,9 +475,10 @@ We introduced annealed Structured Label Smoothing, a tokenizer-metric-aware obje
 SLS replaces hard CE targets with a kernel over nearby tokens early in training, then anneals the smoothing mass to zero so the final objective becomes CE.
 FSQ lattice distance gives the Geometry Dash instantiation; codebook or embedding distance gives the corresponding instantiation for VQ-style tokenizers.
 We also integrate SLS into a real-time discrete-WM system on Geometry Dash: an FSQ-VAE tokenizer, a causal transformer with action tokens interleaved in the sequence and a TWISTER-style action-conditional contrastive auxiliary loss, and a CNN actor-critic on the predicted token grid trained via BC and PPO entirely in dreamed rollouts.
+The same action-conditioned dynamics can be used generatively: from a real gameplay prefix, the model rolls out plausible future token grids and decoded frames, providing procedural level-continuation samples in addition to control-oriented dreams.
 The three components are trained sequentially, and the full pipeline runs at 30\,FPS on consumer hardware.
 A set of architectural variants (joint FSQ+M training, AdaLN-Zero action conditioning, scaling to a larger transformer, an MLP controller on the hidden state) is reported as ablations: each is more elegant on paper but did not improve real-game level progress in our experiments, motivating the deliberately conservative baseline of this paper.
-The remaining paper-critical work is to expand the IRIS benchmark beyond the first Pong seed and report stability, sample-efficiency, and final-performance KPIs under matched CE, fixed-SLS, and annealed-SLS conditions.
+The remaining paper-critical work is to expand the IRIS benchmark beyond the first Pong seed and report stability, sample-efficiency, and final-performance KPIs under matched CE and annealed-SLS conditions, with fixed SLS retained as the negative-control ablation motivating annealing.
 A natural extension is to make the kernel bandwidth or schedule learnable and jointly optimized with the WM; care must be taken to prevent degenerate solutions in which the learned targets collapse to uniform smoothing or preserve late smoothing after CE should dominate.
 
 \begin{ack}
