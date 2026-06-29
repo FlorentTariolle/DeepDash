@@ -4,16 +4,21 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="color-scheme" content="light only" />
-  <title>SLS-WM</title>
+  <title>SLS-WM | Annealed Structured Label Smoothing</title>
 
-  <meta name="description" content="Annealed Structured Label Smoothing (SLS) is a tokenizer-metric-aware objective for discrete world models. Geometry Dash V7 remains the real-time Vision-Model-Controller application where FSQ lattice structure motivated the method, with dreamed rollouts and level-continuation generation." />
+  <meta name="description" content="Annealed Structured Label Smoothing (SLS) is a tokenizer-metric-aware objective for discrete world models, applied to Geometry Dash through a real-time Vision-Model-Controller system." />
   <meta name="author" content="Florent Tariolle" />
+  <link rel="canonical" href="https://tariolle.github.io/sls-wm/" />
 
   <meta property="og:title" content="Annealed Structured Label Smoothing for Discrete World Models" />
-  <meta property="og:description" content="A tokenizer-metric-aware soft-target objective for discrete world models, with Geometry Dash V7 as the real-time FSQ-based application system for dreamed control and level-continuation generation." />
-  <meta property="og:image" content="static/images/pipeline.png" />
+  <meta property="og:description" content="Metric-aware soft targets for discrete world models, annealed back to CE, demonstrated in a real-time Geometry Dash world-model controller." />
+  <meta property="og:image" content="https://tariolle.github.io/sls-wm/static/images/pipeline.png" />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://tariolle.github.io/sls-wm/" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Annealed Structured Label Smoothing for Discrete World Models" />
+  <meta name="twitter:description" content="A tokenizer-metric-aware objective for discrete world models, with a real-time Geometry Dash V-M-C application." />
+  <meta name="twitter:image" content="https://tariolle.github.io/sls-wm/static/images/pipeline.png" />
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -26,29 +31,6 @@
   <link rel="icon" type="image/png" href="static/images/ai-brain-icon.png" />
   <link rel="apple-touch-icon" href="static/images/ai-brain-icon.png" />
   <link rel="stylesheet" href="static/css/style.css" />
-
-  <style>
-    html.loading body { visibility: hidden; }
-    #page-loader {
-      position: fixed; inset: 0;
-      display: flex; align-items: center; justify-content: center;
-      background: #fff;
-      z-index: 9999;
-      transition: opacity 0.3s ease;
-    }
-    #page-loader.hidden { opacity: 0; pointer-events: none; }
-    #page-loader .spinner {
-      width: 42px; height: 42px;
-      border: 3px solid #e5e5e5;
-      border-top-color: #333;
-      border-radius: 50%;
-      animation: pl-spin 0.9s linear infinite;
-    }
-    @keyframes pl-spin { to { transform: rotate(360deg); } }
-  </style>
-  <script>
-    document.documentElement.classList.add('loading');
-  </script>
 
   <script>
     window.MathJax = {
@@ -63,162 +45,229 @@
 </head>
 
 <body>
-
-<div id="page-loader" aria-hidden="true"><div class="spinner"></div></div>
-
-<!-- Hero: title, authors, buttons -->
-<section class="hero">
+<header class="hero">
   <div class="hero-body">
-    <div class="container is-max-desktop">
-      <h1 class="publication-title">
-        Annealed Structured Label Smoothing<br />
-        for Discrete World Models
-      </h1>
-
-      <div class="publication-authors">
-        <span><a href="https://tariolle.github.io/" target="_blank" rel="noopener">Florent Tariolle</a></span>
-        <div class="affiliation">INSA Rouen Normandy</div>
-        <div class="correspondence">
-          Correspondence to <code>florent.tariolle@insa-rouen.fr</code>
+    <div class="hero-grid">
+      <div class="hero-copy">
+        <div class="status-row">
+          <span class="status-pill">Preliminary research page</span>
+          <span class="status-date">Updated 2026-06-08</span>
         </div>
+
+        <h1 class="publication-title">
+          <span class="title-line">Annealed</span>
+          <span class="title-line">Structured</span>
+          <span class="title-line">Label</span>
+          <span class="title-line">Smoothing</span>
+          <span class="title-line">for Discrete</span>
+          <span class="title-line">World Models</span>
+        </h1>
+
+        <p class="hero-subtitle">
+          Tokenizer-metric-aware soft targets stabilize discrete world-model training early,
+          then anneal back to cross-entropy for unbiased late optimization.
+        </p>
+
+        <div class="publication-authors">
+          <a href="https://tariolle.github.io/" target="_blank" rel="noopener">Florent Tariolle</a>
+          <span>INSA Rouen Normandy</span>
+          <code>florent.tariolle@insa-rouen.fr</code>
+        </div>
+
+        <nav class="publication-links" aria-label="Project links">
+          <a class="link-button primary" href="static/pdfs/sls_wm.pdf" target="_blank" rel="noopener">
+            <span class="icon"><i class="fas fa-file-pdf"></i></span>
+            <span>Paper Draft</span>
+          </a>
+          <a class="link-button" href="https://github.com/Tariolle/sls-wm" target="_blank" rel="noopener">
+            <span class="icon"><i class="fab fa-github"></i></span>
+            <span>Code</span>
+          </a>
+          <a class="link-button" href="#evidence">
+            <span class="icon"><i class="fas fa-chart-line"></i></span>
+            <span>Results</span>
+          </a>
+          <a class="link-button" href="#cite">
+            <span class="icon"><i class="fas fa-quote-right"></i></span>
+            <span>Cite</span>
+          </a>
+        </nav>
       </div>
 
-      <div class="publication-links">
-        <a class="link-button" href="static/pdfs/sls_wm.pdf" target="_blank" rel="noopener">
-          <span class="icon"><i class="fas fa-file-pdf"></i></span>
-          <span>Paper Draft</span>
-        </a>
-        <a class="link-button" href="https://github.com/Tariolle/sls-wm" target="_blank" rel="noopener">
-          <span class="icon"><i class="fab fa-github"></i></span>
-          <span>Code</span>
-        </a>
-      </div>
-
-      <div class="notice">
-        <strong>Research status, 2026-06-08.</strong> The method is now framed as annealed SLS: structured smoothing early, pure CE late. Geometry Dash V7 is the application showcase; IRIS/Pong is the first accepted-baseline benchmark for CE vs. annealed SLS, with fixed SLS retained as a negative-control ablation. Conference/workshop venue will be decided after the benchmark freeze.
-      </div>
+      <figure class="hero-demo">
+        <video
+          autoplay
+          loop
+          muted
+          playsinline
+          controls
+          poster="static/images/demo_poster.jpg"
+          preload="metadata"
+        >
+          <source src="demo_preview.mp4" type="video/mp4" />
+          <source src="demo.mp4" type="video/mp4" />
+        </video>
+        <figcaption>
+          Geometry Dash controller trained in imagined rollouts, deployed at 30 FPS.
+        </figcaption>
+      </figure>
     </div>
   </div>
-</section>
+</header>
 
-<!-- Abstract -->
-<section id="abstract">
-  <div class="container-narrow">
-    <h2 class="section-title">Abstract</h2>
-    <p class="abstract">
-      Discrete World Models tokenize observations with a learned quantizer and predict next-frame tokens with a transformer, but standard cross-entropy treats every incorrect prediction as equally wrong. SLS replaces this hard target with a tokenizer-metric-aware soft target, so nearby alternatives receive more credit than unrelated tokens.
-    </p>
-    <p class="abstract">
-      The current method is <em>annealed Structured Label Smoothing</em>: structured smoothing is used early to reduce brittle optimization, then the smoothing mass is annealed to zero so the late objective is ordinary CE. FSQ provides a natural integer-lattice distance; VQ-style tokenizers can use codebook or embedding distance.
-    </p>
-    <p class="abstract">
-      Geometry Dash V7 remains the application showcase. The FSQ-VAE tokenizes Sobel edge maps, a causal transformer predicts next-frame tokens, and a CNN actor-critic on the predicted token grid drives the agent. The controller is trained entirely in imagination on dreamed rollouts and deployed at 30&nbsp;FPS on the real game via screen capture. The same action-conditioned dynamics can be seeded with real gameplay prefixes to generate plausible visual continuations of a level segment.
-    </p>
-    <p class="tldr">
-      <strong>TL;DR.</strong> SLS is now framed as an annealed, tokenizer-metric-aware CE replacement. FSQ lattice smoothing is the Geometry Dash special case; IRIS/Pong is the first accepted-baseline CE vs. SLS benchmark.
-    </p>
-  </div>
-</section>
+<main>
+  <section id="evidence" class="section-block evidence-band">
+    <div class="section-grid">
+      <div>
+        <p class="eyebrow">Current evidence</p>
+        <h2 class="section-title">Annealing keeps the useful part of smoothing</h2>
+        <p>
+          The first matched IRIS/Pong run supports a stability and sample-efficiency claim:
+          annealed SLS improves the unstable CE training window while recovering near-CE
+          final return. Multi-seed CE vs. annealed-SLS runs are in progress.
+        </p>
+      </div>
 
-<!-- Demo video -->
-<section id="demo">
-  <div class="container-narrow">
-    <h2 class="section-title">Live deployment</h2>
-    <figure class="centered">
-      <video
-        src="demo.mp4"
-        autoplay
-        loop
-        muted
-        playsinline
-        preload="auto"
-        style="width:100%;height:auto;display:block;"
-      ></video>
-      <figcaption>
-        Controller trained entirely in imagination, deployed on the real game at 30&nbsp;FPS via screen capture.
-      </figcaption>
-    </figure>
-  </div>
-</section>
+      <div class="metric-panel" aria-label="Preliminary IRIS Pong metrics">
+        <div class="metric-row">
+          <span>Unstable-window mean return</span>
+          <strong>+7.16</strong>
+        </div>
+        <div class="metric-row">
+          <span>Eval-return AUC gain</span>
+          <strong>+584.1</strong>
+        </div>
+        <div class="metric-row">
+          <span>First return >= 10</span>
+          <strong>30 epochs earlier</strong>
+        </div>
+        <p class="metric-note">Single-seed IRIS/Pong snapshot; not the final benchmark table.</p>
+      </div>
+    </div>
 
-<!-- Pipeline overview -->
-<section id="pipeline">
-  <div class="container-narrow">
-    <h2 class="section-title">Pipeline overview</h2>
-    <figure class="centered">
-      <img src="static/images/pipeline.svg" alt="Vision-Model-Controller pipeline overview" />
-      <figcaption>
-        Vision-Model-Controller pipeline. The FSQ-VAE <strong>(V)</strong> tokenizes Sobel edge maps into a grid of discrete codes, the causal transformer <strong>(M)</strong> predicts next-frame tokens with action tokens interleaved in the sequence, and the CNN controller <strong>(C)</strong> reads the predicted token grid alongside the transformer hidden state to select actions. The same autoregressive loop supports control dreams and generated level continuations from real prefixes.
-      </figcaption>
-    </figure>
-  </div>
-</section>
+    <div class="evidence-cards" aria-label="Interpretation of preliminary evidence">
+      <article>
+        <h3>What this seed supports</h3>
+        <p>Annealed SLS reduces the mid-training collapse window and improves sample-efficiency metrics under matched CE conditions.</p>
+      </article>
+      <article>
+        <h3>What it does not claim</h3>
+        <p>The current claim is not a final-return win. CE remains slightly better in the final tail on this first seed.</p>
+      </article>
+      <article>
+        <h3>Why fixed SLS matters</h3>
+        <p>Fixed SLS fails asymptotically, which is exactly why annealing the smoothing mass back to CE is part of the method.</p>
+      </article>
+    </div>
+  </section>
 
-<!-- SLS figure -->
-<section id="sls">
-  <div class="container-narrow">
-    <h2 class="section-title">Structured Label Smoothing</h2>
-    <p>
-      One-hot cross-entropy ignores token geometry entirely. SLS replaces the one-hot training target with a kernel over a tokenizer-defined distance, so nearby alternatives receive most of the smoothing mass and distant tokens receive negligible weight. For FSQ, the distance is the lattice distance between coordinates $\mathbf{c}(i)$ and $\mathbf{c}(j)$; for VQ-style tokenizers it can be codebook or embedding distance.
-    </p>
-    <p class="equation">
-      $$q_t(j \mid i) \;\propto\; \varepsilon_t\, k\!\left(d(i,j)\right), \qquad k(d) = e^{-d^{2}/2\sigma^{2}}.$$
-    </p>
-    <p>
-      Annealed SLS schedules $\varepsilon_t$ from structured smoothing early in training to zero late in training. This keeps the stabilizing near-miss signal while making the final objective exactly ordinary CE. Fixed SLS is retained as an ablation because it isolates the stability effect but can over-regularize the asymptotic solution.
-    </p>
-    <figure class="centered">
-      <img src="static/images/sls_kernel.svg" alt="SLS kernel visualization: 2D slice and sorted distribution vs. uniform" />
-      <figcaption>
-        <strong>(a)</strong> 2D slice of SLS weights over two FSQ lattice dimensions with the remaining two fixed at the target's values; the red square marks the target token and weights decay with lattice distance.
-        <strong>(b)</strong> All <em>V</em>&minus;1 alternative tokens sorted by SLS weight (log scale) versus uniform label smoothing. SLS concentrates mass on near-miss tokens while suppressing distant ones by orders of magnitude.
-      </figcaption>
-    </figure>
-  </div>
-</section>
+  <section id="contributions" class="section-block">
+    <div class="container-narrow">
+      <p class="eyebrow">Two contributions, separated on purpose</p>
+      <h2 class="section-title">Method first, application second</h2>
+      <div class="contribution-grid">
+        <article class="contribution-item">
+          <h3>Annealed SLS</h3>
+          <p>
+            Structured smoothing allocates probability mass to nearby tokens under a tokenizer-defined metric.
+            The smoothing mass is annealed to zero, so late training is exactly the CE baseline.
+          </p>
+        </article>
+        <article class="contribution-item">
+          <h3>Geometry Dash</h3>
+          <p>
+            The application system combines FSQ tokenization, a causal transformer world model,
+            and a small CNN actor-critic trained through BC plus PPO entirely in dreams.
+          </p>
+        </article>
+      </div>
+    </div>
+  </section>
 
-<!-- Method highlights -->
-<section id="method">
-  <div class="container-narrow">
-    <h2 class="section-title">Method highlights</h2>
-    <ul>
-      <li><strong>Annealed metric-aware targets.</strong> SLS replaces hard CE with a local soft target early in training, then anneals the smoothing mass to zero so the final objective is exactly CE. The current benchmark prioritizes CE vs. annealed SLS, with fixed SLS retained as a negative control showing why annealing matters.</li>
-      <li><strong>FSQ tokenization for sharp dreams.</strong> An FSQ-VAE with levels [8,&nbsp;5,&nbsp;5,&nbsp;5] (1000 implicit codes) encodes Sobel edge maps into an 8&times;8 grid of discrete tokens. No codebook collapse, no commitment loss, 100% utilization by construction.</li>
-      <li><strong>Reconstruction as a domain-specific anchor.</strong> Pixel prediction is not assumed to be universally optimal: in natural videos it can waste capacity on unpredictable detail. Our non-improving joint-embedding variant was an FSQ-token hybrid, not a faithful continuous-latent LeWorldModel/SIGReg port. Here the game renderer is deterministic, so reconstructing pixels preserves control-relevant state information before the dynamics model learns over tokens.</li>
-      <li><strong>Discrete dynamics transformer.</strong> A causal transformer (384d, 8 heads, 8 layers) predicts the next frame's tokens given a context window of past frames and actions. Actions are interleaved as tokens in the sequence; the target frame is replaced by a learnable mask embedding so the model never peeks at the ground truth. 3D-RoPE positional encoding factorises row, column, and frame indices, and block-causal attention is bidirectional within a frame block and causal across frames.</li>
-      <li><strong>Action-conditional contrastive coding.</strong> A TWISTER-style AC-CPC auxiliary loss predicts future hidden states from past states and actions in latent space, sharpening the temporal coherence of dreams without a second decoder.</li>
-      <li><strong>Procedural level continuations.</strong> Seeded with a short real gameplay prefix and a candidate action sequence, the action-conditioned dynamics model can roll forward future token grids and decoded frames. This is visual continuation generation from the learned world model, not a claim of exporting editor-valid levels with guaranteed playability.</li>
-      <li><strong>Tokenizer-metric-aware SLS.</strong> FSQ uses lattice distance; VQ-style tokenizers can use codebook or embedding distance. The method requires a meaningful token neighbourhood, not a specific encoder architecture.</li>
-      <li><strong>CNN actor-critic in latent space.</strong> A small CNN reads the predicted token grid alongside the transformer's hidden state and emits a jump probability and value estimate. BC pretraining on expert demonstrations warm-starts the policy, which is then fine-tuned with PPO entirely on dreamed rollouts.</li>
-      <li><strong>Real-time deployment.</strong> The full V-M-C pipeline runs at a fixed 30&nbsp;FPS cadence on consumer hardware. Within each frame, pinned-memory non-blocking H2D transfers let the CPU queue GPU work without stalling on the upload, and a GPU-resident token ring buffer eliminates round-trips.</li>
-    </ul>
-  </div>
-</section>
+  <section id="method" class="section-block method-band">
+    <div class="container-narrow">
+      <p class="eyebrow">Objective</p>
+      <h2 class="section-title">A soft target with geometry</h2>
+      <p>
+        One-hot cross-entropy treats every wrong token equally. SLS replaces the one-hot target
+        with a kernel over token distance, so near-miss alternatives receive useful supervision
+        and distant tokens receive negligible mass.
+      </p>
+      <p class="equation">
+        $$q_t(j \mid i) \;\propto\; \varepsilon_t\, k(d(i,j)), \qquad k(d) = e^{-d^{2}/2\sigma^{2}}.$$
+      </p>
+      <figure class="centered">
+        <img src="static/images/sls_kernel.svg" alt="SLS kernel visualization: 2D slice and sorted distribution vs. uniform" />
+        <figcaption>
+          SLS concentrates smoothing mass on nearby FSQ lattice neighbours instead of spreading it uniformly over the vocabulary.
+        </figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section id="system" class="section-block">
+    <div class="container-narrow">
+      <p class="eyebrow">Application system</p>
+      <h2 class="section-title">Real-time Vision-Model-Controller</h2>
+      <figure class="centered pipeline-figure">
+        <img src="static/images/pipeline.svg" alt="Vision-Model-Controller pipeline overview" />
+        <figcaption>
+          FSQ-VAE tokenizes Sobel edge maps; a causal transformer predicts next-frame tokens with action tokens interleaved; a CNN controller selects jump/idle actions from the predicted grid and hidden state.
+        </figcaption>
+      </figure>
+
+      <div class="feature-grid">
+        <article>
+          <h3>Sharp discrete dreams</h3>
+          <p>FSQ levels [8, 5, 5, 5] produce 1000 implicit codes on an 8x8 token grid.</p>
+        </article>
+        <article>
+          <h3>Control in imagination</h3>
+          <p>BC warm-starts the actor-critic, then PPO fine-tunes it in autoregressive dreamed rollouts.</p>
+        </article>
+        <article>
+          <h3>Level continuations</h3>
+          <p>Real gameplay prefixes can seed action-conditioned visual rollouts of plausible future segments.</p>
+        </article>
+        <article>
+          <h3>30 FPS deployment</h3>
+          <p>The full loop runs in about 15 ms per frame on an RTX 2060 SUPER, deployed at 30 FPS for capture stability.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section id="status" class="section-block status-band">
+    <div class="section-grid">
+      <div>
+        <p class="eyebrow">Research status</p>
+        <h2 class="section-title">What is locked, what is still running</h2>
+      </div>
+      <div class="status-list">
+        <p><strong>Locked:</strong> Geometry Dash as the real-time application showcase.</p>
+        <p><strong>Active:</strong> multi-seed CE vs. annealed-SLS IRIS/Pong benchmark.</p>
+        <p><strong>Scoped:</strong> fixed SLS remains a negative-control ablation showing why annealing matters.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="cite" class="section-block">
+    <div class="container-narrow">
+      <p class="eyebrow">Reference</p>
+      <h2 class="section-title">Cite this draft</h2>
+      <pre class="bibtex"><code>@misc{tariolle2026slswm,
+  title  = {Annealed Structured Label Smoothing for Discrete World Models},
+  author = {Florent Tariolle},
+  year   = {2026},
+  url    = {https://tariolle.github.io/sls-wm/}
+}</code></pre>
+    </div>
+  </section>
+</main>
 
 <footer>
   <div>&copy; 2026 Florent Tariolle. Source on <a href="https://github.com/Tariolle/sls-wm" target="_blank" rel="noopener">GitHub</a>.</div>
 </footer>
-
-<script>
-  (function () {
-    var loader = document.getElementById('page-loader');
-    var video = document.querySelector('#demo video');
-    var revealed = false;
-    function reveal() {
-      if (revealed) return;
-      revealed = true;
-      document.documentElement.classList.remove('loading');
-      loader.classList.add('hidden');
-      setTimeout(function () { loader.remove(); }, 350);
-    }
-    if (!video) { reveal(); return; }
-    if (video.readyState >= 3) { reveal(); return; }
-    video.addEventListener('canplay', reveal, { once: true });
-    video.addEventListener('loadeddata', reveal, { once: true });
-    video.addEventListener('error', reveal, { once: true });
-    setTimeout(reveal, 8000);
-  })();
-</script>
 
 </body>
 </html>
