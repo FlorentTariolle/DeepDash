@@ -3,29 +3,51 @@
 
 [Florent Tariolle](https://tariolle.github.io/)
 
-**Abstract:** Discrete world models tokenize observations and train a transformer with cross-entropy over next-token targets, but hard CE treats every wrong token as equally wrong. We introduce *Structured Label Smoothing* (SLS), a metric-aware soft-target objective that allocates probability mass to nearby tokens under a tokenizer-defined distance. The method is not tied to one encoder: FSQ provides an integer lattice distance, while VQ-style tokenizers can use codebook or embedding distance. Our current method is **annealed SLS**: use structured smoothing early to reduce brittle optimization, then anneal the smoothing mass to zero so training converges back to ordinary CE. The paper now separates two contributions: SLS as a benchmarked objective on an accepted discrete world-model baseline, and the Geometry Dash Vision-Model-Controller system as the domain-specific application where FSQ originally exposed the problem, including dreamed control and procedural level-continuation generation from real gameplay prefixes.
+SLS-WM studies **Structured Label Smoothing** (SLS), a metric-aware training objective for discrete world models. Hard cross-entropy treats every wrong token as equally wrong; SLS replaces the one-hot target with a local distribution over nearby tokenizer states.
+
+The current paper separates two contributions: **annealed SLS** as a benchmarked CE replacement on an accepted discrete Atari world-model baseline, and a **Geometry Dash world-model control application** where the idea first emerged.
 
 <p align="center">
    <b>[ <a href="https://tariolle.github.io/sls-wm/static/pdfs/sls_wm.pdf">Paper Draft</a> | <a href="https://tariolle.github.io/sls-wm/">Website</a> | <a href="https://github.com/Tariolle/sls-wm/blob/main/presentation/main.pdf">DeepDash Presentation</a> ]</b>
 </p>
 
 <p align="center">
-  <img src="docs/static/images/pipeline.png" width="80%">
+  <img src="docs/static/images/sls_kernel.svg" width="82%">
 </p>
 
-> **Project status (updated 2026-06-08).**
->
-> **Current framing.** SLS started from an FSQ observation in Geometry Dash: the world model could predict visually correct frames while token accuracy stayed low, because near-neighbour FSQ codes were penalized like unrelated codes. That remains the motivating special case, but it is no longer the whole claim. The method claim is now tokenizer-metric agnostic: if a discrete tokenizer gives a meaningful neighbourhood over tokens, SLS replaces one-hot CE with a structured local target, and annealed SLS gradually returns to CE to avoid an asymptotic bias.
->
-> **Why the tokenizer stays reconstruction-anchored.** We tested a constrained FSQ-JEPA hybrid inside the existing token architecture. This was not a faithful LeWorldModel/SIGReg port: canonical SIGReg regularizes continuous Gaussian embeddings, whereas this system keeps bounded FSQ tokens for the dynamics model and controller. The hybrid trained, but worked worse for control than the sequential reconstruction-anchored pipeline. Our interpretation is domain-specific rather than anti-JEPA: in natural video, predicting every pixel can waste capacity on unpredictable nuisance detail; in deterministic games, the pixels are repeatable outputs of the simulator, so reconstruction preserves useful state information for tokenization and control.
->
-> **Why evaluation moved to IRIS.** Geometry Dash remains the application, but its deploy metric (% of level reached) is a serial-difficulty cut with low signal for method comparison. Rather than keep trying to port the full Geometry Dash VMC stack to Atari, the benchmark path now uses an accepted world-model baseline and changes only the loss target. IRIS/Pong is the first controlled baseline: CE and annealed SLS are the active multi-seed comparison, with fixed SLS retained as a first-seed negative control.
->
-> **Current evidence.** On the first IRIS Pong seed, fixed SLS improved the early stability window but collapsed asymptotically (final return `0.125` vs CE `20.9375`). Annealed SLS kept the stabilizing effect while recovering near-CE performance (final return `19.625`, best `19.8125`). The paper claim should therefore be about **annealed SLS as a stability/sample-efficiency regularizer that converges back to CE**, with fixed SLS retained as an ablation showing why annealing matters.
->
-> **What stays, what changes.** The locked Geometry Dash instantiation is **V7** and remains the application showcase: FSQ tokens, imagined rollout/control, procedural rollout or level continuation generation, and **~15 ms total inference per frame on RTX 2060 SUPER** (~67 FPS achievable; deployed at 30 FPS for capture-rate stability). The [DeepDash presentation](https://github.com/Tariolle/sls-wm/blob/main/presentation/main.pdf) documents the course-project version of this Geometry Dash system, where the visually correct but token-inaccurate FSQ predictions first motivated SLS. The full V7-native Atari controller path is retired. Atari appears only through accepted-baseline SLS-vs-CE validation.
+## Method
 
-> **Status:** V7 Geometry Dash is frozen as the application showcase. IRIS/Pong CE, fixed SLS, and annealed SLS single-seed runs are complete, and additional CE vs. annealed-SLS Pong seeds are the current paper-critical work. Any conference/workshop venue will be decided after the benchmark freeze. Next paper-critical work is to turn the current result into defensible evidence: multi-seed plots, stability/sample-efficiency KPIs, and at most one additional Atari game if Pong alone is too narrow.
+Discrete tokenizers often carry useful geometry. In FSQ, neighbouring lattice codes can decode to visually similar patches; in VQ-style tokenizers, codebook or embedding distance can play the same role. A hard CE target ignores this structure: a near-miss token and an unrelated token receive the same penalty whenever neither is the exact target.
+
+SLS turns that one-hot target into a kernel over token distances. The benchmark formulation is **annealed SLS**: use structured smoothing early to reduce brittle optimization, then anneal the smoothing mass to zero so late training is exactly CE. In Geometry Dash, fixed SLS is a domain-specific prior over semantically adjacent FSQ codes, because exact token identity can be stricter than decoded or control-relevant equivalence.
+
+## Current Evidence
+
+The controlled benchmark path uses [IRIS](https://arxiv.org/abs/2209.00588) on Pong and changes only the world-model loss target.
+
+| Condition | First-seed final return | Role |
+|:--|--:|:--|
+| CE | `20.9375` | accepted-baseline objective |
+| Fixed SLS | `0.125` | negative control: stabilizes early but keeps late bias |
+| Annealed SLS | `19.625` | keeps much of the stability/sample-efficiency gain while returning near CE |
+
+Multi-seed CE vs. annealed-SLS Pong runs are in progress. The final benchmark will report stability, sample efficiency, final/tail return, and seed failure-rate KPIs. Fixed SLS is retained as a diagnostic ablation for Atari, not as the method claim.
+
+## Geometry Dash Application
+
+The Geometry Dash application is the frozen environment-specific showcase. It uses an FSQ tokenizer, an action-conditioned transformer world model, and a lightweight actor-critic trained from BC warm-start plus PPO in imagined rollouts. It runs at 30 FPS through screen capture and can sample plausible level continuations by rolling the learned dynamics forward from real gameplay prefixes.
+
+<p align="center">
+  <img src="docs/static/images/pipeline.png" width="82%">
+</p>
+
+The [DeepDash presentation](https://github.com/Tariolle/sls-wm/blob/main/presentation/main.pdf) documents the course-project Geometry Dash system where SLS originated: rollouts could be visually correct even when exact token accuracy stayed low, because nearby FSQ codes were penalized like unrelated codes.
+
+## Scope
+
+- SLS is tokenizer-metric aware, not FSQ-only: FSQ lattice distance is one instantiation; VQ codebook or embedding distance gives another.
+- The Geometry Dash tokenizer remains reconstruction-anchored. A constrained FSQ-JEPA hybrid did not improve control, but this is not a claim against LeWorldModel or continuous-latent JEPA.
+- The direct Atari port of the Geometry Dash controller path is retired. Atari appears only through accepted-baseline CE-vs-annealed-SLS validation.
 
 ## Using the code
 
