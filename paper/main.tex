@@ -388,6 +388,10 @@ Within each iteration we minimize stalls: the captured image is staged into a pi
 The transformer's context window is held as a GPU-resident ring buffer of FSQ token indices, eliminating a GPU$\to$CPU$\to$GPU round-trip per frame.
 The encoder forward pass is wrapped in a CUDA Graph after a short warm-up, and the entire model graph is compiled with \texttt{torch.compile} in \texttt{reduce-overhead} mode.
 Under these optimizations the full pipeline (screen capture, Sobel preprocessing, FSQ encode, transformer step, controller action) measures $\sim$15\,ms total per frame on a single RTX 2060 SUPER, well within the 33\,ms 30-FPS budget; the agent could in principle run at $\sim$67\,FPS, and is configured at 30\,FPS for capture-rate stability rather than as a compute ceiling.
+This latency budget also determines the scope of downstream comparisons.
+We do not treat inference-time planning agents, including full LeWorldModel-style planning systems, as direct baselines for live Geometry Dash control: the game cannot be paused, so any online search or trajectory optimization would have to fit inside the same 33\,ms loop as capture, preprocessing, model inference, and action dispatch.
+Our architecture therefore follows a reactive deployment regime: expensive optimization happens offline in imagined rollouts, while the deployed controller executes one fast policy step per frame.
+Planning-based WMs remain relevant in settings where additional online computation is available, but they answer a different control question from this real-time deployment setting.
 
 \paragraph{BC pretraining ablation.}
 To verify that BC pretraining is a convergence accelerator rather than a stability requirement, we train one PPO run from random initialization.
@@ -474,6 +478,7 @@ The full V7-native Atari controller path did not become a reliable evaluation ve
 Geometry Dash remains a single-game application with a binary action space and deterministic level layouts; its deploy-survival metric is useful for the system section but too noisy to be the primary SLS effect-size benchmark.
 The level-generation claim is likewise scoped to autoregressive visual continuations sampled from the learned dynamics model, not to exporting editor-valid Geometry Dash levels with guaranteed playability.
 The generalization of SLS to environments with higher-dimensional actions, stochastic dynamics, or RGB observations remains to be validated.
+We also do not claim a downstream control comparison against planning-based WMs under relaxed inference budgets; our Geometry Dash system targets a non-paused 30-FPS setting where online planning must compete with the action latency budget.
 The system is trained sequentially -- FSQ, then transformer, then controller -- which is operationally simple but forfeits the possibility of prediction gradients shaping the codebook. Our preliminary attempts at a JEPA-style joint-training variant inside the existing FSQ-token architecture did not produce real-game gains over this sequential baseline (Section~\ref{sec:ablations}); whether a faithful continuous-latent LeWorldModel adaptation, a more careful version of joint FSQ training, or a stronger decoder-free discrete anti-collapse signal would close this gap is open work.
 The reconstruction anchor is also domain-specific: it is appropriate here because the rendered observations are predictable projections of a discrete game state, but the same objective may be wasteful or counterproductive in real-world video where much of the pixel information is not predictable from the agent's context.
 
