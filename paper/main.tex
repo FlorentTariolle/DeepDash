@@ -117,6 +117,7 @@ We propose \emph{Structured Label Smoothing} (SLS), a soft-target objective whos
 Classical uniform label smoothing~\citep{szegedy2016rethinking} is the structureless limit of this construction and a natural ablation, not the baseline SLS improves over.
 Our current objective anneals the smoothing mass to zero late in training.
 The anneal is central: fixed smoothing can stabilize early optimization while biasing the late optimum, whereas annealed SLS becomes exact CE asymptotically.
+Annealing is the benchmark-clean Atari formulation. In Geometry Dash, fixed SLS can also be interpreted as a domain-specific prior over semantically adjacent FSQ codes, because exact token identity is sometimes stricter than decoded/control-relevant equivalence.
 
 This can be viewed as part of a broader shift from data-agnostic heuristics to structure derived from learned representations, analogous to how learned strided convolutions replaced fixed max-pooling for spatial downsampling~\citep{springenberg2015striving}.
 Unlike knowledge distillation, which requires a separate teacher model to produce soft targets, SLS exploits geometry already present in the tokenizer at no additional cost.
@@ -268,7 +269,9 @@ The full target matrix $\mathbf{Q} \in \mathbb{R}^{V \times V}$ can be precomput
 The smoothing mass $\varepsilon_t$ is scheduled during training.
 The current benchmark schedule uses $\varepsilon_t = 0.1$ through the early training phase, cosine-anneals from $0.1$ to $0$ during the middle phase, and then trains with pure CE.
 This makes the optimization a curriculum: early targets encode neighbourhood structure and reduce brittleness, while the final objective is exactly the hard CE baseline.
-Fixed SLS is retained as an ablation because it isolates the stabilizing effect but can over-regularize the asymptotic solution.
+Fixed SLS is retained as an Atari ablation because it isolates the stabilizing effect but can over-regularize the asymptotic solution.
+For Geometry Dash, however, we keep SLS fixed rather than annealed: exact token identity is a stricter target than decoded or control-relevant equivalence, and the application is precisely the setting where visually similar FSQ neighbours motivated the method.
+Thus annealed SLS is the benchmark-clean CE replacement, while fixed SLS is the Geometry Dash instantiation of the same metric-aware prior.
 
 \begin{figure}[t]
   \centering
@@ -367,6 +370,7 @@ Frames are preprocessed with Sobel edge detection and resized to $\imgsize$.
 
 \paragraph{Training details.}
 The FSQ-VAE and the transformer are trained sequentially with AdamW using cosine annealing and warmup. The FSQ-VAE is trained for 200 epochs (LR $4\cdot 10^{-3}$, batch 32) with the slowness and uniformity regularizers weighted at $\alpha_\text{slow} = 0.1$ and $\alpha_\text{uniform} = 0.01$, after which the encoder is frozen and its tokens are cached. The transformer is then trained for 200 epochs (LR $10^{-3}$, weight decay $0.05$, dropout $0.1$, batch 256) with 5\% FSQ-neighbor token noise on context tokens, and death frames oversampled $15\times$ via weighted sampling.
+The Geometry Dash transformer uses fixed SLS with smoothing mass $0.1$, rather than the Atari annealing schedule, because its role is to preserve a local semantic neighbourhood over FSQ codes rather than to provide a late-stage exact-CE benchmark comparison.
 BF16 mixed-precision training is used throughout; BF16 requires no loss scaling and is numerically more stable than FP16.
 Training runs on a single NVIDIA A100 GPU.
 
@@ -423,6 +427,7 @@ This supports a stability/sample-efficiency claim, not a claim that SLS universa
 \paragraph{Planned result table.}
 The final paper table should report CE vs.\ annealed SLS over multiple seeds, with return AUC, collapse-window return, rolling variance, first epoch to return thresholds, final return, and tail mean return.
 Fixed SLS should remain as a diagnostic negative ablation from the first seed, showing why annealing is part of the method, but it is not a compute priority for replication.
+This does not contradict the Geometry Dash design choice: there, fixed SLS is supported by the tokenizer-neighbour visualizations and development ablations, but we do not present a fully replicated CE-vs.-fixed-vs.-annealed Geometry Dash benchmark.
 
 % ---------------------------------------------------------------------------
 \subsection{Ablations and negative results}
