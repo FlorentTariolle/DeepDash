@@ -4,21 +4,21 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="color-scheme" content="light only" />
-  <title>SLS-WM | Annealed Structured Label Smoothing</title>
+  <title>DashVMC | Real-Time Discrete World-Model Control in Geometry Dash</title>
 
-  <meta name="description" content="Annealed Structured Label Smoothing (SLS) is a tokenizer-metric-aware objective for discrete world models, applied to Geometry Dash through a real-time Vision-Model-Controller system." />
+  <meta name="description" content="DashVMC is a real-time discrete world-model control system for Geometry Dash, with FSQ tokenization, action-conditioned dynamics, dreamed PPO control, and 30 FPS deployment." />
   <meta name="author" content="Florent Tariolle" />
-  <link rel="canonical" href="https://tariolle.github.io/sls-wm/" />
+  <link rel="canonical" href="https://tariolle.github.io/dash-vmc/" />
 
-  <meta property="og:title" content="Annealed Structured Label Smoothing for Discrete World Models" />
-  <meta property="og:description" content="Metric-aware soft targets for discrete world models, annealed back to CE, demonstrated in a real-time Geometry Dash world-model controller." />
-  <meta property="og:image" content="https://tariolle.github.io/sls-wm/static/images/pipeline.png" />
+  <meta property="og:title" content="DashVMC: Real-Time Discrete World-Model Control in Geometry Dash" />
+  <meta property="og:description" content="A real-time Geometry Dash Vision-Model-Controller system using FSQ tokens, action-conditioned dynamics, dreamed PPO control, and visual level continuations." />
+  <meta property="og:image" content="https://tariolle.github.io/dash-vmc/static/images/pipeline.png" />
   <meta property="og:type" content="website" />
-  <meta property="og:url" content="https://tariolle.github.io/sls-wm/" />
+  <meta property="og:url" content="https://tariolle.github.io/dash-vmc/" />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="Annealed Structured Label Smoothing for Discrete World Models" />
-  <meta name="twitter:description" content="A tokenizer-metric-aware objective for discrete world models, with a real-time Geometry Dash V-M-C application." />
-  <meta name="twitter:image" content="https://tariolle.github.io/sls-wm/static/images/pipeline.png" />
+  <meta name="twitter:title" content="DashVMC: Real-Time Discrete World-Model Control in Geometry Dash" />
+  <meta name="twitter:description" content="FSQ tokens, action-conditioned dynamics, dreamed PPO control, and 30 FPS Geometry Dash deployment." />
+  <meta name="twitter:image" content="https://tariolle.github.io/dash-vmc/static/images/pipeline.png" />
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -51,21 +51,21 @@
       <div class="hero-copy">
         <div class="status-row">
           <span class="status-pill">Preliminary research page</span>
-          <span class="status-date">Updated 2026-06-08</span>
+          <span class="status-date">Updated 2026-07-03</span>
         </div>
 
         <h1 class="publication-title">
-          <span class="title-line">Annealed</span>
-          <span class="title-line">Structured</span>
-          <span class="title-line">Label</span>
-          <span class="title-line">Smoothing</span>
-          <span class="title-line">for Discrete</span>
-          <span class="title-line">World Models</span>
+          <span class="title-line">DashVMC</span>
+          <span class="title-line">Real-Time</span>
+          <span class="title-line">Discrete</span>
+          <span class="title-line">World-Model</span>
+          <span class="title-line">Control in</span>
+          <span class="title-line">Geometry Dash</span>
         </h1>
 
         <p class="hero-subtitle">
-          Tokenizer-metric-aware soft targets stabilize discrete world-model training early,
-          then anneal back to cross-entropy for unbiased late optimization.
+          A real-time Vision-Model-Controller system for Geometry Dash:
+          FSQ tokens, action-conditioned dynamics, dreamed PPO control, and 30 FPS deployment.
         </p>
 
         <div class="publication-authors">
@@ -79,7 +79,7 @@
             <span class="icon"><i class="fas fa-file-pdf"></i></span>
             <span>Paper Draft</span>
           </a>
-          <a class="link-button" href="https://github.com/Tariolle/sls-wm" target="_blank" rel="noopener">
+          <a class="link-button" href="https://github.com/Tariolle/dash-vmc" target="_blank" rel="noopener">
             <span class="icon"><i class="fab fa-github"></i></span>
             <span>Code</span>
           </a>
@@ -120,43 +120,43 @@
     <div class="section-grid">
       <div>
         <p class="eyebrow">Current evidence</p>
-        <h2 class="section-title">Annealing keeps the useful part of smoothing</h2>
+        <h2 class="section-title">The application is the main result</h2>
         <p>
-          The first matched IRIS/Pong run supports a stability and sample-efficiency claim:
-          annealed SLS improves the unstable CE training window while recovering near-CE
-          final return. Multi-seed CE vs. annealed-SLS runs are in progress.
+          DashVMC uses an FSQ tokenizer, an action-conditioned transformer world model,
+          and a lightweight actor-critic trained in imagined rollouts before live deployment.
+          SLS is retained as a Geometry Dash/FSQ-motivated design choice, not as the headline claim.
         </p>
       </div>
 
-      <div class="metric-panel" aria-label="Preliminary IRIS Pong metrics">
+      <div class="metric-panel" aria-label="Geometry Dash system metrics">
         <div class="metric-row">
-          <span>Unstable-window mean return</span>
-          <strong>+7.16</strong>
+          <span>Deployment rate</span>
+          <strong>30 FPS</strong>
         </div>
         <div class="metric-row">
-          <span>Eval-return AUC gain</span>
-          <strong>+584.1</strong>
+          <span>Pipeline latency</span>
+          <strong>~15 ms</strong>
         </div>
         <div class="metric-row">
-          <span>First return >= 10</span>
-          <strong>30 epochs earlier</strong>
+          <span>Token grid</span>
+          <strong>8x8</strong>
         </div>
-        <p class="metric-note">Single-seed IRIS/Pong snapshot; not the final benchmark table.</p>
+        <p class="metric-note">Geometry Dash system snapshot; final paper table will report frozen evaluation metrics.</p>
       </div>
     </div>
 
     <div class="evidence-cards" aria-label="Interpretation of preliminary evidence">
       <article>
-        <h3>What this seed supports</h3>
-        <p>Annealed SLS reduces the mid-training collapse window and improves sample-efficiency metrics under matched CE conditions.</p>
+        <h3>What the paper claims</h3>
+        <p>A compact discrete world-model pipeline can support real-time Geometry Dash control and visual future rollouts.</p>
       </article>
       <article>
-        <h3>What it does not claim</h3>
-        <p>The current claim is not a final-return win. CE remains slightly better in the final tail on this first seed.</p>
+        <h3>What SLS claims</h3>
+        <p>SLS is a scoped FSQ-neighbour prior motivated by Geometry Dash, not a proven general replacement for CE.</p>
       </article>
       <article>
-        <h3>Why annealing matters</h3>
-        <p>Fixed SLS is the negative-control ablation: it can stabilize early training, but its asymptotic failure motivates annealing the smoothing mass back to CE.</p>
+        <h3>What IRIS showed</h3>
+        <p>Annealed SLS had partial stability signals on Pong but did not robustly outperform CE across five seeds.</p>
       </article>
     </div>
   </section>
@@ -164,20 +164,18 @@
   <section id="contributions" class="section-block">
     <div class="container-narrow">
       <p class="eyebrow">Two contributions, separated on purpose</p>
-      <h2 class="section-title">Method first, application second</h2>
+      <h2 class="section-title">Application first, diagnostic second</h2>
       <div class="contribution-grid">
         <article class="contribution-item">
-          <h3>Annealed SLS</h3>
+          <h3>Geometry Dash system</h3>
           <p>
-            Structured smoothing allocates probability mass to nearby tokens under a tokenizer-defined metric.
-            The smoothing mass is annealed to zero, so late training is exactly the CE baseline.
+            FSQ tokenization, causal action-conditioned dynamics, and a controller trained with BC plus PPO in dreams.
           </p>
         </article>
         <article class="contribution-item">
-          <h3>Geometry Dash</h3>
+          <h3>SLS diagnostic</h3>
           <p>
-            The application system combines FSQ tokenization, a causal transformer world model,
-            and a small CNN actor-critic trained through BC plus PPO entirely in dreams.
+            A metric-aware FSQ smoothing prior motivated by the application, with IRIS/Pong reported as a negative/conditional transfer test.
           </p>
         </article>
       </div>
@@ -187,7 +185,7 @@
   <section id="method" class="section-block method-band">
     <div class="container-narrow">
       <p class="eyebrow">Objective</p>
-      <h2 class="section-title">A soft target with geometry</h2>
+      <h2 class="section-title">A scoped soft target with geometry</h2>
       <p>
         One-hot cross-entropy treats every wrong token equally. SLS replaces the one-hot target
         with a kernel over token distance, so near-miss alternatives receive useful supervision
@@ -245,8 +243,8 @@
       </div>
       <div class="status-list">
         <p><strong>Locked:</strong> Geometry Dash as the real-time application showcase.</p>
-        <p><strong>Active:</strong> multi-seed CE vs. annealed-SLS IRIS/Pong benchmark.</p>
-        <p><strong>Scoped:</strong> fixed SLS remains a negative-control ablation showing why annealing matters.</p>
+        <p><strong>Diagnostic:</strong> IRIS/Pong did not validate annealed SLS as a robust CE replacement.</p>
+        <p><strong>Scoped:</strong> fixed SLS remains a Geometry Dash/FSQ design choice, not the main paper claim.</p>
       </div>
     </div>
   </section>
@@ -256,17 +254,17 @@
       <p class="eyebrow">Reference</p>
       <h2 class="section-title">Cite this draft</h2>
       <pre class="bibtex"><code>@misc{tariolle2026slswm,
-  title  = {Annealed Structured Label Smoothing for Discrete World Models},
+  title  = {DashVMC: Real-Time Discrete World-Model Control in Geometry Dash},
   author = {Florent Tariolle},
   year   = {2026},
-  url    = {https://tariolle.github.io/sls-wm/}
+  url    = {https://tariolle.github.io/dash-vmc/}
 }</code></pre>
     </div>
   </section>
 </main>
 
 <footer>
-  <div>&copy; 2026 Florent Tariolle. Source on <a href="https://github.com/Tariolle/sls-wm" target="_blank" rel="noopener">GitHub</a>.</div>
+  <div>&copy; 2026 Florent Tariolle. Source on <a href="https://github.com/Tariolle/dash-vmc" target="_blank" rel="noopener">GitHub</a>.</div>
 </footer>
 
 </body>

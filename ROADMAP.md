@@ -1,126 +1,83 @@
 # Roadmap
 
-Last updated from local artifacts, IRIS runs, and GitHub issues on 2026-06-08.
+Last updated on 2026-07-03 after the IRIS/Pong n=5 analysis.
 
 ## Current Paper Direction
 
-The paper now has two contributions with different evidentiary paths.
+The paper is now a Geometry Dash application/system paper:
 
-1. **Annealed Structured Label Smoothing (SLS)** is the method contribution. SLS is framed as a tokenizer-metric-aware replacement for hard CE targets in discrete-token world models. The target distribution puts smoothing mass on nearby tokens under a meaningful token metric, then anneals the smoothing mass back to zero so the objective becomes ordinary CE late in training.
-2. **Geometry Dash V7** is the application contribution. It remains the real-time Vision-Model-Controller system where the FSQ lattice originally exposed the near-miss problem: FSQ tokenization, action-conditioned dynamics, imagined rollout/control, procedural rollout or level-continuation generation, and 30 FPS deployment through screen capture.
+1. **Main contribution: DashVMC**, a real-time discrete Vision-Model-Controller system for Geometry Dash. The system uses FSQ tokenization, action-conditioned transformer dynamics, BC warm-start, PPO in dreamed rollouts, 30 FPS deployment, and visual level-continuation samples from real prefixes.
+2. **Secondary contribution: scoped SLS evidence**, not a general positive method claim. SLS originated from a Geometry Dash/FSQ observation: neighbouring FSQ codes can decode to visually similar or control-equivalent patches, while hard token CE penalizes all wrong codes equally. Fixed SLS remains a Geometry Dash design choice.
+3. **Diagnostic result: annealed SLS on IRIS/Pong did not robustly beat CE.** The IRIS result should be reported honestly as a negative/conditional generalization attempt.
 
-The old FSQ-only claim is no longer the headline. FSQ remains the motivating and Geometry Dash-specific metric: FSQ codes have an integer coordinate lattice, so SLS can use lattice distance. The broader claim is that SLS applies whenever the tokenizer supplies a useful token neighbourhood, such as codebook or embedding distance in VQ-style models.
-
-Source issues: #6, #13, #14, #15, #16, #21.
+Do not frame the paper as "Annealed SLS improves discrete world models." The current data do not support that.
 
 ## Current Empirical State
 
-The V7-native Atari controller path is retired for the paper. It produced a long reward-head/controller-debug loop and should not be the benchmark vehicle for SLS.
+Geometry Dash evidence already available:
 
-The active benchmark path is a minimal SLS-vs-CE patch on an accepted world-model baseline. The first controlled baseline is IRIS/Pong with architecture, optimizer, data, compile mode, BF16 mode, and training budget held fixed while changing only the target distribution.
+- FSQ tokenizer, action-conditioned transformer, BC + PPO controller, and deployment scripts.
+- V3/V7 development logs and notes.
+- 30 FPS deployment path with about 15 ms loop time reported in the draft/site.
+- Dream rollout and level-continuation functionality.
+- SLS/FSQ-neighbour qualitative motivation.
 
-Completed IRIS/Pong single-seed runs:
+IRIS/Pong diagnostic evidence:
 
-| Condition | Smoothing | Schedule | Final eval return | Best eval return | Read |
-| --- | ---: | --- | ---: | ---: | --- |
-| CE | 0.0 | pure CE | 20.9375 | 20.9375 @ epoch 600 | Strong asymptote, but unstable mid-training |
-| Fixed SLS | 0.1 | constant to epoch 600 | 0.125 | low single digits | Stabilizes the bad CE window, but over-regularizes and fails asymptotically |
-| Annealed SLS | 0.1 | hold to epoch 250, cosine to 0 by epoch 450, pure CE to epoch 600 | 19.625 | 19.8125 @ epoch 570 | Keeps much of the stability/sample-efficiency gain and recovers near-CE final performance |
+| Condition | n | Final return | Tail 500-600 | AUC mean | Failure tail <10 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| CE | 5 | 15.68 +/- 4.96 | 15.09 +/- 5.59 | 2.05 +/- 6.92 | 20% |
+| Annealed SLS | 5 | 12.14 +/- 10.82 | 12.55 +/- 8.63 | 0.95 +/- 6.16 | 40% |
+| Fixed SLS | 2 | 10.06 +/- 14.05 | 8.53 +/- 16.21 | -1.46 +/- 6.79 | 50% |
 
-Useful current KPIs from the first matched CE vs annealed SLS run:
-
-- Mean return delta over epochs 250-420: annealed SLS `+7.15625` over CE.
-- Eval-return AUC: CE `-993.0208`, annealed SLS `-408.90625`.
-- First return >= 10: CE epoch 380, annealed SLS epoch 350.
-- First return >= 18: CE epoch 430, annealed SLS epoch 505.
-- Mean return from epoch 500 onward: CE `19.6042`, annealed SLS `17.0923`.
-- Final return: CE `20.9375`, annealed SLS `19.625`.
-
-Interpretation:
-
-- Fixed SLS is a negative ablation, not the final method.
-- Annealing is part of the method, because it preserves early smoothing while removing the late bias toward soft targets.
-- The current best claim is not "SLS always improves final return." The defensible claim is "annealed SLS can reduce training brittleness and improve early/mid training stability while recovering near-CE asymptotic performance."
-
-Local plot/metric artifacts outside the repo root:
-
-- `iris_ce_vs_sls_anneal_returns_20260608.png`
-- `iris_ce_vs_sls_anneal_diagnostics_20260608.png`
-- `iris_ce_vs_sls_anneal_summary_20260608.json`
-- `iris_ce_sls_anneal_metrics_20260608.json`
+Annealed SLS has partial stability signals: lower average max drawdown, lower return-difference volatility, and a slightly better 250-420 window. These do not translate into robust final/tail performance. Treat this as a diagnostic result, not a success result.
 
 ## Immediate Next Steps
 
-1. **Turn the first IRIS result into reviewer-grade evidence.**
-   - Run more seeds for Pong.
-   - Prefer at least one additional Atari game once Pong seeds are stable.
-   - Keep CE, fixed SLS, and annealed SLS in the table: fixed SLS explains why the anneal is necessary.
+1. **Finish the paper pivot.**
+   - Rewrite introduction around Geometry Dash and the real-time control constraint.
+   - Keep SLS as a subsection/design choice and diagnostic study.
+   - Remove stale language that calls annealed SLS the primary contribution.
 
-2. **Lock the KPI story before expanding experiments.**
-   - Primary KPI: stability/sample-efficiency under matched training budget.
-   - Candidate metrics: return AUC, collapse-window mean delta, rolling return variance, first epoch reaching thresholds, final/tail mean return.
-   - Final return should remain reported, but should not be the only claim.
+2. **Lock Geometry Dash evidence.**
+   - Produce a system table: FSQ recon/usage, WM token accuracy, death F1, BC accuracy, PPO dream survival, real-game progress, and latency.
+   - Re-run or audit frozen real-game deployment evaluation if current numbers are not clean enough.
+   - Add a figure/video-derived panel showing real prefix -> generated continuation.
 
-3. **Update the paper results section.**
-   - Add the IRIS/Pong table and curves.
-   - State clearly that the current result is one seed until seed expansion lands.
-   - Explain fixed SLS as over-regularization and annealed SLS as the actual method.
+3. **Report SLS honestly.**
+   - Include Geometry Dash qualitative motivation and any clean in-domain KPI.
+   - Include the IRIS/Pong n=5 diagnostic table.
+   - State that annealed SLS did not validate as a robust general CE replacement.
 
-4. **Preserve the Geometry Dash contribution without overclaiming it as the SLS benchmark.**
-   - Keep V7 frozen.
-   - Add evidence of high-quality predictions and generated rollouts/level continuations.
-   - Report latency and real-time deployment.
-   - Do not use Geometry Dash deploy-survival as the primary SLS effect-size metric.
+4. **Update public framing.**
+   - README, paper title, and project page should say DashVMC / Geometry Dash first.
+   - Use `dash-vmc` URLs now that the GitHub repository has been renamed.
+   - Do not delete the IRIS fork or analysis artifacts; archive them as diagnostic evidence.
 
-5. **Clean the issue tracker around this direction.**
-   - #6 should describe the split paper and annealed SLS framing.
-   - #13 should record IRIS/Pong as selected baseline/task, with seeds/games still to expand.
-   - #14 should become the matched CE vs fixed SLS vs annealed SLS benchmark task.
-   - #15 should prioritize ablations that explain the annealed objective.
-   - #16 should be optional generalization beyond first baseline, not paper-blocking.
-   - #21 should be closeable once README/paper/roadmap/issues consistently retire V7-native Atari.
+## What Not To Do Before August
 
-## Method Definition To Use In The Paper
-
-For a target token `i`, a token metric `d(i, j)`, a kernel `k`, and smoothing mass `epsilon_t`:
-
-```text
-q_t(j | i) = 1 - epsilon_t                                      if j = i
-q_t(j | i) = epsilon_t * k(d(i, j)) / sum_{l != i} k(d(i, l))    otherwise
-```
-
-The current annealed schedule is:
-
-```text
-epochs 25-250:  epsilon_t = 0.10, topk = 16
-epochs 250-450: cosine anneal epsilon_t from 0.10 to 0.00
-epochs 450-600: epsilon_t = 0.00, pure CE
-```
-
-For FSQ, `d` is lattice distance. For IRIS-style VQ tokenizers, `d` can be codebook or embedding distance. The phrase to use is **tokenizer-metric-aware**, not unqualified **encoder-agnostic**.
+- Do not spend more compute trying to rescue SLS on IRIS/Pong.
+- Do not start a full GQ tokenizer port.
+- Do not rename/delete the GitHub repo until links and paper title are stable.
+- Do not delete the IRIS fork, logs, or analysis outputs.
+- Do not claim FSQ is tokenizer-SOTA.
+- Do not claim SLS generally improves arbitrary discrete tokenizers.
+- Do not use Geometry Dash deploy survival as the primary SLS effect unless the comparison is controlled.
 
 ## Scope Boundaries
 
 In scope:
 
-- Annealed SLS on accepted discrete-token world-model baselines.
-- Fixed SLS as an ablation.
-- Uniform label smoothing and kernel/top-k/schedule ablations if time allows.
-- Geometry Dash V7 as the application system.
-- Procedural rollout or level-continuation generation from the Geometry Dash world model.
+- Real-time Geometry Dash discrete world-model control.
+- FSQ tokenizer as the system tokenizer, with explicit caveats about newer tokenizer families such as GQ.
+- Fixed SLS as a Geometry Dash/FSQ design choice.
+- IRIS/Pong as a diagnostic negative/conditional generalization test.
+- Generated visual level continuations from the learned action-conditioned dynamics.
 
-Out of scope for this paper:
+Out of scope:
 
-- Full V7-native Atari controller port.
-- More reward-head calibration/debug cycles as the default next action.
-- Geometry Dash deploy-survival as the primary SLS benchmark metric.
-- Large architecture changes that confound the CE vs SLS comparison.
-
-## Issue Index
-
-- #6: Write arXiv preprint and paper roadmap.
-- #13: Select accepted baseline, task subset, and SLS KPI.
-- #14: Tier 1 matched CE vs fixed SLS vs annealed SLS benchmark.
-- #15: Tier 2 ablations explaining the annealed SLS method.
-- #16: Optional generalization beyond the first baseline.
-- #21: Retire the V7-native Atari controller path.
+- Full Atari controller port.
+- New broad Atari benchmark expansion.
+- GQ tokenizer replacement.
+- Major architecture redesigns.
+- Main-conference-scale claims about SLS.

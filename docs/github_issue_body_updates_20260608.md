@@ -1,12 +1,12 @@
 # GitHub Issue Body Updates - 2026-06-08
 
-These are the intended replacement bodies for the open GitHub issues after the annealed-SLS reframing.
+Obsolete historical issue-plan snapshot. Superseded by the 2026-07-03 DashVMC issue-plan document after the Geometry Dash system-paper pivot.
 
 The local GitHub connector can read issues but does not expose issue-body editing, and the GitHub CLI is not installed in this environment. These bodies are therefore recorded here as the repo-side source of truth until the GitHub issues can be updated directly.
 
 ## #6 - Write arXiv preprint: SLS method + Geometry Dash world-model application
 
-Track the SLS-WM paper to arXiv preprint and NeurIPS 2026 workshop submission.
+Track the DashVMC paper to arXiv preprint and NeurIPS 2026 workshop submission.
 
 ## Updated scope
 
