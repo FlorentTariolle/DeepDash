@@ -13,6 +13,7 @@ Usage:
 """
 
 import argparse
+from datetime import datetime, timezone
 import json
 import sys
 import time
@@ -27,8 +28,49 @@ import torch
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from deepdash.fsq import FSQVAE
 from deepdash.world_model import WorldModel
-from deepdash.controller import MLPPolicy
-from deepdash.gd_mem import GDMemReader
+from deepdash.controller import CNNPolicy, MLPPolicy, V3CNNPolicy
+from deepdash.gd_mem import GDReader
+
+
+class StageTimer:
+    """Small stage timer used for one-off latency audits."""
+
+    def __init__(self, enabled):
+        self.enabled = enabled
+        self.samples = {}
+        self._starts = {}
+
+    def start(self, name):
+        if self.enabled:
+            self._starts[name] = time.perf_counter()
+
+    def end(self, name):
+        if not self.enabled:
+            return
+        elapsed_ms = (time.perf_counter() - self._starts.pop(name)) * 1000.0
+        self.samples.setdefault(name, []).append(elapsed_ms)
+
+    def cuda_sync(self, device):
+        if self.enabled and device.type == "cuda":
+            torch.cuda.synchronize()
+
+    def summary(self):
+        out = {}
+        for name, values in self.samples.items():
+            arr = np.asarray(values, dtype=np.float64)
+            out[name] = {
+                "mean_ms": round(float(arr.mean()), 3),
+                "median_ms": round(float(np.median(arr)), 3),
+                "p25_ms": round(float(np.percentile(arr, 25)), 3),
+                "p75_ms": round(float(np.percentile(arr, 75)), 3),
+                "min_ms": round(float(arr.min()), 3),
+                "max_ms": round(float(arr.max()), 3),
+                "n": int(arr.size),
+            }
+        if out:
+            total = sum(v["mean_ms"] for v in out.values())
+            out["total_mean_ms"] = round(float(total), 3)
+        return out
 
 
 def preprocess_frame(rgb, crop_x, crop_y, crop_size, target_size, device=None):
@@ -68,6 +110,10 @@ def main():
                         default="checkpoints/controller_ppo_best.pt")
     parser.add_argument("--fps", type=int, default=30)
     parser.add_argument("--jump-threshold", type=float, default=0.5)
+    parser.add_argument("--level-name", default=None)
+    parser.add_argument("--system-variant", default="V7")
+    parser.add_argument("--latency-samples", type=int, default=300,
+                        help="Number of acted frames to include in stage timing.")
     parser.add_argument("--config", default=None)
     parser.add_argument("--levels", type=int, nargs="+", default=None)
     parser.add_argument("--vocab-size", type=int, default=None)
@@ -77,11 +123,15 @@ def main():
     parser.add_argument("--tokens-per-frame", type=int, default=None)
     parser.add_argument("--context-frames", type=int, default=None)
     parser.add_argument("--dropout", type=float, default=None)
+    parser.add_argument("--policy-class", type=str, default=None,
+                        choices=["mlp", "cnn", "v3_cnn"],
+                        help="Controller architecture. V7 uses v3_cnn.")
     parser.add_argument("--output", default="eval_results.json")
     args = parser.parse_args()
 
     from deepdash.config import apply_config
     apply_config(args)
+    apply_config(args, section="controller_ppo")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
@@ -109,12 +159,33 @@ def main():
     wm.load_state_dict(state, strict=False)
     wm.eval()
 
-    controller = MLPPolicy(h_dim=args.embed_dim).to(device)
+    grid_size = int(args.tokens_per_frame ** 0.5)
+    policy_class = (getattr(args, "policy_class", None) or "mlp").lower()
+    if policy_class == "v3_cnn":
+        controller = V3CNNPolicy(
+            vocab_size=args.vocab_size,
+            grid_size=grid_size,
+            token_embed_dim=getattr(args, "token_embed_dim", 16),
+            h_dim=args.embed_dim,
+            mtp_steps=int(getattr(args, "mtp_steps", None) or 8),
+        ).to(device)
+    elif policy_class == "cnn":
+        controller = CNNPolicy(
+            vocab_size=args.vocab_size,
+            grid_size=grid_size,
+            token_embed_dim=getattr(args, "token_embed_dim", 16),
+            h_dim=args.embed_dim,
+            temporal_dim=getattr(args, "temporal_dim", 32),
+        ).to(device)
+    else:
+        controller = MLPPolicy(h_dim=args.embed_dim).to(device)
     state = torch.load(args.controller_checkpoint, map_location=device,
                        weights_only=True)
+    if "controller" in state and isinstance(state["controller"], dict):
+        state = state["controller"]
     controller.load_state_dict(state)
     controller.eval()
-    print("All models loaded.")
+    print(f"All models loaded. Controller: {policy_class}")
 
     # Screen capture setup
     region = (0, 0, 1920, 1080)
@@ -123,10 +194,12 @@ def main():
     frame_interval = 1.0 / args.fps
 
     # Memory reader
-    gd = GDMemReader()
+    gd = GDReader()
     print(f"GD memory reader connected (PID: {gd.pid})")
 
     results = []
+    stage_timer = StageTimer(enabled=args.latency_samples > 0)
+    latency_frames = 0
     print(f"\nRunning {args.n_runs} evaluation episodes...")
     print("Press F10 to abort.\n")
 
@@ -164,20 +237,28 @@ def main():
                 break
 
             # Capture
+            stage_timer.start("capture")
             img = cam.grab(region=region)
+            stage_timer.end("capture")
             if img is None:
                 time.sleep(0.001)
                 continue
 
             # Preprocess
+            stage_timer.start("sobel_preprocess")
             edge_frame = preprocess_frame(img, crop_x, crop_y, crop_size, 64, device)
+            stage_timer.cuda_sync(device)
+            stage_timer.end("sobel_preprocess")
 
             # FSQ encode
+            stage_timer.start("fsq_encode")
             with torch.no_grad(), torch.amp.autocast("cuda", enabled=device.type == "cuda"):
                 frame_t = torch.from_numpy(edge_frame.astype(np.float32) / 255.0)
                 frame_t = frame_t.unsqueeze(0).unsqueeze(0).to(device)
                 tokens = vae.encode(frame_t)
                 tokens_flat = tokens.reshape(-1).cpu().numpy().astype(np.int64)
+            stage_timer.cuda_sync(device)
+            stage_timer.end("fsq_encode")
 
             ctx_tokens.append(tokens_flat)
             ctx_actions.append(1 if jumping else 0)
@@ -193,7 +274,8 @@ def main():
                     time.sleep(frame_interval - elapsed)
                 continue
 
-            # Transformer + Controller
+            # Transformer
+            stage_timer.start("transformer")
             with torch.no_grad(), torch.amp.autocast("cuda", enabled=device.type == "cuda"):
                 ctx_tok_np = np.array(ctx_tokens)
                 ctx_act_np = np.array(ctx_actions)
@@ -202,10 +284,23 @@ def main():
                 ctx_t = torch.from_numpy(ctx_with_status[None]).to(device)
                 ctx_a = torch.from_numpy(ctx_act_np[None]).to(device)
                 h_t = wm.encode_context(ctx_t, ctx_a)
+            stage_timer.cuda_sync(device)
+            stage_timer.end("transformer")
 
+            stage_timer.start("controller_action")
             with torch.no_grad():
-                prob, _ = controller(h_t.float())
+                if policy_class == "mlp":
+                    prob, _ = controller(h_t.float())
+                else:
+                    z_t = torch.from_numpy(ctx_tokens[-1][None]).to(device)
+                    prob, _ = controller(z_t, h_t.float())
                 jump = prob[0].item() > args.jump_threshold
+            stage_timer.cuda_sync(device)
+            stage_timer.end("controller_action")
+            if latency_frames < args.latency_samples:
+                latency_frames += 1
+            elif stage_timer.enabled:
+                stage_timer.enabled = False
 
             if jump and not jumping:
                 keyboard.press("space")
@@ -224,7 +319,9 @@ def main():
         results.append({
             "run": run_idx + 1,
             "frames_survived": frames_survived,
-            "time_s": round(episode_time, 2),
+            "seconds_survived": round(frames_survived / args.fps, 2),
+            "wall_time_s": round(episode_time, 2),
+            "level_progress": None,
         })
 
         run_idx += 1
@@ -247,8 +344,14 @@ def main():
         p25, p75 = np.percentile(survivals, [25, 75])
         print(f"  P25: {p25:.0f} | P75: {p75:.0f}")
 
+        gpu_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else None
         summary = {
+            "system_variant": args.system_variant,
+            "date_utc": datetime.now(timezone.utc).isoformat(),
             "n_runs": len(results),
+            "level_name": args.level_name,
+            "fps": args.fps,
+            "gpu": gpu_name,
             "mean_frames": round(float(np.mean(survivals)), 1),
             "std_frames": round(float(np.std(survivals)), 1),
             "min_frames": int(np.min(survivals)),
@@ -257,14 +360,24 @@ def main():
             "p25_frames": round(float(p25), 0),
             "p75_frames": round(float(p75), 0),
             "mean_time_s": round(float(np.mean(survivals)) / args.fps, 2),
+            "median_time_s": round(float(np.median(survivals)) / args.fps, 2),
+            "min_time_s": round(float(np.min(survivals)) / args.fps, 2),
+            "max_time_s": round(float(np.max(survivals)) / args.fps, 2),
+            "p25_time_s": round(float(p25) / args.fps, 2),
+            "p75_time_s": round(float(p75) / args.fps, 2),
+            "level_progress_available": False,
             "checkpoints": {
                 "vae": args.vae_checkpoint,
                 "transformer": args.transformer_checkpoint,
                 "controller": args.controller_checkpoint,
             },
+            "config": args.config,
+            "policy_class": policy_class,
+            "latency": stage_timer.summary(),
             "runs": results,
         }
 
+        Path(args.output).parent.mkdir(parents=True, exist_ok=True)
         with open(args.output, "w") as f:
             json.dump(summary, f, indent=2)
         print(f"\nSaved to {args.output}")
