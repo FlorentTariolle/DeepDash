@@ -59,7 +59,7 @@
 \newcommand{\focalgamma}{2.0}
 \newcommand{\ctrlparams}{\sim\!45\text{K}}
 
-\title{DashVMC: Real-Time Discrete World-Model Control\\in Geometry Dash}
+\title{DashVMC: Real-Time Discrete World Model Control\\in Geometry Dash}
 
 \author{%
   Florent Tariolle\thanks{\normalsize Correspondence to \texttt{florent.tariolle@insa-rouen.fr}} \\
@@ -77,7 +77,7 @@
 \end{center}
 
 \begin{abstract}
-Fast deterministic games expose a practical world-model problem: predictions must be visually sharp enough for control, action-conditioned over short timing windows, and cheap enough for live deployment.
+Fast deterministic games expose a practical world model problem: predictions must be visually sharp enough for control, action-conditioned over short timing windows, and cheap enough for live deployment.
 We present \emph{DashVMC}, a real-time discrete Vision-Model-Controller pipeline for Geometry Dash.
 An FSQ tokenizer encodes $\imgsize$ Sobel frames into $\gridsize$ token grids; a causal transformer predicts next-frame tokens from action-conditioned context; and a lightweight actor-critic is warm-started by behavioural cloning and optimized with PPO in dreamed rollouts.
 The system runs at 30\,FPS through screen capture and can also sample plausible visual level continuations by rolling its learned dynamics forward from real gameplay prefixes.
@@ -90,7 +90,7 @@ A controlled IRIS/Pong evaluation of annealed SLS, however, did not robustly out
 This draft is now framed as a Geometry Dash application paper, not as a positive SLS benchmark paper.
 SLS remains in the paper because it came from an FSQ-specific Geometry Dash observation: predicted frames could look visually correct while exact next-token accuracy stayed low, since neighbouring FSQ codes were penalized like unrelated codes.
 The broader annealed-SLS hypothesis was tested on IRIS/Pong as a minimal loss change, but the five-seed result did not support a robust positive claim over cross-entropy.
-IRIS/Pong is therefore retained as a diagnostic generalization attempt, while the main contribution is the real-time Geometry Dash world-model control system.
+IRIS/Pong is therefore retained as a diagnostic generalization attempt, while the main contribution is the real-time Geometry Dash world model control system.
 
 % ===========================================================================
 \section{Introduction}
@@ -177,7 +177,7 @@ We instead derive the target distribution from tokenizer geometry itself, requir
 \paragraph{Adaptive conditioning.}
 FiLM~\citep{perez2018film} introduced adaptive affine conditioning via scale and shift.
 DiT~\citep{peebles2023dit} applied this as AdaLN-Zero with zero-initialized gates for stable training of diffusion transformers, and QK-norm~\citep{esser2024sd3} (RMSNorm on queries and keys per head) was introduced to stabilize attention logits in deep AdaLN models.
-LeWorldModel~\citep{maes2026leworldmodel} applied AdaLN to world-model transformers.
+LeWorldModel~\citep{maes2026leworldmodel} applied AdaLN to world model transformers.
 Our baseline keeps actions as tokens in the sequence; we treat AdaLN-Zero conditioning as an ablation (Section~\ref{sec:ablations}).
 
 % ===========================================================================
@@ -372,7 +372,7 @@ Training runs on a single NVIDIA A100 GPU.
 \paragraph{Training throughput.}
 We benchmarked \texttt{torch.compile} modes under BF16 on our joint-training workload using subprocess isolation to prevent CUDA allocator fragmentation across runs.
 All \texttt{torch.compile} modes are within a few percent of each other; we adopt \texttt{reduce-overhead} with \texttt{fullgraph=True} as the default: it is faster than \texttt{default} mode while avoiding the lengthy autotune phase that \texttt{max-autotune} adds at startup in exchange for marginal additional steady-state throughput.
-This configuration is applied to the world-model and controller training scripts.
+This configuration is applied to the world model and controller training scripts.
 A secondary NVIDIA RTX 2060 SUPER (Turing, SM 7.5) was used in parallel for auxiliary experiments.
 Turing lacks native BF16 (software-emulated and much slower than FP32 on this card) and has no TF32 support; Inductor's channels-last layout heuristic additionally triggers a stride assertion in the convolution backward, which we disable by setting \texttt{torch.\_inductor.config.layout\_optimization = False}.
 Under these constraints the best local configuration is \texttt{torch.compile} in \texttt{default} mode with FP16 and a \texttt{GradScaler}.
@@ -403,7 +403,7 @@ For the application section, we also retain qualitative generated rollouts: the 
 % ===========================================================================
 
 \paragraph{IRIS/Pong diagnostic.}
-To test whether the FSQ-motivated SLS idea transfers beyond Geometry Dash, we ran a matched IRIS/Pong comparison where the world-model loss target is the only intended change.
+To test whether the FSQ-motivated SLS idea transfers beyond Geometry Dash, we ran a matched IRIS/Pong comparison where the world model loss target is the only intended change.
 The five-seed result does not support a positive SLS benchmark claim.
 
 \begin{center}
@@ -472,7 +472,7 @@ We also do not claim a downstream control comparison against planning-based WMs 
 The system is trained sequentially -- FSQ, then transformer, then controller -- which is operationally simple but forfeits the possibility of prediction gradients shaping the codebook. Our preliminary attempts at a JEPA-style joint-training variant inside the existing FSQ-token architecture did not produce real-game gains over this sequential baseline (Section~\ref{sec:ablations}); whether a faithful continuous-latent LeWorldModel adaptation, a more careful version of joint FSQ training, or a stronger decoder-free discrete anti-collapse signal would close this gap is open work.
 The reconstruction anchor is also domain-specific: it is appropriate here because the rendered observations are predictable projections of a discrete game state, but the same objective may be wasteful or counterproductive in real-world video where much of the pixel information is not predictable from the agent's context.
 We also do not claim that the FSQ tokenizer used here is optimal.
-Recent GQ-style tokenizers improve image-tokenizer rate-distortion benchmarks, but swapping tokenizer families is outside the scope of this paper because it would change the token metric, world-model training distribution, controller inputs, and deployment latency profile.
+Recent GQ-style tokenizers improve image-tokenizer rate-distortion benchmarks, but swapping tokenizer families is outside the scope of this paper because it would change the token metric, world model training distribution, controller inputs, and deployment latency profile.
 
 % ===========================================================================
 \section{Conclusion}

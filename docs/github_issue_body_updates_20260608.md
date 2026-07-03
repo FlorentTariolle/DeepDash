@@ -4,7 +4,7 @@ Obsolete historical issue-plan snapshot. Superseded by the 2026-07-03 DashVMC is
 
 The local GitHub connector can read issues but does not expose issue-body editing, and the GitHub CLI is not installed in this environment. These bodies are therefore recorded here as the repo-side source of truth until the GitHub issues can be updated directly.
 
-## #6 - Write arXiv preprint: SLS method + Geometry Dash world-model application
+## #6 - Write arXiv preprint: SLS method + Geometry Dash world model application
 
 Track the DashVMC paper to arXiv preprint and NeurIPS 2026 workshop submission.
 
@@ -78,7 +78,7 @@ The benchmark setup should satisfy:
 
 - accepted or widely recognized paper baseline;
 - public code and runnable configs;
-- discrete-token world-model prediction objective where CE is a natural baseline;
+- discrete-token world model prediction objective where CE is a natural baseline;
 - minimal SLS integration surface;
 - smoke-scale reproducibility on available compute;
 - KPI close to the SLS claim, not only final policy return.
@@ -105,15 +105,15 @@ Primary KPIs to report:
 
 The repo records selected baseline commit, environment, task subset, seeds, exact CE-vs-fixed-SLS-vs-annealed-SLS KPIs, and the command matrix for matched runs.
 
-## #14 - Tier 1: Minimal SLS-vs-CE patch on an accepted world-model baseline
+## #14 - Tier 1: Minimal SLS-vs-CE patch on an accepted world model baseline
 
 ## Goal
 
 Answer the core SLS method question without porting the full Geometry Dash VMC stack:
 
-> If we keep an accepted world-model baseline fixed and replace hard CE targets with annealed SLS targets, does at least one relevant stability/sample-efficiency KPI improve while final performance remains competitive?
+> If we keep an accepted world model baseline fixed and replace hard CE targets with annealed SLS targets, does at least one relevant stability/sample-efficiency KPI improve while final performance remains competitive?
 
-Primary baseline: **IRIS**, because it is an accepted discrete-token transformer world-model baseline with released code.
+Primary baseline: **IRIS**, because it is an accepted discrete-token transformer world model baseline with released code.
 
 ## Experimental rules
 
@@ -192,7 +192,7 @@ Show that annealed SLS is not a one-off result tied to a single game, seed, or c
 ## Options, in priority order
 
 1. Add seeds and at least one additional Atari game to the IRIS benchmark.
-2. Apply the same annealed-SLS patch to a second accepted world-model baseline.
+2. Apply the same annealed-SLS patch to a second accepted world model baseline.
 3. Compare coordinate-distance SLS and embedding-distance SLS if the baseline exposes both metrics.
 4. Add a Geometry Dash CE-vs-SLS ablation only if the measurement is cheap and interpretable.
 
@@ -237,4 +237,4 @@ Use accepted-baseline IRIS runs for Atari:
 
 ## Done when
 
-The README, paper, roadmap, and GitHub issues clearly state that Atari is only for minimal accepted-baseline SLS-vs-CE validation, while Geometry Dash remains the world-model application contribution.
+The README, paper, roadmap, and GitHub issues clearly state that Atari is only for minimal accepted-baseline SLS-vs-CE validation, while Geometry Dash remains the world model application contribution.

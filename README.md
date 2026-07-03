@@ -1,9 +1,9 @@
 # DashVMC
-### Real-Time Discrete World-Model Control in Geometry Dash
+### Real-Time Discrete World Model Control in Geometry Dash
 
 [Florent Tariolle](https://tariolle.github.io/)
 
-DashVMC is a real-time discrete world-model control system for Geometry Dash. It combines an FSQ tokenizer, an action-conditioned transformer world model, and a lightweight actor-critic trained from behavioural cloning plus PPO in imagined rollouts.
+DashVMC is a real-time discrete world model control system for Geometry Dash. It combines an FSQ tokenizer, an action-conditioned transformer world model, and a lightweight actor-critic trained from behavioural cloning plus PPO in imagined rollouts.
 
 Structured Label Smoothing (SLS) remains part of the project as the Geometry Dash/FSQ-motivated loss-side prior that started the work. It is no longer the main paper claim: a controlled IRIS/Pong test of annealed SLS did not robustly outperform cross-entropy across seeds.
 
@@ -27,7 +27,7 @@ The Geometry Dash application is the frozen environment-specific showcase. It us
 
 SLS came from an FSQ-specific observation in Geometry Dash: nearby lattice codes can decode to visually similar or control-equivalent patches, while hard token cross-entropy penalizes all wrong codes equally. Fixed SLS is retained as a Geometry Dash design choice when reporting the system.
 
-The broader claim was tested on [IRIS](https://arxiv.org/abs/2209.00588) Pong by changing only the world-model loss target. That generalization attempt was negative/conditional:
+The broader claim was tested on [IRIS](https://arxiv.org/abs/2209.00588) Pong by changing only the world model loss target. That generalization attempt was negative/conditional:
 
 | Condition | n | Final return | Tail 500-600 | Failure tail <10 |
 |:--|--:|--:|--:|--:|
@@ -39,7 +39,7 @@ Annealed SLS showed partial stability signals, but not a robust performance impr
 
 ## Scope
 
-- The main paper claim is the real-time Geometry Dash world-model control system, not a general SLS benchmark win.
+- The main paper claim is the real-time Geometry Dash world model control system, not a general SLS benchmark win.
 - SLS is tokenizer-metric aware, but the current evidence supports only a scoped Geometry Dash/FSQ motivation plus a negative/conditional IRIS diagnostic.
 - The Geometry Dash tokenizer remains reconstruction-anchored. A constrained FSQ-JEPA hybrid did not improve control, but this is not a claim against LeWorldModel or continuous-latent JEPA.
 - The direct Atari port of the Geometry Dash controller path is retired. Atari appears only through the IRIS/Pong diagnostic.

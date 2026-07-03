@@ -1,6 +1,6 @@
 # GitHub Issue Updates - 2026-07-03
 
-Use this after the paper pivot to **DashVMC: Real-Time Discrete World-Model Control in Geometry Dash**.
+Use this after the paper pivot to **DashVMC: Real-Time Discrete World Model Control in Geometry Dash**.
 
 Do not delete the IRIS fork, run logs, or analysis artifacts. Close or archive IRIS/SLS benchmark issues with a diagnostic summary.
 
@@ -11,7 +11,7 @@ Do not delete the IRIS fork, run logs, or analysis artifacts. Close or archive I
 Suggested title:
 
 ```text
-Write DashVMC workshop paper: real-time discrete world-model control in Geometry Dash
+Write DashVMC workshop paper: real-time discrete world model control in Geometry Dash
 ```
 
 Suggested body:
@@ -21,7 +21,7 @@ Suggested body:
 
 Track the paper to a workshop/arXiv-ready draft under the new framing:
 
-> DashVMC: Real-Time Discrete World-Model Control in Geometry Dash
+> DashVMC: Real-Time Discrete World Model Control in Geometry Dash
 
 The paper is now a Geometry Dash application/system paper, not a positive SLS benchmark paper.
 
@@ -190,7 +190,7 @@ Create the main qualitative figure for the DashVMC paper: real gameplay prefix -
 ## Required figure content
 
 - One real prefix from Geometry Dash.
-- Autoregressive world-model continuation under an action sequence.
+- Autoregressive world model continuation under an action sequence.
 - If feasible, two branches showing different action choices or survival/death outcomes.
 - Captions must avoid claiming editor-valid or guaranteed playable generated levels.
 
@@ -208,7 +208,7 @@ Finish the paper rewrite after the title/abstract pivot.
 
 ## Required changes
 
-- Introduction starts from real-time Geometry Dash world-model control, not SLS.
+- Introduction starts from real-time Geometry Dash world model control, not SLS.
 - SLS is presented as a scoped FSQ-neighbour smoothing component.
 - Results lead with Geometry Dash system evidence.
 - IRIS/Pong appears as a diagnostic subsection.

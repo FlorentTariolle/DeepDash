@@ -10,7 +10,7 @@
 #SBATCH --time=08:00:00
 
 # Train the IRIS-style recurrent observation actor on an existing frozen
-# tokenizer/world-model checkpoint and replay buffer.
+# tokenizer/world model checkpoint and replay buffer.
 #
 # Submit:
 #   sbatch slurm/atari_train_actor_iris.sl configs/atari/atari_pong_h200_realwarmup.yaml

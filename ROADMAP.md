@@ -68,7 +68,7 @@ Annealed SLS has partial stability signals: lower average max drawdown, lower re
 
 In scope:
 
-- Real-time Geometry Dash discrete world-model control.
+- Real-time Geometry Dash discrete world model control.
 - FSQ tokenizer as the system tokenizer, with explicit caveats about newer tokenizer families such as GQ.
 - Fixed SLS as a Geometry Dash/FSQ design choice.
 - IRIS/Pong as a diagnostic negative/conditional generalization test.

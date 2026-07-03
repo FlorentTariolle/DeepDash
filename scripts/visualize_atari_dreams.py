@@ -1,6 +1,6 @@
-"""Build an interactive Atari world-model dream viewer.
+"""Build an interactive Atari world model dream viewer.
 
-The viewer compares real replay frames against autoregressive world-model
+The viewer compares real replay frames against autoregressive world model
 predictions while feeding the recorded action sequence. It writes a
 self-contained HTML file with keyboard controls:
 

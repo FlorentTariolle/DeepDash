@@ -1,4 +1,4 @@
-"""Train an IRIS-style Atari actor on reconstructed world-model dreams.
+"""Train an IRIS-style Atari actor on reconstructed world model dreams.
 
 This is the mainline policy recipe for the Atari SLS experiments.  The actor
 reads decoded 64x64 RGB observations, keeps an LSTM state, and is trained with
@@ -439,7 +439,7 @@ def main():
     parser.add_argument("--entropy-weight", type=float, default=None)
     parser.add_argument("--max-grad-norm", type=float, default=None)
     parser.add_argument("--train-temperature", type=float, default=None)
-    parser.add_argument("--world-model-temperature", type=float, default=None)
+    parser.add_argument("--world model-temperature", type=float, default=None)
     parser.add_argument("--reward-mode", choices=["event_sample", "event_argmax", "event_threshold", "scalar_threshold", "scalar"], default=None)
     parser.add_argument("--done-mode", choices=["sample", "threshold", "never"], default=None)
     parser.add_argument("--reward-clip-min", type=float, default=None)

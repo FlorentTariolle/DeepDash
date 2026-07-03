@@ -10,7 +10,7 @@ from atari.rl_targets import decode_twohot_symlog
 
 
 class AtariCNNPolicy(nn.Module):
-    """CNN actor-critic on FSQ token grid plus frozen world-model hidden state."""
+    """CNN actor-critic on FSQ token grid plus frozen world model hidden state."""
 
     def __init__(self, vocab_size=1000, n_actions=6, grid_size=16,
                  token_embed_dim=16, h_dim=384, temporal_dim=64,
