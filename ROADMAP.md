@@ -1,83 +1,69 @@
-# Roadmap
+# Project Roadmap
 
-Last updated on 2026-07-03 after the IRIS/Pong n=5 analysis.
+Last updated on 2026-07-03.
 
-## Current Paper Direction
+## Paper Direction
 
-The paper is now a Geometry Dash application/system paper:
+DashVMC is a Geometry Dash world-model control paper.
 
-1. **Main contribution: DashVMC**, a real-time discrete Vision-Model-Controller system for Geometry Dash. The system uses FSQ tokenization, action-conditioned transformer dynamics, BC warm-start, PPO in dreamed rollouts, 30 FPS deployment, and visual level-continuation samples from real prefixes.
-2. **Secondary contribution: scoped SLS evidence**, not a general positive method claim. SLS originated from a Geometry Dash/FSQ observation: neighbouring FSQ codes can decode to visually similar or control-equivalent patches, while hard token CE penalizes all wrong codes equally. Fixed SLS remains a Geometry Dash design choice.
-3. **Diagnostic result: annealed SLS on IRIS/Pong did not robustly beat CE.** The IRIS result should be reported honestly as a negative/conditional generalization attempt.
+The defensible claim is narrow and system-level: a compact discrete Vision-Model-Controller stack can tokenize Geometry Dash observations, model action-conditioned dynamics, train a controller in latent rollouts, and deploy live at the 30 FPS cadence used by the dataset.
 
-Do not frame the paper as "Annealed SLS improves discrete world models." The current data do not support that.
+The paper should emphasize:
 
-## Current Empirical State
+- FSQ tokenization of 64x64 Sobel frames into an 8x8 discrete grid.
+- Action-conditioned transformer dynamics with interleaved jump/idle tokens.
+- Behavioural-cloning warm-start followed by PPO in latent model rollouts.
+- Live deployment at 30 FPS, with measured full-loop latency around 15 ms and roughly 67 FPS compute headroom.
+- Decoded rollout visualizations as inspection/generation artifacts, not as the policy training signal.
+- Implementation diagnostics explaining conservative design choices.
 
-Geometry Dash evidence already available:
+Structured Label Smoothing is in scope only as a Geometry Dash/FSQ design choice plus auxiliary diagnostic. The available IRIS/Pong result does not support a general positive method claim for arbitrary discrete tokenizers.
 
-- FSQ tokenizer, action-conditioned transformer, BC + PPO controller, and deployment scripts.
-- V3/V7 development logs and notes.
-- 30 FPS deployment path with about 15 ms loop time reported in the draft/site.
-- Dream rollout and level-continuation functionality.
-- SLS/FSQ-neighbour qualitative motivation.
+## Evidence Already Available
 
-IRIS/Pong diagnostic evidence:
+Frozen logs support these current system numbers:
 
-| Condition | n | Final return | Tail 500-600 | AUC mean | Failure tail <10 |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| CE | 5 | 15.68 +/- 4.96 | 15.09 +/- 5.59 | 2.05 +/- 6.92 | 20% |
-| Annealed SLS | 5 | 12.14 +/- 10.82 | 12.55 +/- 8.63 | 0.95 +/- 6.16 | 40% |
-| Fixed SLS | 2 | 10.06 +/- 14.05 | 8.53 +/- 16.21 | -1.46 +/- 6.79 | 50% |
+| Component | Metric | Value | Source |
+| --- | ---: | ---: | --- |
+| FSQ tokenizer | Validation reconstruction MSE | 2.49 | `experiments/v3_deploy/fsq_log.csv` |
+| World model | Best validation token accuracy | 35.25% | `experiments/v3_deploy/transformer_log.csv` |
+| World model | Best validation death F1 | 0.798 | `experiments/v3_deploy/transformer_log.csv` |
+| BC controller | Best validation action accuracy | 87.1% | `experiments/v3_deploy/controller_bc_log.csv` |
+| PPO controller | Best latent eval survival | 33.48 / 45 steps | `experiments/v3_deploy/controller_ppo_log.csv` |
+| Deployment | Full-loop latency | ~15 ms | `paper/main.tex` deployment notes |
+| Deployment | Configured cadence | 30 FPS | dataset/capture cadence |
+| Deployment | Compute headroom | ~67 FPS | 1 / 15 ms |
 
-Annealed SLS has partial stability signals: lower average max drawdown, lower return-difference volatility, and a slightly better 250-420 window. These do not translate into robust final/tail performance. Treat this as a diagnostic result, not a success result.
+Development notes also record V3 real-game progress across several Geometry Dash levels, but those notes should be replaced by a fresh controlled evaluator run before submission.
 
-## Immediate Next Steps
+## Compute To Finish
 
-1. **Finish the paper pivot.**
-   - Rewrite introduction around Geometry Dash and the real-time control constraint.
-   - Keep SLS as a subsection/design choice and diagnostic study.
-   - Remove stale language that calls annealed SLS the primary contribution.
+1. Run `scripts/eval_real_game.py` on the frozen checkpoints for at least 100 attempts on Level 1.
+2. If time permits, repeat the same evaluator on the additional levels already used in development notes: Level 3, Level 5, Level 6, Polargeist VE, and Polargeist V2.
+3. Save JSON outputs under a dated analysis folder and summarize mean, median, min, max, and quartiles.
+4. Generate one figure panel from decoded rollouts: real prefix, sampled continuation, and if available a survival/death branch contrast.
+5. Audit the exact checkpoints used by the website demo, the paper tables, and the live evaluator so the paper cites one frozen system rather than a mixture of development variants.
 
-2. **Lock Geometry Dash evidence.**
-   - Produce a system table: FSQ recon/usage, WM token accuracy, death F1, BC accuracy, PPO dream survival, real-game progress, and latency.
-   - Re-run or audit frozen real-game deployment evaluation if current numbers are not clean enough.
-   - Add a figure/video-derived panel showing real prefix -> generated continuation.
+## Writing To Finish
 
-3. **Report SLS honestly.**
-   - Include Geometry Dash qualitative motivation and any clean in-domain KPI.
-   - Include the IRIS/Pong n=5 diagnostic table.
-   - State that annealed SLS did not validate as a robust general CE replacement.
+1. Replace the provisional Geometry Dash system table in the paper with the final controlled evaluator table.
+2. Add the generated-continuation figure.
+3. Add an inference latency breakdown if stage-level timing logs are available; otherwise keep the measured full-loop number.
+4. Move any SLS/IRIS discussion behind the DashVMC system results and keep the claim scoped.
+5. Compile the PDF and update `docs/static/pdfs/dashvmc.pdf`.
 
-4. **Update public framing.**
-   - README, paper title, and project page should say DashVMC / Geometry Dash first.
-   - Use `dash-vmc` URLs now that the GitHub repository has been renamed.
-   - Do not delete the IRIS fork or analysis artifacts; archive them as diagnostic evidence.
+## Do Not Spend Time On Before August
 
-## What Not To Do Before August
-
-- Do not spend more compute trying to rescue SLS on IRIS/Pong.
+- Do not try to rescue the IRIS/Pong SLS result with more compute.
 - Do not start a full GQ tokenizer port.
-- Do not rename/delete the GitHub repo until links and paper title are stable.
-- Do not delete the IRIS fork, logs, or analysis outputs.
+- Do not start a major architecture redesign.
 - Do not claim FSQ is tokenizer-SOTA.
 - Do not claim SLS generally improves arbitrary discrete tokenizers.
-- Do not use Geometry Dash deploy survival as the primary SLS effect unless the comparison is controlled.
+- Do not use Geometry Dash deployment progress as a causal SLS effect unless the comparison is controlled.
 
-## Scope Boundaries
-
-In scope:
-
-- Real-time Geometry Dash discrete world model control.
-- FSQ tokenizer as the system tokenizer, with explicit caveats about newer tokenizer families such as GQ.
-- Fixed SLS as a Geometry Dash/FSQ design choice.
-- IRIS/Pong as a diagnostic negative/conditional generalization test.
-- Generated visual level continuations from the learned action-conditioned dynamics.
-
-Out of scope:
+## Out Of Scope
 
 - Full Atari controller port.
-- New broad Atari benchmark expansion.
-- GQ tokenizer replacement.
-- Major architecture redesigns.
+- Broad Atari benchmark expansion.
 - Main-conference-scale claims about SLS.
+- Exporting editor-valid Geometry Dash levels with guaranteed playability.

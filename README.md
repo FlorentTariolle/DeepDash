@@ -3,71 +3,78 @@
 
 [Florent Tariolle](https://tariolle.github.io/)
 
-DashVMC is a real-time discrete world model control system for Geometry Dash. It combines an FSQ tokenizer, an action-conditioned transformer world model, and a lightweight actor-critic trained from behavioural cloning plus PPO in imagined rollouts.
+DashVMC is a real-time discrete Vision-Model-Controller system for Geometry Dash. It combines an FSQ tokenizer, an action-conditioned transformer world model, and a lightweight actor-critic trained from behavioural cloning plus PPO in latent rollouts.
 
-Structured Label Smoothing (SLS) remains part of the project as the Geometry Dash/FSQ-motivated loss-side prior that started the work. It is no longer the main paper claim: a controlled IRIS/Pong test of annealed SLS did not robustly outperform cross-entropy across seeds.
-
-<p align="center">
-   <b>[ <a href="https://tariolle.github.io/dash-vmc/static/pdfs/sls_wm.pdf">Paper Draft</a> | <a href="https://tariolle.github.io/dash-vmc/">Website</a> | <a href="https://github.com/Tariolle/dash-vmc/blob/main/presentation/main.pdf">Presentation</a> ]</b>
-</p>
+The deployed controller runs at the same 30 FPS cadence as the captured training data. The full loop measures about 15 ms per frame on an RTX 2060 SUPER, leaving compute headroom of roughly 67 FPS; the 30 FPS setting is a data/capture cadence choice, not the inference ceiling.
 
 <p align="center">
-  <img src="docs/static/images/sls_kernel.svg" width="82%">
+   <b>[ <a href="https://tariolle.github.io/dash-vmc/static/pdfs/dashvmc.pdf">Paper Draft</a> | <a href="https://tariolle.github.io/dash-vmc/">Website</a> | <a href="https://github.com/Tariolle/dash-vmc">Code</a> ]</b>
 </p>
-
-## Geometry Dash System
-
-The Geometry Dash application is the frozen environment-specific showcase. It uses an FSQ tokenizer, an action-conditioned transformer world model, and a lightweight actor-critic trained from BC warm-start plus PPO in imagined rollouts. It runs at 30 FPS through screen capture and can sample plausible visual level continuations by rolling the learned dynamics forward from real gameplay prefixes.
 
 <p align="center">
   <img src="docs/static/images/pipeline.png" width="82%">
 </p>
 
-## SLS Status
+## System
 
-SLS came from an FSQ-specific observation in Geometry Dash: nearby lattice codes can decode to visually similar or control-equivalent patches, while hard token cross-entropy penalizes all wrong codes equally. Fixed SLS is retained as a Geometry Dash design choice when reporting the system.
+DashVMC has three sequentially trained components:
 
-The broader claim was tested on [IRIS](https://arxiv.org/abs/2209.00588) Pong by changing only the world model loss target. That generalization attempt was negative/conditional:
+1. **Vision:** an FSQ-VAE encodes 64x64 Sobel edge maps into an 8x8 grid of discrete tokens.
+2. **Model:** a causal transformer predicts next-frame tokens from recent token grids and interleaved jump/idle actions.
+3. **Controller:** a compact actor-critic is warm-started with demonstrations and optimized with PPO inside model-generated latent rollouts.
 
-| Condition | n | Final return | Tail 500-600 | Failure tail <10 |
-|:--|--:|--:|--:|--:|
-| CE | 5 | `15.68 +/- 4.96` | `15.09 +/- 5.59` | `20%` |
-| Annealed SLS | 5 | `12.14 +/- 10.82` | `12.55 +/- 8.63` | `40%` |
-| Fixed SLS | 2 | `10.06 +/- 14.05` | `8.53 +/- 16.21` | `50%` |
+The decoder is used for tokenizer training and visual inspection. Policy optimization does not reconstruct pixels at each imagined step; the controller consumes token grids and transformer hidden states.
 
-Annealed SLS showed partial stability signals, but not a robust performance improvement. The paper now treats IRIS/Pong as a diagnostic result rather than as the main contribution.
+## Current Evidence
 
-## Scope
+Frozen development logs currently support the system and latency claims:
 
-- The main paper claim is the real-time Geometry Dash world model control system, not a general SLS benchmark win.
-- SLS is tokenizer-metric aware, but the current evidence supports only a scoped Geometry Dash/FSQ motivation plus a negative/conditional IRIS diagnostic.
-- The Geometry Dash tokenizer remains reconstruction-anchored. A constrained FSQ-JEPA hybrid did not improve control, but this is not a claim against LeWorldModel or continuous-latent JEPA.
-- The direct Atari port of the Geometry Dash controller path is retired. Atari appears only through the IRIS/Pong diagnostic.
+| Component | Metric | Value |
+| --- | ---: | ---: |
+| FSQ tokenizer | Validation reconstruction MSE | 2.49 |
+| World model | Validation token accuracy | 35.25% |
+| World model | Validation death F1 | 0.798 |
+| BC controller | Validation action accuracy | 87.1% |
+| PPO controller | Best latent eval survival | 33.48 / 45 steps |
+| Deployment loop | Full-loop latency | ~15 ms |
+| Deployment loop | Configured cadence | 30 FPS |
+| Deployment loop | Approximate compute headroom | ~67 FPS |
 
-## Using the code
+The repository also includes an automated real-game evaluator (`scripts/eval_real_game.py`). A fresh controlled deployment table is the main remaining empirical item before submission.
+
+## Scoped Diagnostics
+
+The Geometry Dash world model uses a local FSQ-neighbour smoothing target as a tokenizer-metric design choice. A matched IRIS/Pong transfer test did not support a broad claim that annealed structured label smoothing generally improves arbitrary discrete world models, so that evidence is treated as an auxiliary diagnostic rather than the project claim.
+
+## Using the Code
 
 **Environment.** Conda, PyTorch 2.10, CUDA 12.6.
 ```bash
 conda run -n <env> python -m pip install -r requirements.txt
 ```
 
-**Train the FSQ-VAE (V):**
+**Train the FSQ-VAE:**
 ```bash
 python scripts/train_fsq.py
 ```
 
-**Train the transformer world model (M) on the frozen FSQ tokens:**
+**Train the transformer world model on frozen FSQ tokens:**
 ```bash
 python scripts/train_transformer.py
 ```
 
-**Train the controller (C): BC warm-start, then PPO in imagination:**
+**Train the controller: BC warm-start, then PPO in latent rollouts:**
 ```bash
 python scripts/train_controller_bc.py
 python scripts/train_controller_ppo.py --pretrained checkpoints/controller_bc_best.pt
 ```
 
-**Deploy to the live game (screen capture, 30 FPS):**
+**Evaluate the live game:**
+```bash
+python scripts/eval_real_game.py --n-runs 100 --output eval_results.json
+```
+
+**Deploy to the live game at the training cadence:**
 ```bash
 python scripts/deploy.py
 ```
@@ -76,4 +83,4 @@ Cluster launches (SLURM, A100): `sbatch slurm/train_fsq.sl`, `sbatch slurm/train
 
 ## Contact
 
-Feel free to open [issues](https://github.com/Tariolle/dash-vmc/issues). For questions or collaborations, contact `florent.tariolle@insa-rouen.fr`.
+For questions or collaborations, contact `florent.tariolle@insa-rouen.fr`.

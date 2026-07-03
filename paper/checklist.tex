@@ -8,7 +8,7 @@
 
 \item {\bf Limitations}
     \item[] Answer: \answerYes{}
-    \item[] Justification: Section~\ref{sec:limitations} discusses the negative/conditional IRIS/Pong diagnostic, the retired V7-native Atari controller path, Geometry Dash's single-environment scope, binary action space, and tokenizer-metric transferability.
+    \item[] Justification: Section~\ref{sec:limitations} discusses the auxiliary IRIS/Pong SLS diagnostic, the retired V7-native Atari controller path, Geometry Dash's single-environment scope, binary action space, and tokenizer-metric transferability.
 
 \item {\bf Theory assumptions and proofs}
     \item[] Answer: \answerNA{}
@@ -27,9 +27,8 @@
     \item[] Justification: All hyperparameters, optimizers, schedules, and data augmentation are specified in Section~\ref{sec:setup}.
 
 \item {\bf Experiment statistical significance}
-    % TODO: Fill in after running N=100 eval runs with confidence intervals.
-    \item[] Answer: \answerTODO{}
-    \item[] Justification: \justificationTODO{}
+    \item[] Answer: \answerNo{}
+    \item[] Justification: The current draft reports frozen single-system logs and an auxiliary five-seed IRIS/Pong diagnostic. A controlled live-game evaluation table with confidence intervals is the remaining empirical item before submission.
 
 \item {\bf Experiments compute resources}
     \item[] Answer: \answerYes{}
