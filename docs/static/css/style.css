@@ -220,7 +220,7 @@ main {
 }
 
 .section-block {
-  padding: clamp(3rem, 7vw, 5.5rem) 1.25rem;
+  padding: clamp(2rem, 4.7vw, 3.7rem) 1.25rem;
 }
 
 .section-block + .section-block {
@@ -504,6 +504,6 @@ footer a {
   }
 
   .section-block {
-    padding: 2.75rem 1rem;
+    padding: 1.85rem 1rem;
   }
 }
