@@ -17,9 +17,18 @@
 html {
   background: var(--bg);
   scroll-behavior: smooth;
+  overflow-x: hidden;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
 }
 
 body {
+  width: 100%;
+  max-width: 100%;
   margin: 0;
   color: var(--ink);
   background:
@@ -28,6 +37,13 @@ body {
   font-family: var(--serif);
   font-size: 17px;
   line-height: 1.58;
+  overflow-x: hidden;
+}
+
+img,
+video,
+svg {
+  max-width: 100%;
 }
 
 code, kbd, samp, pre, .is-mono {
@@ -52,16 +68,24 @@ a:hover {
 
 .hero-body {
   width: 100%;
-  padding: 3.25rem 1.25rem 2.75rem;
+  padding: 3.25rem 0 2.75rem;
 }
 
 .hero-grid {
-  width: min(1160px, 100%);
+  width: min(1160px, calc(100vw - 2.5rem));
   margin: 0 auto;
   display: grid;
   grid-template-columns: minmax(0, 0.92fr) minmax(420px, 1.08fr);
   gap: clamp(2rem, 5vw, 4.5rem);
   align-items: center;
+}
+
+.hero-grid > *,
+.section-grid > *,
+.container-narrow,
+.hero-demo,
+.metric-panel {
+  min-width: 0;
 }
 
 .hero-copy {
@@ -106,7 +130,6 @@ a:hover {
 
 .title-line {
   display: block;
-  white-space: nowrap;
 }
 
 .hero-subtitle {
@@ -143,9 +166,11 @@ a:hover {
   display: flex;
   flex-wrap: wrap;
   gap: 0.65rem;
+  max-width: 100%;
 }
 
 .link-button {
+  min-width: 0;
   min-height: 2.5rem;
   display: inline-flex;
   align-items: center;
@@ -213,6 +238,8 @@ figure.centered figcaption,
 
 .hero-demo figcaption {
   text-align: center;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 main {
@@ -230,7 +257,7 @@ main {
 .container-narrow,
 .section-grid,
 .wide-figure {
-  width: min(980px, 100%);
+  width: min(980px, calc(100vw - 2.5rem));
   margin: 0 auto;
 }
 
@@ -257,6 +284,7 @@ main {
   font-weight: 700;
   line-height: 1.08;
   letter-spacing: 0;
+  overflow-wrap: anywhere;
 }
 
 .section-block p {
@@ -304,7 +332,7 @@ main {
 }
 
 .evidence-cards {
-  width: min(980px, 100%);
+  width: min(980px, calc(100vw - 2.5rem));
   margin: 2rem auto 0;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -465,7 +493,15 @@ footer a {
   }
 
   .hero-body {
-    padding: 2.35rem 1rem 2rem;
+    padding: 2.35rem 0 2rem;
+  }
+
+  .hero-grid,
+  .container-narrow,
+  .section-grid,
+  .wide-figure,
+  .evidence-cards {
+    width: calc(100vw - 2rem);
   }
 
   .publication-title {
@@ -486,10 +522,13 @@ footer a {
   .publication-links {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
   }
 
   .link-button {
     width: 100%;
+    padding-inline: 0.65rem;
+    white-space: nowrap;
   }
 
   .contribution-grid,
@@ -505,5 +544,11 @@ footer a {
 
   .section-block {
     padding: 1.85rem 1rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .publication-links {
+    grid-template-columns: 1fr;
   }
 }
