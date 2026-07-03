@@ -45,7 +45,6 @@ a:hover {
 }
 
 .hero {
-  min-height: 86vh;
   display: flex;
   align-items: center;
   border-bottom: 1px solid var(--line);
@@ -53,7 +52,7 @@ a:hover {
 
 .hero-body {
   width: 100%;
-  padding: 4rem 1.25rem 3rem;
+  padding: 3.25rem 1.25rem 2.75rem;
 }
 
 .hero-grid {
