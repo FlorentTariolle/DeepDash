@@ -30,6 +30,9 @@ slurm/logs/
 *.synctex.gz
 paper/*.pdf
 paper/figures/
+!paper/figures/
+paper/figures/*
+!paper/figures/continuation_v7.png
 docs/pipeline.pdf
 Formatting_Instructions_For_NeurIPS_2026/
 outputs/
