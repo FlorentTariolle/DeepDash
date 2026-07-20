@@ -18,6 +18,8 @@ Usage:
 """
 
 import argparse
+import hashlib
+import json
 import os
 import re
 import sys
@@ -60,6 +62,14 @@ def _tokenize_frames(model, frames, batch_size, tokens_per_frame, device):
     return np.concatenate(all_tokens, axis=0).astype(np.uint16)
 
 
+def _sha256(path, chunk_size=1024 * 1024):
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(chunk_size), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 SHIFT_AUG_RE = re.compile(r"_s[+-]\d+_[+-]\d+$")
 
 
@@ -82,11 +92,14 @@ def main():
     model = FSQVAE(levels=args.levels).to(device)
     tokens_per_frame = 64
 
-    state = torch.load(args.checkpoint, map_location=device, weights_only=True)
+    checkpoint_path = Path(args.checkpoint)
+    checkpoint_sha256 = _sha256(checkpoint_path)
+    state = torch.load(checkpoint_path, map_location=device, weights_only=True)
     state = {k.removeprefix("_orig_mod."): v for k, v in state.items()}
     model.load_state_dict(state)
     model.eval()
     print(f"Loaded FSQ from {args.checkpoint} (levels={args.levels})")
+    print(f"Tokenizer SHA-256: {checkpoint_sha256}")
 
     episodes_dir = Path(args.episodes_dir)
     episodes = sorted(ep for ep in episodes_dir.glob("*")
@@ -103,16 +116,44 @@ def main():
         print(f"Shift augmentation: {len(aug_shifts)} shifted variants per episode")
         print(f"  Horizontal: {shifts_h}, Vertical: {shifts_v}")
 
-    def _tokens_valid(path):
+    def _tokens_valid(path, expected_meta):
         if not path.exists():
             return False
+        meta_path = path.with_suffix(".meta.json")
+        if not meta_path.exists():
+            return False
         try:
-            np.load(path)
-            return True
-        except (EOFError, ValueError):
+            with open(meta_path, "r", encoding="utf-8") as f:
+                metadata = json.load(f)
+            tokens = np.load(path, mmap_mode="r")
+            return (metadata == expected_meta
+                    and tokens.shape == (expected_meta["num_frames"],
+                                         tokens_per_frame))
+        except (EOFError, OSError, ValueError, json.JSONDecodeError):
             path.unlink()
+            meta_path.unlink(missing_ok=True)
             print(f"  Deleted corrupt {path}")
             return False
+
+    def _metadata(ep_name, num_frames, dx=0, dy=0):
+        return {
+            "schema_version": 1,
+            "tokenizer_sha256": checkpoint_sha256,
+            "levels": list(args.levels),
+            "tokens_per_frame": tokens_per_frame,
+            "num_frames": int(num_frames),
+            "source_episode": ep_name,
+            "pixel_shift": [int(dx), int(dy)],
+        }
+
+    def _save_tokens(path, tokens, metadata):
+        np.save(path, tokens)
+        meta_path = path.with_suffix(".meta.json")
+        tmp_path = meta_path.with_name(meta_path.name + ".tmp")
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(metadata, f, indent=2, sort_keys=True)
+            f.write("\n")
+        tmp_path.replace(meta_path)
 
     total_frames = 0
     skipped = 0
@@ -121,20 +162,23 @@ def main():
     with torch.no_grad():
         for ep in episodes:
             frames = None
-            if _tokens_valid(ep / "tokens.npy"):
+            num_frames = len(np.load(ep / "frames.npy", mmap_mode="r"))
+            base_meta = _metadata(ep.name, num_frames)
+            if _tokens_valid(ep / "tokens.npy", base_meta):
                 skipped += 1
             else:
                 frames = np.load(ep / "frames.npy")
                 total_frames += len(frames)
                 tokens = _tokenize_frames(model, frames, args.batch_size,
                                           tokens_per_frame, device)
-                np.save(ep / "tokens.npy", tokens)
+                _save_tokens(ep / "tokens.npy", tokens, base_meta)
                 print(f"  {ep.name}: {len(frames)} frames -> {tokens.shape} tokens")
 
             for dx, dy in aug_shifts:
                 aug_name = f"{ep.name}_s{dx:+d}_{dy:+d}"
                 aug_dir = episodes_dir / aug_name
-                if _tokens_valid(aug_dir / "tokens.npy"):
+                aug_meta = _metadata(ep.name, num_frames, dx, dy)
+                if _tokens_valid(aug_dir / "tokens.npy", aug_meta):
                     continue
                 if frames is None:
                     frames = np.load(ep / "frames.npy")
@@ -142,7 +186,7 @@ def main():
                 tokens = _tokenize_frames(model, shifted, args.batch_size,
                                           tokens_per_frame, device)
                 aug_dir.mkdir(exist_ok=True)
-                np.save(aug_dir / "tokens.npy", tokens)
+                _save_tokens(aug_dir / "tokens.npy", tokens, aug_meta)
                 # Link actions.npy and frames.npy from original (symlink on
                 # Linux, fall back to copy on Windows). frames.npy here is
                 # the UNSHIFTED original by design - shifted pixels live

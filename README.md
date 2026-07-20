@@ -39,6 +39,10 @@ The decoder is used for tokenizer training and visual inspection. Policy optimiz
 
 These rows use the metric values at each V7 selection point rather than independent per-metric maxima. The FSQ checkpoint is epoch 920 (minimum validation reconstruction SSE), the world-model checkpoint is epoch 139 (maximum validation death F1), the BC selection point is epoch 9 (minimum validation loss), and the PPO checkpoint is iteration 3250 (maximum fixed latent-evaluation survival). The branch retains the BC training log but ships the downstream PPO checkpoint rather than the intermediate BC checkpoint. The FSQ loss is squared error summed over each 64x64 frame and averaged over samples, not pixelwise mean squared error.
 
+### Training provenance
+
+The archived tokenizer job loaded the selected FSQ checkpoint and retokenized all 4,228 death episodes and 36 expert episodes before world-model training. The base episode plus four vertical shifts produced exactly `(4,228 + 36) * 5 = 21,320` tokenized episodes; the subsequent world-model job reports consuming exactly 21,320. Checkpoint identity, timestamps, job IDs, hashes, and the corresponding log lines are recorded in [`analysis/2026-04-26_v7_training/PROVENANCE.md`](analysis/2026-04-26_v7_training/PROVENANCE.md). Token caches now carry checkpoint-hash metadata and are regenerated when their provenance does not match.
+
 ### Controlled live evaluation
 
 The frozen V7 policy was evaluated over 100 consecutive attempts on each of the first three official levels at 30 FPS with Auto-Retry enabled.

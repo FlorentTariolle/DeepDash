@@ -350,6 +350,7 @@ Levels are deterministic: the same action sequence always produces the same outc
 We collect roughly 4,200 gameplay episodes ($\sim$250K frames) including both intentional-death episodes (covering diverse failure modes) and 36 expert demonstrations (full level clears).
 Vertical shift augmentation ($\pm 2, \pm 4$ pixels) expands the dataset $5\times$.
 Frames are preprocessed with Sobel edge detection and resized to $\imgsize$.
+Before transformer training, all 4,264 base episodes are retokenized with the selected frozen FSQ checkpoint; the base data and four shifted variants yield exactly 21,320 tokenized episodes. The archived world-model job reports consuming the same 21,320 episodes. We retain the checkpoint hash, tokenization and training timestamps, job identifier, and relevant log extracts with the released artifacts.
 
 \paragraph{Training details.}
 The FSQ-VAE and the transformer are trained sequentially with AdamW using cosine annealing and warmup. The FSQ-VAE is trained for 200 epochs (LR $4\cdot 10^{-3}$, batch 32) with the slowness and uniformity regularizers weighted at $\alpha_\text{slow} = 0.1$ and $\alpha_\text{uniform} = 0.01$, after which the encoder is frozen and its tokens are cached. The transformer is then trained for 200 epochs (LR $10^{-3}$, weight decay $0.05$, dropout $0.1$, batch 256) with 5\% FSQ-neighbor token noise on context tokens, and death frames oversampled $15\times$ via weighted sampling.

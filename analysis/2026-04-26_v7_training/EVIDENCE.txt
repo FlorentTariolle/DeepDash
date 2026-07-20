@@ -1,0 +1,47 @@
+Archived training log evidence (selected lines)
+===============================================
+
+Source: slurm/logs/tokenize.out
+
+=== Config: configs/v7-phase0.yaml ===
+=== FSQ checkpoint: checkpoints_v7/fsq_best.pt ===
+=== Levels: 8 5 5 5 ===
+=== Tokenizing data/death_episodes (Sun Apr 26 10:58:41 PM CEST 2026) ===
+Device: cuda
+Loaded FSQ from checkpoints_v7/fsq_best.pt (levels=[8, 5, 5, 5])
+Found 4228 base episodes (aug_dirs filtered)
+Shift augmentation: 4 shifted variants per episode
+  Horizontal: [0], Vertical: [-4, -2, 0, 2, 4]
+Done. Tokenized 218810 new frames across 4228 episodes.
+=== Tokenizing data/expert_episodes (Sun Apr 26 11:01:41 PM CEST 2026) ===
+Device: cuda
+Loaded FSQ from checkpoints_v7/fsq_best.pt (levels=[8, 5, 5, 5])
+Found 36 base episodes (aug_dirs filtered)
+Shift augmentation: 4 shifted variants per episode
+  Horizontal: [0], Vertical: [-4, -2, 0, 2, 4]
+Done. Tokenized 33153 new frames across 36 episodes.
+=== Done (Sun Apr 26 11:01:49 PM CEST 2026) ===
+1977852 ar_h200 tokenize 8 2026-04-26T22:58:39 2026-04-26T23:01:49 00:03:10 1 0:0 COMPLETED
+
+Source: slurm/logs/train_world_model.out
+
+=== Config: configs/v7-phase0.yaml ===
+=== Checkpoint dir: checkpoints_v7 ===
+=== Train world model (Mon Apr 27 12:22:16 AM CEST 2026) ===
+Device: cuda
+Total tokenized episodes: 21320 (19195 train, 2125 val)
+Stacking into tensors...
+Train samples: 1061890 unique, Val samples: 113725
+Death frames: 20435 unique, weighted 5x via sampler
+Model parameters: 14,723,520
+Context: 4 frames, Sequence length: 329
+Vocab: 1000 visual + 2 status = 1002
+
+Checkpoint identity from the repository
+
+git log -1 --format="%H%n%cI" -- checkpoints_v7/fsq_best.pt
+150788809343f77180ee2f83d6a1de30d683a4bc
+2026-04-26T22:56:16+02:00
+
+SHA-256 checkpoints_v7/fsq_best.pt
+8A4C488E0310855BCF411787894F0206F3381387BCD9FC179D6A6610EF32E5F7
