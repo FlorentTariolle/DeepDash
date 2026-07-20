@@ -30,7 +30,7 @@
 
   <link rel="icon" type="image/png" href="static/images/ai-brain-icon.png" />
   <link rel="apple-touch-icon" href="static/images/ai-brain-icon.png" />
-  <link rel="stylesheet" href="static/css/style.css?v=20260703-dashvmc-system4" />
+  <link rel="stylesheet" href="static/css/style.css?v=20260720-results" />
 
   <script>
     window.MathJax = {
@@ -51,7 +51,7 @@
       <div class="hero-copy">
         <div class="status-row">
           <span class="status-pill">Preliminary research page</span>
-          <span class="status-date">Updated 2026-07-03</span>
+          <span class="status-date">Updated 2026-07-20</span>
         </div>
 
         <h1 class="publication-title">
@@ -77,7 +77,7 @@
             <span class="icon"><i class="fab fa-github"></i></span>
             <span>Code</span>
           </a>
-          <a class="link-button" href="#evidence">
+          <a class="link-button" href="#results">
             <span class="icon"><i class="fas fa-chart-line"></i></span>
             <span>Results</span>
           </a>
@@ -241,16 +241,94 @@
     </div>
   </section>
 
-  <section id="status" class="section-block status-band">
-    <div class="section-grid">
-      <div>
-        <p class="eyebrow">Evidence</p>
-        <h2 class="section-title">Reported measurements</h2>
+  <section id="results" class="section-block results-band">
+    <div class="container-narrow">
+      <p class="eyebrow">Results</p>
+      <h2 class="section-title">Controlled live evaluation</h2>
+      <p class="results-lead">
+        The frozen V7 policy was evaluated over 100 consecutive attempts on each of the first
+        three official levels at 30 FPS with Auto-Retry enabled. Confidence intervals are
+        percentile-bootstrap intervals for the mean over attempts.
+      </p>
+
+      <div class="table-wrap">
+        <table class="results-table" aria-label="Controlled live Geometry Dash evaluation">
+          <thead>
+            <tr>
+              <th>Level</th>
+              <th>Mean frames [95% CI]</th>
+              <th>Mean time</th>
+              <th>Median</th>
+              <th>Maximum</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>1 - Stereo Madness</td>
+              <td>279.6 [270.5, 289.2]</td>
+              <td>9.32 s</td>
+              <td>289</td>
+              <td>439</td>
+            </tr>
+            <tr>
+              <td>2 - Back on Track</td>
+              <td>263.3 [239.8, 287.2]</td>
+              <td>8.78 s</td>
+              <td>239</td>
+              <td>457</td>
+            </tr>
+            <tr>
+              <td>3 - Polargeist</td>
+              <td>64.3 [59.3, 70.0]</td>
+              <td>2.14 s</td>
+              <td>51</td>
+              <td>199</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
-      <div class="status-list">
-        <p><strong>System:</strong> FSQ tokenizer, action-conditioned transformer world model, and CNN actor-critic.</p>
-        <p><strong>Deployment:</strong> live Geometry Dash control at the 30 FPS capture/training cadence.</p>
-        <p><strong>Generation:</strong> decoded rollouts show plausible visual level continuations from real gameplay prefixes.</p>
+      <p class="result-note">
+        The evaluator measures acted frames survived rather than level percentage. Results are
+        level-specific: difficulty increases across the sequence, and Polargeist introduces a
+        yellow-orb mechanic requiring an additional timed jump while airborne.
+      </p>
+
+      <div class="results-columns">
+        <section class="result-group" aria-labelledby="model-results-title">
+          <h3 id="model-results-title">Model snapshot</h3>
+          <div class="table-wrap">
+            <table class="results-table compact-table" aria-label="Frozen V7 model metrics">
+              <tbody>
+                <tr><td>FSQ validation MSE</td><td>1.595</td></tr>
+                <tr><td>Token accuracy</td><td>30.29%</td></tr>
+                <tr><td>Death F1</td><td>0.794</td></tr>
+                <tr><td>BC action accuracy</td><td>79.8%</td></tr>
+                <tr><td>PPO latent survival</td><td>29.71 / 45</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="result-group latency-group" aria-labelledby="latency-results-title">
+          <h3 id="latency-results-title">Optimized deployment latency</h3>
+          <p class="result-group-copy">Mean per-stage time over approximately 5,000 frames on an RTX 2060.</p>
+          <div class="table-wrap">
+            <table class="results-table compact-table" aria-label="Optimized deployment latency breakdown">
+              <tbody>
+                <tr><td>Screen capture</td><td>2.4 ms</td></tr>
+                <tr><td>Crop</td><td>0.5 ms</td></tr>
+                <tr><td>Grayscale</td><td>0.5 ms</td></tr>
+                <tr><td>Sobel</td><td>2.6 ms</td></tr>
+                <tr><td>Downscale</td><td>2.1 ms</td></tr>
+                <tr><td>FSQ encode</td><td>1.4 ms</td></tr>
+                <tr><td>Transformer</td><td>4.2 ms</td></tr>
+                <tr><td>Controller</td><td>1.1 ms</td></tr>
+                <tr class="total-row"><td>Full loop</td><td>~15.0 ms</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="result-note">Stage values are rounded independently. The full loop leaves roughly 67 FPS of compute headroom and is deployed at the 30 FPS data cadence.</p>
+        </section>
       </div>
     </div>
   </section>

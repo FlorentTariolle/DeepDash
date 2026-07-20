@@ -424,21 +424,100 @@ figure.centered {
   margin-bottom: 1.7rem;
 }
 
-.status-band {
-  background: #fffaf0;
+.results-band {
+  background: #fff;
 }
 
-.status-list {
-  border-left: 3px solid #d89b32;
-  padding-left: 1rem;
+.results-lead {
+  max-width: 780px;
+  margin-bottom: 1.5rem;
 }
 
-.status-list p {
-  margin: 0 0 0.7rem;
+.table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  border-top: 1px solid var(--line);
 }
 
-.status-list p:last-child {
-  margin-bottom: 0;
+.results-table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.results-table th,
+.results-table td {
+  padding: 0.72rem 0.75rem;
+  border-bottom: 1px solid #e8ebf0;
+  text-align: right;
+  vertical-align: top;
+}
+
+.results-table th {
+  background: #f6f8fb;
+  color: #4f5966;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.results-table th:first-child,
+.results-table td:first-child {
+  text-align: left;
+}
+
+.results-table td:not(:first-child) {
+  white-space: nowrap;
+}
+
+.result-note {
+  margin: 0.8rem 0 0;
+  color: var(--muted) !important;
+  font-family: var(--mono);
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
+
+.results-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: clamp(2rem, 5vw, 4rem);
+  margin-top: 2.5rem;
+}
+
+.result-group {
+  min-width: 0;
+  padding-top: 1rem;
+  border-top: 3px solid var(--blue);
+}
+
+.latency-group {
+  border-top-color: var(--green);
+}
+
+.result-group h3 {
+  margin: 0 0 0.8rem;
+  color: var(--ink);
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.result-group-copy {
+  margin: -0.35rem 0 0.85rem;
+  color: var(--muted) !important;
+  font-size: 0.92rem;
+}
+
+.compact-table td:last-child {
+  font-weight: 600;
+}
+
+.results-table .total-row td {
+  border-top: 2px solid var(--ink);
+  color: var(--ink);
+  font-weight: 700;
 }
 
 pre.bibtex {
@@ -533,7 +612,8 @@ footer a {
 
   .contribution-grid,
   .evidence-cards,
-  .feature-grid {
+  .feature-grid,
+  .results-columns {
     grid-template-columns: 1fr;
   }
 

@@ -25,25 +25,47 @@ DashVMC has three sequentially trained components:
 
 The decoder is used for tokenizer training and visual inspection. Policy optimization does not reconstruct pixels at each imagined step; the controller consumes token grids and transformer hidden states.
 
-## Current Evidence
+## Results
 
-Frozen V7 logs currently support the system and latency claims:
+### Model and controller
 
 | Component | Metric | Value |
-| --- | ---: | ---: |
+| --- | --- | ---: |
 | FSQ tokenizer | Best validation reconstruction MSE | 1.595 |
 | World model | Best validation token accuracy | 30.29% |
 | World model | Best validation death F1 | 0.794 |
 | BC controller | Best validation action accuracy | 79.8% |
-| PPO controller | Best latent eval survival | 29.71 / 45 steps |
-| Live Level 1 | Mean survival [95% CI], 100 attempts | 279.6 [270.5, 289.2] frames |
-| Live Level 2 | Mean survival [95% CI], 100 attempts | 263.3 [239.8, 287.2] frames |
-| Live Level 3 | Mean survival [95% CI], 100 attempts | 64.3 [59.3, 70.0] frames |
-| Deployment loop | Full-loop latency | ~15 ms |
-| Deployment loop | Configured cadence | 30 FPS |
-| Deployment loop | Approximate compute headroom | ~67 FPS |
+| PPO controller | Best latent evaluation survival | 29.71 / 45 steps |
 
-The controlled live evaluation uses the frozen V7 checkpoints for 100 consecutive attempts on each of the first three official levels. It reports acted frames survived rather than level percentage; raw results and bootstrap confidence intervals are in `analysis/2026-07-20_v7_deploy/`. Results are reported per level because difficulty increases and Level 3 introduces a timed mid-air yellow-orb mechanic. The same summary records the optimized deployment-stage averages underlying the approximately 15 ms full-loop measurement.
+### Controlled live evaluation
+
+The frozen V7 policy was evaluated over 100 consecutive attempts on each of the first three official levels at 30 FPS with Auto-Retry enabled.
+
+| Level | Mean frames [95% CI] | Mean time | Median frames | Maximum frames |
+| --- | ---: | ---: | ---: | ---: |
+| 1 - Stereo Madness | 279.6 [270.5, 289.2] | 9.32 s | 289 | 439 |
+| 2 - Back on Track | 263.3 [239.8, 287.2] | 8.78 s | 239 | 457 |
+| 3 - Polargeist | 64.3 [59.3, 70.0] | 2.14 s | 51 | 199 |
+
+The evaluator reports acted frames survived rather than level percentage. Results remain level-specific: the official levels increase in difficulty, and Polargeist introduces a yellow-orb mechanic requiring an additional timed jump while airborne. Raw attempts and bootstrap confidence intervals are available in [`analysis/2026-07-20_v7_deploy/`](analysis/2026-07-20_v7_deploy/).
+
+### Optimized deployment latency
+
+Mean per-stage latency was measured over approximately 5,000 frames on an RTX 2060 using the optimized live deployment path.
+
+| Stage | Mean latency |
+| --- | ---: |
+| Screen capture | 2.4 ms |
+| Crop | 0.5 ms |
+| Grayscale | 0.5 ms |
+| Sobel | 2.6 ms |
+| Downscale | 2.1 ms |
+| FSQ encode | 1.4 ms |
+| Transformer | 4.2 ms |
+| Controller | 1.1 ms |
+| **Full loop** | **~15.0 ms** |
+
+The stage values are rounded independently. The approximately 15 ms full loop corresponds to roughly 67 FPS of compute headroom; deployment remains fixed at the 30 FPS capture and training-data cadence.
 
 ## Scoped Diagnostics
 
