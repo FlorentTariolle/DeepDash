@@ -246,7 +246,7 @@
       <p class="eyebrow">Interactive dreams</p>
       <h2 class="section-title">Human-controlled level continuations</h2>
       <p class="dreams-lead">
-        A recorded gameplay prefix initializes V7, then a human supplies jump or idle actions
+        A recorded gameplay prefix initializes the learned world model, then a human supplies jump or idle actions
         while the world model generates the continuation autoregressively.
       </p>
 
@@ -256,15 +256,15 @@
           <source src="static/videos/dream_rollouts/long-coherent-horizon-featured.mp4" type="video/mp4" />
         </video>
         <figcaption>
-          <strong>Long coherent horizon.</strong> A sustained human-controlled continuation in the V7 dream.
+          <strong>Long coherent horizon.</strong> A sustained human-controlled continuation in the learned world model.
         </figcaption>
       </figure>
 
       <div class="rollout-heading">
         <h3>Recorded continuations</h3>
-        <span>Human actions, V7-generated frames</span>
+        <span>Human actions, model-generated frames</span>
       </div>
-      <div class="rollout-mosaic" aria-label="Human-controlled V7 dream rollouts">
+      <div class="rollout-mosaic" aria-label="Human-controlled world-model rollouts">
         <figure class="rollout-tile">
           <video autoplay loop muted playsinline preload="metadata" poster="static/videos/dream_rollouts/decent-continuation.jpg">
             <source src="static/videos/dream_rollouts/decent-continuation.mp4" type="video/mp4" />
@@ -295,7 +295,7 @@
         <h3>Observed failure modes</h3>
         <span>Useful limits of long autoregressive generation</span>
       </div>
-      <div class="rollout-mosaic failure-mosaic" aria-label="Observed V7 dream failure modes">
+      <div class="rollout-mosaic failure-mosaic" aria-label="Observed world-model rollout failure modes">
         <figure class="rollout-tile">
           <video autoplay loop muted playsinline preload="metadata" poster="static/videos/dream_rollouts/failure-infinite-replication.jpg">
             <source src="static/videos/dream_rollouts/failure-infinite-replication.mp4" type="video/mp4" />
@@ -329,7 +329,7 @@
       <p class="eyebrow">Results</p>
       <h2 class="section-title">Controlled live evaluation</h2>
       <p class="results-lead">
-        The frozen V7 policy was evaluated over 100 consecutive attempts on each of the first
+        The frozen policy was evaluated over 100 consecutive attempts on each of the first
         three official levels at 30 FPS with Auto-Retry enabled. Confidence intervals are
         percentile-bootstrap intervals for the mean over attempts.
       </p>
@@ -380,7 +380,7 @@
         <section class="result-group" aria-labelledby="model-results-title">
           <h3 id="model-results-title">Model snapshot</h3>
           <div class="table-wrap">
-            <table class="results-table compact-table" aria-label="Frozen V7 model metrics">
+            <table class="results-table compact-table" aria-label="Frozen model metrics">
               <tbody>
                 <tr><td>FSQ validation SSE / frame</td><td>1.595</td></tr>
                 <tr><td>Token accuracy</td><td>29.74%</td></tr>
