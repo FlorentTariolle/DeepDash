@@ -1,4 +1,7 @@
 *.json
+!analysis/2026-07-20_v7_deploy/eval_100.json
+!analysis/2026-07-20_v7_deploy/eval_100_level2.json
+!analysis/2026-07-20_v7_deploy/eval_100_level3.json
 __pycache__/
 .venv/
 .codex_tmp/

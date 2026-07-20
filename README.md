@@ -5,7 +5,7 @@
 
 DashVMC is a real-time discrete Vision-Model-Controller system for Geometry Dash. It combines an FSQ tokenizer, an action-conditioned transformer world model, and a lightweight actor-critic trained from behavioural cloning plus PPO in latent rollouts.
 
-The deployed controller runs at the same 30 FPS cadence as the captured training data. The full loop measures about 15 ms per frame on an RTX 2060 SUPER, leaving compute headroom of roughly 67 FPS; the 30 FPS setting is a data/capture cadence choice, not the inference ceiling.
+The deployed controller runs at the same 30 FPS cadence as the captured training data. The full loop measures about 15 ms per frame on an RTX 2060, leaving compute headroom of roughly 67 FPS; the 30 FPS setting is a data/capture cadence choice, not the inference ceiling.
 
 <p align="center">
    <b>[ <a href="https://tariolle.github.io/dash-vmc/static/pdfs/dashvmc.pdf">Paper Draft</a> | <a href="https://tariolle.github.io/dash-vmc/">Website</a> | <a href="https://github.com/Tariolle/dash-vmc">Code</a> ]</b>
@@ -36,11 +36,14 @@ Frozen V7 logs currently support the system and latency claims:
 | World model | Best validation death F1 | 0.794 |
 | BC controller | Best validation action accuracy | 79.8% |
 | PPO controller | Best latent eval survival | 29.71 / 45 steps |
+| Live Level 1 | Mean survival [95% CI], 100 attempts | 279.6 [270.5, 289.2] frames |
+| Live Level 2 | Mean survival [95% CI], 100 attempts | 263.3 [239.8, 287.2] frames |
+| Live Level 3 | Mean survival [95% CI], 100 attempts | 64.3 [59.3, 70.0] frames |
 | Deployment loop | Full-loop latency | ~15 ms |
 | Deployment loop | Configured cadence | 30 FPS |
 | Deployment loop | Approximate compute headroom | ~67 FPS |
 
-The repository also includes an automated real-game evaluator (`scripts/eval_real_game.py`). A fresh controlled deployment table is the main remaining empirical item before submission.
+The controlled live evaluation uses the frozen V7 checkpoints for 100 consecutive attempts on each of the first three official levels. It reports acted frames survived rather than level percentage; raw results and bootstrap confidence intervals are in `analysis/2026-07-20_v7_deploy/`. Results are reported per level because difficulty increases and Level 3 introduces a timed mid-air yellow-orb mechanic. The same summary records the optimized deployment-stage averages underlying the approximately 15 ms full-loop measurement.
 
 ## Scoped Diagnostics
 
@@ -71,7 +74,7 @@ python scripts/train_controller_ppo.py --pretrained checkpoints/controller_bc_be
 
 **Evaluate the live game:**
 ```bash
-python scripts/eval_real_game.py --config configs/deepdash/v7-phase0.yaml --vae-checkpoint checkpoints_v7/fsq_best.pt --transformer-checkpoint checkpoints_v7/transformer_best.pt --controller-checkpoint checkpoints_v7/controller_ppo_best.pt --n-runs 100 --level-name "Level 1" --output analysis/2026-07-03_v7_deploy/eval_100.json
+python scripts/eval_real_game.py --config configs/deepdash/v7-phase0.yaml --vae-checkpoint checkpoints_v7/fsq_best.pt --transformer-checkpoint checkpoints_v7/transformer_best.pt --controller-checkpoint checkpoints_v7/controller_ppo_best.pt --n-runs 100 --level-name "Level 1" --output analysis/2026-07-20_v7_deploy/eval_100.json
 ```
 
 **Deploy to the live game at the training cadence:**

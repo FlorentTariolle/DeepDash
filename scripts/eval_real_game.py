@@ -32,11 +32,28 @@ from deepdash.controller import CNNPolicy, MLPPolicy, V3CNNPolicy
 from deepdash.gd_mem import GDReader
 
 
-class StageTimer:
-    """Small stage timer used for one-off latency audits."""
+def bootstrap_mean_ci(values, n_resamples, seed):
+    """Percentile bootstrap CI for a sample mean, computed in batches."""
+    arr = np.asarray(values, dtype=np.float64)
+    rng = np.random.default_rng(seed)
+    bootstrap_means = []
+    batch_size = 1_000
+    for start in range(0, n_resamples, batch_size):
+        size = min(batch_size, n_resamples - start)
+        samples = rng.choice(arr, size=(size, arr.size), replace=True)
+        bootstrap_means.append(samples.mean(axis=1))
+    bootstrap_means = np.concatenate(bootstrap_means)
+    return np.percentile(bootstrap_means, [2.5, 97.5])
 
-    def __init__(self, enabled):
+
+class StageTimer:
+    """Stage timer with percentile and bootstrap summaries."""
+
+    def __init__(self, enabled, bootstrap_resamples=10_000,
+                 bootstrap_seed=20260720):
         self.enabled = enabled
+        self.bootstrap_resamples = bootstrap_resamples
+        self.bootstrap_seed = bootstrap_seed
         self.samples = {}
         self._starts = {}
 
@@ -56,20 +73,39 @@ class StageTimer:
 
     def summary(self):
         out = {}
+        rng = np.random.default_rng(self.bootstrap_seed)
         for name, values in self.samples.items():
             arr = np.asarray(values, dtype=np.float64)
-            out[name] = {
+            stats = {
                 "mean_ms": round(float(arr.mean()), 3),
                 "median_ms": round(float(np.median(arr)), 3),
                 "p25_ms": round(float(np.percentile(arr, 25)), 3),
                 "p75_ms": round(float(np.percentile(arr, 75)), 3),
+                "p95_ms": round(float(np.percentile(arr, 95)), 3),
                 "min_ms": round(float(arr.min()), 3),
                 "max_ms": round(float(arr.max()), 3),
                 "n": int(arr.size),
+                "samples_ms": [round(float(value), 3) for value in arr],
             }
-        if out:
-            total = sum(v["mean_ms"] for v in out.values())
-            out["total_mean_ms"] = round(float(total), 3)
+            if self.bootstrap_resamples > 0:
+                ci_low, ci_high = bootstrap_mean_ci(
+                    arr, self.bootstrap_resamples,
+                    int(rng.integers(0, np.iinfo(np.int32).max)),
+                )
+                stats["mean_ci95_ms"] = [
+                    round(float(ci_low), 3), round(float(ci_high), 3)
+                ]
+            out[name] = stats
+        component_names = [
+            "capture", "sobel_preprocess", "fsq_encode", "transformer",
+            "controller_action",
+        ]
+        if all(name in out for name in component_names):
+            out["component_sum_mean_ms"] = round(
+                sum(out[name]["mean_ms"] for name in component_names), 3
+            )
+        out["bootstrap_resamples"] = self.bootstrap_resamples
+        out["bootstrap_seed"] = self.bootstrap_seed
         return out
 
 
@@ -114,6 +150,10 @@ def main():
     parser.add_argument("--system-variant", default="V7")
     parser.add_argument("--latency-samples", type=int, default=300,
                         help="Number of acted frames to include in stage timing.")
+    parser.add_argument("--latency-bootstrap-resamples", type=int, default=10_000,
+                        help="Bootstrap resamples for latency mean CIs.")
+    parser.add_argument("--survival-bootstrap-resamples", type=int, default=50_000,
+                        help="Bootstrap resamples for mean survival CI.")
     parser.add_argument("--config", default=None)
     parser.add_argument("--levels", type=int, nargs="+", default=None)
     parser.add_argument("--vocab-size", type=int, default=None)
@@ -198,7 +238,10 @@ def main():
     print(f"GD memory reader connected (PID: {gd.pid})")
 
     results = []
-    stage_timer = StageTimer(enabled=args.latency_samples > 0)
+    stage_timer = StageTimer(
+        enabled=args.latency_samples > 0,
+        bootstrap_resamples=args.latency_bootstrap_resamples,
+    )
     latency_frames = 0
     print(f"\nRunning {args.n_runs} evaluation episodes...")
     print("Press F10 to abort.\n")
@@ -225,6 +268,7 @@ def main():
 
         while True:
             t0 = time.perf_counter()
+            stage_timer.start("full_loop")
 
             if keyboard.is_pressed("f10"):
                 break
@@ -297,11 +341,6 @@ def main():
                 jump = prob[0].item() > args.jump_threshold
             stage_timer.cuda_sync(device)
             stage_timer.end("controller_action")
-            if latency_frames < args.latency_samples:
-                latency_frames += 1
-            elif stage_timer.enabled:
-                stage_timer.enabled = False
-
             if jump and not jumping:
                 keyboard.press("space")
                 jumping = True
@@ -310,6 +349,11 @@ def main():
                 jumping = False
 
             frames_survived += 1
+            stage_timer.end("full_loop")
+            if stage_timer.enabled:
+                latency_frames += 1
+                if latency_frames >= args.latency_samples:
+                    stage_timer.enabled = False
 
             elapsed = time.perf_counter() - t0
             if elapsed < frame_interval:
@@ -343,6 +387,11 @@ def main():
         print(f"  Median: {np.median(survivals):.0f}")
         p25, p75 = np.percentile(survivals, [25, 75])
         print(f"  P25: {p25:.0f} | P75: {p75:.0f}")
+        survival_ci = bootstrap_mean_ci(
+            survivals, args.survival_bootstrap_resamples, seed=20260720
+        )
+        print(f"  Mean 95% bootstrap CI: "
+              f"[{survival_ci[0]:.1f}, {survival_ci[1]:.1f}] frames")
 
         gpu_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else None
         summary = {
@@ -353,6 +402,10 @@ def main():
             "fps": args.fps,
             "gpu": gpu_name,
             "mean_frames": round(float(np.mean(survivals)), 1),
+            "mean_frames_ci95": [
+                round(float(survival_ci[0]), 1),
+                round(float(survival_ci[1]), 1),
+            ],
             "std_frames": round(float(np.std(survivals)), 1),
             "min_frames": int(np.min(survivals)),
             "max_frames": int(np.max(survivals)),
@@ -360,12 +413,18 @@ def main():
             "p25_frames": round(float(p25), 0),
             "p75_frames": round(float(p75), 0),
             "mean_time_s": round(float(np.mean(survivals)) / args.fps, 2),
+            "mean_time_s_ci95": [
+                round(float(survival_ci[0]) / args.fps, 2),
+                round(float(survival_ci[1]) / args.fps, 2),
+            ],
             "median_time_s": round(float(np.median(survivals)) / args.fps, 2),
             "min_time_s": round(float(np.min(survivals)) / args.fps, 2),
             "max_time_s": round(float(np.max(survivals)) / args.fps, 2),
             "p25_time_s": round(float(p25) / args.fps, 2),
             "p75_time_s": round(float(p75) / args.fps, 2),
             "level_progress_available": False,
+            "survival_bootstrap_resamples": args.survival_bootstrap_resamples,
+            "survival_bootstrap_seed": 20260720,
             "checkpoints": {
                 "vae": args.vae_checkpoint,
                 "transformer": args.transformer_checkpoint,

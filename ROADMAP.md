@@ -1,6 +1,6 @@
 # Project Roadmap
 
-Last updated on 2026-07-03.
+Last updated on 2026-07-20.
 
 ## Paper Direction
 
@@ -30,27 +30,28 @@ Frozen V7 logs support these current system numbers:
 | World model | Best validation death F1 | 0.794 | `checkpoints_v7/transformer_log.csv` |
 | BC controller | Best validation action accuracy | 79.8% | `checkpoints_v7/controller_bc_log.csv` |
 | PPO controller | Best latent eval survival | 29.71 / 45 steps | `checkpoints_v7/controller_ppo_log.csv` |
+| Deployment | Mean live survival (100 Level 1 attempts) | 279.6 frames / 9.32 s | `analysis/2026-07-20_v7_deploy/eval_100.json` |
+| Deployment | 95% bootstrap CI of mean survival | 270.5-289.2 frames | `analysis/2026-07-20_v7_deploy/SUMMARY.md` |
+| Deployment | Median / maximum live survival | 289 / 439 frames | `analysis/2026-07-20_v7_deploy/eval_100.json` |
+| Deployment | Mean Level 2 survival (95% CI) | 263.3 [239.8, 287.2] frames | `analysis/2026-07-20_v7_deploy/eval_100_level2.json` |
+| Deployment | Mean Level 3 survival (95% CI) | 64.3 [59.3, 70.0] frames | `analysis/2026-07-20_v7_deploy/eval_100_level3.json` |
 | Deployment | Full-loop latency | ~15 ms | `paper/main.tex` deployment notes |
 | Deployment | Configured cadence | 30 FPS | dataset/capture cadence |
 | Deployment | Compute headroom | ~67 FPS | 1 / 15 ms |
 
-Development notes also record older real-game progress across several Geometry Dash levels, but those notes should be replaced by a fresh controlled V7 evaluator run before submission.
+The controlled V7 evaluator runs are complete for the first three official levels. They measure acted frames survived rather than level percentage. Results remain level-specific: difficulty increases across the sequence, and Level 3 introduces timed mid-air yellow-orb inputs.
 
 ## Compute To Finish
 
-1. Run `scripts/eval_real_game.py` on the frozen checkpoints for at least 100 attempts on Level 1.
-2. If time permits, repeat the same evaluator on the additional levels already used in development notes: Level 3, Level 5, Level 6, Polargeist VE, and Polargeist V2.
-3. Save JSON outputs under a dated analysis folder and summarize mean, median, min, max, and quartiles.
-4. If useful, add a survival/death branch contrast to the decoded continuation figure.
-5. Audit the exact checkpoints used by the website demo, the paper tables, and the live evaluator so the paper cites V7 rather than a mixture of development variants.
+1. If useful, add a survival/death branch contrast to the decoded continuation figure.
+2. Audit the exact checkpoints used by the website demo, the paper tables, and the live evaluator so the paper cites V7 rather than a mixture of development variants.
 
 ## Writing To Finish
 
-1. Replace the provisional Geometry Dash system table in the paper with the final controlled evaluator table.
-2. Add the generated-continuation figure. (Done for the paper build; inspect final PDF placement.)
-3. Add an inference latency breakdown if stage-level timing logs are available; otherwise keep the measured full-loop number.
-4. Move any SLS/IRIS discussion behind the DashVMC system results and keep the claim scoped.
-5. Compile the PDF and update `docs/static/pdfs/dashvmc.pdf`.
+1. Add the generated-continuation figure. (Done for the paper build; inspect final PDF placement.)
+2. Preserve the optimized deployment benchmark and its per-stage averages as the reported latency evidence.
+3. Move any SLS/IRIS discussion behind the DashVMC system results and keep the claim scoped.
+4. Compile the PDF and update `docs/static/pdfs/dashvmc.pdf`.
 
 ## Do Not Spend Time On Before August
 
