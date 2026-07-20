@@ -72,11 +72,11 @@ a:hover {
 }
 
 .hero-grid {
-  width: min(1160px, calc(100vw - 2.5rem));
+  width: min(1240px, calc(100vw - 2.5rem));
   margin: 0 auto;
   display: grid;
-  grid-template-columns: minmax(0, 0.92fr) minmax(420px, 1.08fr);
-  gap: clamp(2rem, 5vw, 4.5rem);
+  grid-template-columns: minmax(0, 0.82fr) minmax(440px, 1.18fr);
+  gap: clamp(2rem, 4vw, 3.5rem);
   align-items: center;
 }
 
@@ -442,8 +442,10 @@ figure.centered {
 }
 
 .featured-rollout video {
-  width: 100%;
-  height: clamp(300px, 32vw, 370px);
+  width: min(100%, 555px);
+  aspect-ratio: 1;
+  height: auto;
+  margin: 0 auto;
   display: block;
   border: 1px solid #cbd5e1;
   border-radius: 8px;
@@ -494,7 +496,7 @@ figure.centered {
 
 .rollout-mosaic {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 1rem;
 }
 
@@ -728,7 +730,8 @@ footer a {
   }
 
   .featured-rollout video {
-    height: min(78vw, 370px);
+    width: min(100%, 555px);
+    height: auto;
   }
 
   .rollout-heading {
