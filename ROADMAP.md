@@ -25,11 +25,11 @@ Frozen V7 logs support these current system numbers:
 
 | Component | Metric | Value | Source |
 | --- | ---: | ---: | --- |
-| FSQ tokenizer | Best validation reconstruction MSE | 1.595 | `checkpoints_v7/fsq_log.csv` |
-| World model | Best validation token accuracy | 30.29% | `checkpoints_v7/transformer_log.csv` |
-| World model | Best validation death F1 | 0.794 | `checkpoints_v7/transformer_log.csv` |
-| BC controller | Best validation action accuracy | 79.8% | `checkpoints_v7/controller_bc_log.csv` |
-| PPO controller | Best latent eval survival | 29.71 / 45 steps | `checkpoints_v7/controller_ppo_log.csv` |
+| FSQ tokenizer | Selected-checkpoint validation reconstruction SSE / frame | 1.595 (epoch 920) | `checkpoints_v7/fsq_log.csv` |
+| World model | Selected-checkpoint validation token accuracy | 29.74% (epoch 139) | `checkpoints_v7/transformer_log.csv` |
+| World model | Selected-checkpoint validation death F1 | 0.7941 (epoch 139) | `checkpoints_v7/transformer_log.csv` |
+| BC controller | Validation action accuracy at minimum-loss epoch | 79.76% (epoch 9) | `checkpoints_v7/controller_bc_log.csv` |
+| PPO controller | Selected-checkpoint latent eval survival | 29.71 / 45 steps (iteration 3250) | `checkpoints_v7/controller_ppo_log.csv` |
 | Deployment | Mean live survival (100 Level 1 attempts) | 279.6 frames / 9.32 s | `analysis/2026-07-20_v7_deploy/eval_100.json` |
 | Deployment | 95% bootstrap CI of mean survival | 270.5-289.2 frames | `analysis/2026-07-20_v7_deploy/SUMMARY.md` |
 | Deployment | Median / maximum live survival | 289 / 439 frames | `analysis/2026-07-20_v7_deploy/eval_100.json` |

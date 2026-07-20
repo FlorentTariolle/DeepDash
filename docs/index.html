@@ -299,14 +299,15 @@
           <div class="table-wrap">
             <table class="results-table compact-table" aria-label="Frozen V7 model metrics">
               <tbody>
-                <tr><td>FSQ validation MSE</td><td>1.595</td></tr>
-                <tr><td>Token accuracy</td><td>30.29%</td></tr>
-                <tr><td>Death F1</td><td>0.794</td></tr>
-                <tr><td>BC action accuracy</td><td>79.8%</td></tr>
+                <tr><td>FSQ validation SSE / frame</td><td>1.595</td></tr>
+                <tr><td>Token accuracy</td><td>29.74%</td></tr>
+                <tr><td>Death F1</td><td>0.7941</td></tr>
+                <tr><td>BC action accuracy</td><td>79.76%</td></tr>
                 <tr><td>PPO latent survival</td><td>29.71 / 45</td></tr>
               </tbody>
             </table>
           </div>
+          <p class="result-note">Selection-aligned values: FSQ epoch 920, world model epoch 139, BC epoch 9, and PPO iteration 3250. The branch ships the PPO checkpoint downstream of BC; the FSQ value is squared error summed per frame, not pixelwise MSE.</p>
         </section>
 
         <section class="result-group latency-group" aria-labelledby="latency-results-title">

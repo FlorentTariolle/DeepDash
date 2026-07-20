@@ -394,26 +394,26 @@ For the application section, we retain qualitative generated rollouts: the WM is
 \subsection{Geometry Dash system metrics}
 \label{sec:gd-results}
 
-Table~\ref{tab:gd-system} summarizes the frozen V7 DashVMC logs and controlled live evaluation.
-The tokenizer reconstructs held-out Sobel frames with validation MSE $1.595$.
-The action-conditioned transformer reaches $30.29\%$ held-out token accuracy and death F1 $0.794$.
-The BC controller reaches $79.8\%$ held-out action accuracy, and PPO improves the controller to a best latent-rollout evaluation survival of $29.71$ out of $45$ steps.
+Table~\ref{tab:gd-system} summarizes the frozen V7 DashVMC checkpoints and controlled live evaluation.
+The selected tokenizer checkpoint (epoch 920, minimum validation reconstruction loss) has held-out reconstruction SSE $1.595$ per frame, where squared pixel errors are summed over each $64\!\times\!64$ frame and averaged over samples.
+The selected transformer checkpoint (epoch 139, maximum validation death F1) reaches $29.74\%$ held-out token accuracy and death F1 $0.7941$.
+The BC checkpoint selected by minimum validation loss at epoch 9 reaches $79.76\%$ held-out action accuracy, and the PPO checkpoint selected at iteration 3250 reaches fixed latent-rollout evaluation survival of $29.71$ out of $45$ steps.
 On Levels~1 and~2, the frozen policy survives $279.6$ and $263.3$ acted frames on average, with overlapping 95\% bootstrap CIs of $[270.5, 289.2]$ and $[239.8, 287.2]$. Mean survival on Level~3 is $64.3$ frames (95\% CI $[59.3, 70.0]$), and 75\% of attempts end by frame~93. This reduction is expected to some degree: the official levels increase in difficulty, and Level~3 introduces yellow orbs that require an additional timed jump input while airborne. We therefore report each level separately rather than interpreting the values as a controlled generalization comparison.
 In separate qualitative intervention runs, bypassing a small number of recurring blocking obstacles allows the same policy to clear most later sections; this observation is not included in the controlled survival statistics.
 
 \begin{table}[t]
   \centering
-  \caption{Frozen V7 DashVMC system metrics. The PPO value is measured in latent model rollouts; each live row contains 100 consecutive automated attempts.}
+  \caption{Selection-aligned frozen V7 DashVMC system metrics. Model rows report metrics at the model-selection point rather than independent maxima across training; each live row contains 100 consecutive automated attempts.}
   \label{tab:gd-system}
   \begin{tabular}{lll}
     \toprule
     Component & Metric & Value \\
     \midrule
-    FSQ tokenizer & Best validation reconstruction MSE & $1.595$ \\
-    World model & Best validation token accuracy & $30.29\%$ \\
-    World model & Best validation death F1 & $0.794$ \\
-    BC controller & Best validation action accuracy & $79.8\%$ \\
-    PPO controller & Best latent eval survival & $29.71 / 45$ steps \\
+    FSQ tokenizer & Selected validation SSE / frame & $1.595$ \\
+    World model & Selected validation token accuracy & $29.74\%$ \\
+    World model & Selected validation death F1 & $0.7941$ \\
+    BC controller & Selected-epoch validation accuracy & $79.76\%$ \\
+    PPO controller & Selected latent eval survival & $29.71 / 45$ steps \\
     Live Level 1 & Mean survival (95\% CI) & $279.6\ [270.5, 289.2]$ frames \\
     Live Level 2 & Mean survival (95\% CI) & $263.3\ [239.8, 287.2]$ frames \\
     Live Level 3 & Mean survival (95\% CI) & $64.3\ [59.3, 70.0]$ frames \\

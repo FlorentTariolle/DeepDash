@@ -38,6 +38,29 @@ difficulty result, not evidence of a generalization failure. Repeated values
 correspond to recurring deterministic failure points under small capture and
 action-timing variations.
 
+## Selection-aligned V7 model metrics
+
+These values report the validation metrics at the epoch or iteration that
+actually produced each selected V7 checkpoint, rather than mixing independent
+per-column maxima from different points in training.
+
+| Component | Selection rule | Selected point | Metric at selected point |
+| --- | --- | ---: | ---: |
+| FSQ tokenizer | Minimum validation reconstruction SSE | Epoch 920 | 1.595 SSE / frame |
+| World model | Maximum validation death F1 | Epoch 139 | 29.74% token accuracy; 0.7941 death F1 |
+| BC controller | Minimum validation loss | Epoch 9 | 79.76% action accuracy |
+| PPO controller | Maximum fixed latent evaluation survival | Iteration 3250 | 29.71 / 45 steps |
+
+The FSQ validation loss is squared pixel error summed over each 64x64 frame and
+averaged over samples. It is not pixelwise mean squared error. For comparison,
+the independent log maxima of 30.29% world-model token accuracy (epoch 194) and
+79.80% BC action accuracy (epoch 6) do not correspond to the selected
+world-model and BC checkpoints and are therefore not used in the public table.
+The branch tracks the FSQ, world-model, and downstream PPO checkpoints as Git
+LFS objects with SHA-256 prefixes `8a4c488e03`, `62db7d8f0d`, and `b00a30ccad`,
+respectively. It retains the BC training log but does not track the intermediate
+`controller_bc_best.pt` artifact.
+
 ## Optimized deployment timing
 
 The deployment benchmark measures the optimized live path over approximately

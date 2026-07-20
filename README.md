@@ -31,11 +31,13 @@ The decoder is used for tokenizer training and visual inspection. Policy optimiz
 
 | Component | Metric | Value |
 | --- | --- | ---: |
-| FSQ tokenizer | Best validation reconstruction MSE | 1.595 |
-| World model | Best validation token accuracy | 30.29% |
-| World model | Best validation death F1 | 0.794 |
-| BC controller | Best validation action accuracy | 79.8% |
-| PPO controller | Best latent evaluation survival | 29.71 / 45 steps |
+| FSQ tokenizer | Selected-checkpoint validation reconstruction SSE / frame | 1.595 |
+| World model | Selected-checkpoint validation token accuracy | 29.74% |
+| World model | Selected-checkpoint validation death F1 | 0.7941 |
+| BC controller | Validation action accuracy at the selected epoch | 79.76% |
+| PPO controller | Selected-checkpoint latent evaluation survival | 29.71 / 45 steps |
+
+These rows use the metric values at each V7 selection point rather than independent per-metric maxima. The FSQ checkpoint is epoch 920 (minimum validation reconstruction SSE), the world-model checkpoint is epoch 139 (maximum validation death F1), the BC selection point is epoch 9 (minimum validation loss), and the PPO checkpoint is iteration 3250 (maximum fixed latent-evaluation survival). The branch retains the BC training log but ships the downstream PPO checkpoint rather than the intermediate BC checkpoint. The FSQ loss is squared error summed over each 64x64 frame and averaged over samples, not pixelwise mean squared error.
 
 ### Controlled live evaluation
 
