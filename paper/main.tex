@@ -110,7 +110,7 @@ In this setting, pixel reconstruction provides a useful ground-truth anchor for 
 
 We present the Geometry Dash Vision-Model-Controller (V-M-C) pipeline.
 The application is a fast-paced platformer that demands frame-accurate predictions under a 33\,ms latency budget.
-Our system consists of three components: (1) an FSQ tokenizer that encodes $\imgsize$ Sobel edge maps into $\gridsize$ grids of discrete tokens, (2) a causal transformer that interleaves action tokens with frame tokens in a single sequence and predicts the next frame's tokens via parallel decoding, and (3) a lightweight CNN actor-critic on the predicted token grid, warm-started with Behavioural Cloning and fine-tuned with PPO~\citep{schulman2017ppo} entirely in latent rollouts.
+Our system consists of three components: (1) an FSQ tokenizer that encodes $\imgsize$ Sobel edge maps into $\gridsize$ grids of discrete tokens, (2) a causal transformer that interleaves action tokens with frame tokens in a single sequence and predicts the next frame's tokens via parallel decoding, and (3) a lightweight CNN actor-critic on the current token grid, warm-started with Behavioural Cloning and fine-tuned with PPO~\citep{schulman2017ppo} entirely in latent rollouts.
 Because the dynamics model is action-conditioned and autoregressive, it also acts as a procedural level-continuation generator: seeded with a short observed prefix and a candidate action sequence, it samples future token grids that decode into plausible continuations of the current Geometry Dash segment.
 The three components are trained sequentially -- each on the frozen output of the previous one -- and the deployed pipeline runs at the 30\,FPS cadence used to capture the training data.
 The measured full loop is approximately 15\,ms per frame on consumer hardware, so 30\,FPS is a cadence choice rather than a compute ceiling.
@@ -180,7 +180,7 @@ The three components are trained sequentially -- each on the frozen output of th
 \begin{figure}[t]
   \centering
   \includegraphics[width=\textwidth]{figures/pipeline.pdf}
-  \caption{Vision-Model-Controller pipeline. The FSQ-VAE (V) tokenizes Sobel edge maps into a grid of discrete codes, the causal transformer (M) predicts next-frame tokens with action tokens interleaved in the sequence, and the CNN controller (C) reads the predicted token grid alongside the transformer hidden state to select actions. The action feedback loop enables autoregressive dreaming.}
+  \caption{Vision-Model-Controller pipeline. The FSQ-VAE (V) tokenizes Sobel edge maps into a grid of discrete codes, the causal transformer (M) predicts next-frame tokens with action tokens interleaved in the sequence, and the CNN controller (C) reads the current token grid alongside the transformer hidden state to select actions. During live play the grid comes from the current observation; during autoregressive dreaming, grids after the seed context are model-generated.}
   \label{fig:pipeline}
 \end{figure}
 
@@ -228,13 +228,13 @@ Given $d(i,j)$, we compare three kernels:
 \end{equation}
 The three families differ in tail behaviour.
 Cauchy has polynomial tails and leaks meaningful mass to distant neighbours; Laplace has a cusp at $d=0$ and an exponential tail; Gaussian has the thinnest tails, decaying faster than either alternative once $d$ exceeds the bandwidth.
-We take Gaussian with a small top-$k$ neighbourhood as the current default: thin tails ensure distant neighbours receive negligible mass while the nearest alternatives still receive meaningful target probability.
+We take a Gaussian over the full codebook as the current default: thin tails ensure distant neighbours receive negligible mass while the nearest alternatives still receive meaningful target probability.
 
 \paragraph{Metric calibration.}
 A natural alternative is per-dimension weights $\alpha_d$ calibrated from an empirical sensitivity probe: perturbing each FSQ dimension by $\pm 1$, decoding, and measuring reconstruction MSE.
 The probe gives data-dependent weights, but ties the smoothing target to a particular trained codebook and varies across training runs.
 For the FSQ Geometry Dash system, we use an isotropic kernel and fix $\sigma$ by a geometric rule: choose the bandwidth so that the immediate integer lattice neighbour sits near the kernel's half-maximum.
-For embedding-distance baselines, the corresponding hyperparameters are the smoothing mass, kernel temperature or width, and top-$k$ truncation.
+For embedding-distance baselines, the corresponding hyperparameters are the smoothing mass, kernel temperature or width, and, if used for scalability, top-$k$ truncation.
 The sensitivity probe is retained as an analysis tool to characterize a learned codebook's anisotropy and cross-dimension coupling, but not as a hyperparameter source.
 
 \paragraph{Structured smooth target.}
@@ -247,7 +247,7 @@ We replace the uniform distribution in Equation~\ref{eq:uniform_ls} with a kerne
   \end{cases}
   \label{eq:sls}
 \end{equation}
-The full target matrix $\mathbf{Q} \in \mathbb{R}^{V \times V}$ can be precomputed once per kernel choice when the vocabulary is small, or truncated to the top-$k$ neighbours for larger codebooks (Figure~\ref{fig:sls_kernel}).
+For the $V=\vocabsize$ vocabulary used here, we precompute the full dense target matrix $\mathbf{Q} \in \mathbb{R}^{V \times V}$ once per kernel choice; top-$k$ truncation is only a possible scalability option for larger codebooks (Figure~\ref{fig:sls_kernel}).
 
 \paragraph{Annealing diagnostic.}
 The smoothing mass $\varepsilon_t$ is scheduled during training.
@@ -264,12 +264,19 @@ For Geometry Dash, we keep SLS fixed: exact token identity is a stricter target 
 \end{figure}
 
 \paragraph{Integration with focal loss.}
-To handle class imbalance (background tokens dominate over obstacle and spike tokens), we combine SLS with focal loss~\citep{lin2017focal}:
+To handle class imbalance (background tokens dominate over obstacle and spike tokens), we apply focal modulation to the SLS soft-target cross-entropy~\citep{lin2017focal}. For target token $i$, define
 \begin{equation}
-  \mathcal{L}_\text{SLS-focal} = -\sum_{j=1}^{V} (1 - p_j)^\gamma \, q_t(j \mid i) \, \log p_j,
+  \ell_\text{SLS}(i) = -\sum_{j=1}^{V} q_t(j \mid i)\log p_j,
+  \qquad
+  \bar p_i = \exp\!\left[-\ell_\text{SLS}(i)\right],
+\end{equation}
+and compute
+\begin{equation}
+  \mathcal{L}_\text{SLS-focal}(i)
+  = (1-\bar p_i)^\gamma\,\ell_\text{SLS}(i),
   \label{eq:sls_focal}
 \end{equation}
-where $p_j = \text{softmax}(\mathbf{z})_j$ and $\gamma = \focalgamma$.
+where $p_j = \text{softmax}(\mathbf{z})_j$ and $\gamma = \focalgamma$; the training objective averages this quantity over target positions. Thus focal modulation is applied once to the aggregate soft-target cross-entropy, not independently to each class term.
 
 % ---------------------------------------------------------------------------
 \subsection{Transformer WM (Model)}
@@ -301,10 +308,8 @@ At inference, the next frame's $\ntokens$ visual tokens are decoded in a single 
 Following TWISTER~\citep{burchi2025twister}, we add an action-conditional contrastive predictive coding (AC-CPC) auxiliary loss: for each $k \in \{1, \dots, K\}$, an MLP head predicts the future hidden state $\mathbf{h}_{t+k}$ from the current $\mathbf{h}_t$ and the intervening actions $a_{t:t+k-1}$, scored against in-batch negatives with InfoNCE.
 The auxiliary loss enters the total objective with weight $\lambda_\text{cpc} = 0.1$.
 
-\paragraph{FSQ-neighbor token noise.}
-On context tokens, with probability 5\% per token we replace the token with a lattice neighbour obtained by perturbing a single FSQ dimension by $\pm 1$.
-An earlier dual-noise scheme also applied uniform random-token replacement, but uniform replacement contradicts the SLS geometry (it presents distant tokens as substitutable for the target, the opposite of the SLS signal on the loss side).
-We kept only the FSQ-neighbor branch so that context and loss agree on what counts as a near-miss.
+\paragraph{Context-token noise.}
+The reported transformer uses two context-noise branches. Each visual context token is independently eligible for 5\% uniform random-token replacement and for 5\% FSQ-neighbour replacement, where the latter perturbs one lattice dimension by $\pm 1$ subject to codebook boundaries. Noise is applied only to context visual tokens, not target or status tokens.
 
 \paragraph{Output projection and total loss.}
 The output projection shares weights with the input embedding (weight tying).
@@ -319,10 +324,10 @@ applied to the transformer parameters with the FSQ tokenizer frozen.
 \label{sec:controller}
 % ---------------------------------------------------------------------------
 
-The controller is a lightweight CNN actor-critic, in the spirit of IRIS~\citep{micheli2023iris} and DIAMOND, that reads the predicted token grid alongside the transformer's hidden state and outputs a jump probability and a state value estimate.
+The controller is a lightweight CNN actor-critic, in the spirit of IRIS~\citep{micheli2023iris} and DIAMOND, that reads the current token grid alongside the transformer's hidden state and outputs a jump probability and a state value estimate. During live play, the grid is encoded from the current observed frame; during latent rollouts, the first grid comes from the recorded seed context and subsequent grids are sampled from the frozen world model.
 
 \paragraph{Architecture.}
-Token IDs are embedded into a small learnable space and reshaped into the $\gridsize$ spatial grid; two stride-1 convolutions with max-pooling produce a 256-dimensional feature vector, which is concatenated with the transformer's hidden state $\mathbf{h}_t \in \mathbb{R}^{\hdim}$ and passed to zero-initialized linear actor and critic heads.
+Token IDs are embedded into a small learnable space and reshaped into the $\gridsize$ spatial grid; two stride-1 convolutions with max-pooling produce a 256-dimensional feature vector, which is concatenated with the transformer's hidden state $\mathbf{h}_t \in \mathbb{R}^{\hdim}$ and passed to zero-initialized linear actor and critic heads. A third zero-initialized multi-token-prediction head predicts the next eight binary actions from the same features; during PPO, its mean binary cross-entropy enters the loss with coefficient $0.1$.
 The full controller has $\ctrlparams$ parameters.
 
 \paragraph{Training in latent rollouts.}
@@ -330,7 +335,7 @@ The controller is first pretrained via Behavioural Cloning (BC) on expert demons
 We use BC as an initialization mechanism rather than as the final learning rule: demonstrations supply a non-random policy from observation, and PPO then performs action-based improvement in the model's imagination~\citep{dupoux2026why, silver2016mastering, hester2018deep, baker2022vpt}.
 At each iteration, several hundred rollouts of up to 45 steps are generated by autoregressively sampling from the frozen WM.
 Rollouts terminate when the predicted death probability exceeds 0.5.
-Rewards are $+1$ per survival step with a $-0.2$ penalty per jump to discourage gratuitous jumping (an idle agent dies immediately upon reaching an obstacle, while a jumping agent survives longer by spending time airborne, creating a deceptive local optimum).
+Rewards are $+1$ per survival step with a $-0.25$ penalty per jump to discourage gratuitous jumping (an idle agent dies immediately upon reaching an obstacle, while a jumping agent survives longer by spending time airborne, creating a deceptive local optimum).
 We use GAE~\citep{schulman2017ppo} with $\gamma = 0.995$, $\lambda = 0.95$, and clip ratio $\varepsilon_\text{PPO} = 0.2$.
 A Dreamer-style $\lambda$-return actor-critic is a natural replacement: on-policy imagined rollouts make PPO's off-policy clipped surrogate unnecessary.
 We leave this to future work.
@@ -347,16 +352,16 @@ Colliding with any obstacle causes instant death.
 Levels are deterministic: the same action sequence always produces the same outcome, but frame-accurate timing is required.
 
 \paragraph{Data collection.}
-We collect roughly 4,200 gameplay episodes ($\sim$250K frames) including both intentional-death episodes (covering diverse failure modes) and 36 expert demonstrations (full level clears).
+We collect roughly 4,200 gameplay episodes ($\sim$250K frames) including both intentional-death episodes (covering diverse failure modes) and 36 expert trajectories/segments. The expert subset contains 33,153 frames spanning 1,137.1 seconds (18.95 minutes) of recording; individual segments contain 91--2,601 frames and last 3.13--87.90 seconds (median 530 frames and 18.59 seconds). Per-recording metadata preserves a numeric capture-level identifier, target and measured frame rates, and a timestamp, but does not annotate the in-level start state or an explicit completion status. We therefore do not treat every segment as a verified full-level clear.
 Vertical shift augmentation ($\pm 2, \pm 4$ pixels) expands the dataset $5\times$.
 Frames are preprocessed with Sobel edge detection and resized to $\imgsize$.
 Before transformer training, all 4,264 base episodes are retokenized with the selected frozen FSQ checkpoint; the base data and four shifted variants yield exactly 21,320 tokenized episodes. The archived world-model job reports consuming the same 21,320 episodes. We retain the checkpoint hash, tokenization and training timestamps, job identifier, and relevant log extracts with the released artifacts.
 
 \paragraph{Training details.}
-The FSQ-VAE and the transformer are trained sequentially with AdamW using cosine annealing and warmup. The FSQ-VAE is trained for 200 epochs (LR $4\cdot 10^{-3}$, batch 32) with the slowness and uniformity regularizers weighted at $\alpha_\text{slow} = 0.1$ and $\alpha_\text{uniform} = 0.01$, after which the encoder is frozen and its tokens are cached. The transformer is then trained for 200 epochs (LR $10^{-3}$, weight decay $0.05$, dropout $0.1$, batch 256) with 5\% FSQ-neighbor token noise on context tokens, and death frames oversampled $15\times$ via weighted sampling.
+The FSQ-VAE and transformer are trained sequentially. The FSQ-VAE is trained for 1,000 epochs with Adam (batch 2,048, initial LR $10^{-3}$, cosine decay to $10^{-5}$, no warmup), with the slowness and uniformity regularizers weighted at $\alpha_\text{slow}=0.1$ and $\alpha_\text{uniform}=0.01$. Validation and best-checkpoint selection occur every ten epochs. The selected encoder is then frozen and used to retokenize the corpus. The transformer is trained for 200 epochs with AdamW (batch 512, 500 optimization steps per epoch, initial LR $2\cdot10^{-3}$, five-epoch linear warmup followed by cosine decay to $5\cdot10^{-5}$, weight decay $0.01$, dropout $0.1$, and gradient clipping at $1.0$). Its objective uses fixed Gaussian SLS ($\varepsilon=0.1$, $\sigma=0.9$, focal $\gamma=2$), the two 5\% context-noise branches described above, AC-CPC weight $0.1$, and $5\times$ death-frame oversampling.
 The Geometry Dash transformer uses fixed SLS with smoothing mass $0.1$, rather than the Atari annealing schedule, because its role is to preserve a local semantic neighbourhood over FSQ codes rather than to provide a late-stage exact-CE benchmark comparison.
 BF16 mixed-precision training is used throughout; BF16 requires no loss scaling and is numerically more stable than FP16.
-Training runs on a single NVIDIA A100 GPU.
+Training runs on a single NVIDIA H200 GPU.
 
 \paragraph{Training throughput.}
 We benchmarked \texttt{torch.compile} modes under BF16 on our joint-training workload using subprocess isolation to prevent CUDA allocator fragmentation across runs.
@@ -383,8 +388,8 @@ Cold-start PPO converges to the same plateau as BC-initialized PPO on all metric
 BC is retained in the pipeline on this basis.
 
 \paragraph{Evaluation metrics.}
-We report: (1) next-token prediction accuracy and cross-entropy on held-out episodes, (2) death prediction precision/recall/F1, (3) BC action prediction accuracy, (4) PPO survival in latent rollouts, (5) live-loop deployment latency, and (6) acted frames survived in the real game.
-For the controlled deployment evaluation, we freeze the V7 checkpoints and run 100 consecutive attempts on each of the first three official levels at 30\,FPS with Auto-Retry enabled. The evaluator uses game memory only to delimit alive/dead episodes; the reported outcome is acted frames survived rather than level percentage. We compute each confidence interval of the mean using a percentile bootstrap over attempts with 50{,}000 resamples.
+We report: (1) next-token prediction accuracy and cross-entropy on held-out episodes, (2) death prediction precision/recall/F1, (3) BC action prediction accuracy, (4) PPO survival on fixed latent-rollout development contexts, (5) live-loop deployment latency, and (6) acted frames survived in the real game.
+For PPO checkpoint development, we pre-sample 512 fixed contexts from the nominal validation episodes and reevaluate them every ten iterations. Because PPO rollout seeds are drawn from the full episode collection, including those episodes, and the best checkpoint is selected adaptively on this fixed set, we report this quantity as a development metric rather than held-out validation. For the controlled deployment evaluation, we freeze the selected checkpoints and run 100 consecutive attempts on each of the first three official levels at 30\,FPS with Auto-Retry enabled. The evaluator uses game memory only to delimit alive/dead episodes; the reported outcome is acted frames survived rather than level percentage. We compute each confidence interval of the mean using a percentile bootstrap over attempts with 50{,}000 resamples.
 For the application section, we retain qualitative generated rollouts: the WM is seeded with real gameplay frames and action tokens, then rolled forward to visualize level continuations and failure/survival branches in token space.
 
 % ===========================================================================
@@ -395,16 +400,16 @@ For the application section, we retain qualitative generated rollouts: the WM is
 \subsection{Geometry Dash system metrics}
 \label{sec:gd-results}
 
-Table~\ref{tab:gd-system} summarizes the frozen V7 DashVMC checkpoints and controlled live evaluation.
+Table~\ref{tab:gd-system} summarizes the frozen DashVMC checkpoints and controlled live evaluation.
 The selected tokenizer checkpoint (epoch 920, minimum validation reconstruction loss) has held-out reconstruction SSE $1.595$ per frame, where squared pixel errors are summed over each $64\!\times\!64$ frame and averaged over samples.
 The selected transformer checkpoint (epoch 139, maximum validation death F1) reaches $29.74\%$ held-out token accuracy and death F1 $0.7941$.
-The BC checkpoint selected by minimum validation loss at epoch 9 reaches $79.76\%$ held-out action accuracy, and the PPO checkpoint selected at iteration 3250 reaches fixed latent-rollout evaluation survival of $29.71$ out of $45$ steps.
+The BC checkpoint selected by minimum validation loss at epoch 9 reaches $79.76\%$ held-out action accuracy, and the PPO checkpoint selected at iteration 3250 reaches fixed-context latent-rollout development survival of $29.71$ out of $45$ steps.
 On Levels~1 and~2, the frozen policy survives $279.6$ and $263.3$ acted frames on average, with overlapping 95\% bootstrap CIs of $[270.5, 289.2]$ and $[239.8, 287.2]$. Mean survival on Level~3 is $64.3$ frames (95\% CI $[59.3, 70.0]$), and 75\% of attempts end by frame~93. This reduction is expected to some degree: the official levels increase in difficulty, and Level~3 introduces yellow orbs that require an additional timed jump input while airborne. We therefore report each level separately rather than interpreting the values as a controlled generalization comparison.
 In separate qualitative intervention runs, bypassing a small number of recurring blocking obstacles allows the same policy to clear most later sections; this observation is not included in the controlled survival statistics.
 
 \begin{table}[t]
   \centering
-  \caption{Selection-aligned frozen V7 DashVMC system metrics. Model rows report metrics at the model-selection point rather than independent maxima across training; each live row contains 100 consecutive automated attempts.}
+  \caption{Selection-aligned frozen DashVMC system metrics. Model rows report metrics at the model-selection point rather than independent maxima across training; each live row contains 100 consecutive automated attempts.}
   \label{tab:gd-system}
   \begin{tabular}{lll}
     \toprule
@@ -414,7 +419,7 @@ In separate qualitative intervention runs, bypassing a small number of recurring
     World model & Selected validation token accuracy & $29.74\%$ \\
     World model & Selected validation death F1 & $0.7941$ \\
     BC controller & Selected-epoch validation accuracy & $79.76\%$ \\
-    PPO controller & Selected latent eval survival & $29.71 / 45$ steps \\
+    PPO controller & Selected latent development survival & $29.71 / 45$ steps \\
     Live Level 1 & Mean survival (95\% CI) & $279.6\ [270.5, 289.2]$ frames \\
     Live Level 2 & Mean survival (95\% CI) & $263.3\ [239.8, 287.2]$ frames \\
     Live Level 3 & Mean survival (95\% CI) & $64.3\ [59.3, 70.0]$ frames \\
@@ -461,8 +466,8 @@ The decoder is used only for visualization in this setting; policy optimization 
 
 \begin{figure}[t]
   \centering
-  \includegraphics[width=\textwidth]{figures/continuation_v7.png}
-  \caption{Decoded visual continuation from a real gameplay prefix. The first four frames are recorded Sobel observations; the remaining frames are sampled autoregressively from the V7 world model under the recorded future action sequence and decoded through the FSQ decoder.}
+  \includegraphics[width=\textwidth]{figures/continuation.png}
+  \caption{Decoded visual continuation from a real gameplay prefix. The first four frames are recorded Sobel observations; the remaining frames are sampled autoregressively from the selected world model under the recorded future action sequence and decoded through the FSQ decoder.}
   \label{fig:continuation}
 \end{figure}
 
@@ -520,7 +525,7 @@ Even with both fixes, the AdaLN variant matched but did not surpass the in-seque
 Scaling the embedding dimension from $\hdim = 384$ to $512$ at otherwise matched capacity improves dream-quality metrics (validation cross-entropy and AC-CPC score) but does not translate into real-game gains, with extra training time per epoch. We retain the smaller model.
 
 \paragraph{MLP controller on $\mathbf{h}_t$ alone.}
-We tested a controller that consumes only the transformer hidden state $\mathbf{h}_t$, with no CNN over the predicted token grid, motivated by the fact that $\mathbf{h}_t$ already encodes spatial and temporal structure through $\nlayers$ transformer layers with 3D-RoPE.
+We tested a controller that consumes only the transformer hidden state $\mathbf{h}_t$, with no CNN over the current token grid, motivated by the fact that $\mathbf{h}_t$ already encodes spatial and temporal structure through $\nlayers$ transformer layers with 3D-RoPE.
 This MLP variant converges 2--$5\times$ faster in PPO and has the smallest train-eval gap of any controller we trained, but the CNN-on-tokens variant from Section~\ref{sec:controller} dominates it on real-game level progress, suggesting the explicit token-grid signal carries information that is washed out in the global hidden-state summary.
 
 % ===========================================================================
@@ -530,7 +535,7 @@ This MLP variant converges 2--$5\times$ faster in PPO and has the smallest train
 
 The current benchmark evidence for annealed SLS does not support a broad method claim: on IRIS/Pong with five CE and five annealed-SLS seeds, CE has better final/tail return and a lower catastrophic-failure rate.
 The result leaves open whether a different tokenizer metric, schedule, or game could make SLS useful, but that is outside the scope of this paper.
-The full V7-native Atari controller path did not become a reliable evaluation vehicle and is explicitly out of scope for this paper.
+The full Atari controller path did not become a reliable evaluation vehicle and is explicitly out of scope for this paper.
 Geometry Dash remains a single-game application with a binary action space and deterministic level layouts.
 The controlled live evaluation covers 300 attempts of one frozen policy across three deterministic levels of increasing difficulty. It measures deployment variability, not uncertainty over training seeds, and the current evaluator measures survival duration rather than level percentage. Because Level~3 introduces a timed mid-air yellow-orb mechanic, its lower survival cannot by itself be interpreted as a generalization failure.
 The level-generation claim is likewise scoped to autoregressive visual continuations sampled from the learned dynamics model, not to exporting editor-valid Geometry Dash levels with guaranteed playability.
@@ -546,10 +551,10 @@ Recent GQ-style tokenizers improve image-tokenizer rate-distortion benchmarks, b
 \label{sec:conclusion}
 % ===========================================================================
 
-We presented DashVMC, a real-time discrete-WM system for Geometry Dash: an FSQ-VAE tokenizer, a causal transformer with action tokens interleaved in the sequence and a TWISTER-style action-conditional contrastive auxiliary loss, and a CNN actor-critic on the predicted token grid trained via BC and PPO entirely in latent rollouts.
+We presented DashVMC, a real-time discrete-WM system for Geometry Dash: an FSQ-VAE tokenizer, a causal transformer with action tokens interleaved in the sequence and a TWISTER-style action-conditional contrastive auxiliary loss, and a CNN actor-critic on the current token grid trained via BC and PPO entirely in latent rollouts.
 The same action-conditioned dynamics can be used generatively: from a real gameplay prefix, the model rolls out plausible future token grids and decoded frames, providing procedural level-continuation samples in addition to control-oriented latent rollouts.
 The three components are trained sequentially, and the full pipeline is deployed at 30\,FPS on consumer hardware, with measured full-loop latency of approximately 15\,ms.
-Across 100 controlled attempts per level, the frozen V7 policy averages $9.32$\,s and $8.78$\,s of survival on Levels~1 and~2 and $2.14$\,s on the harder Level~3 with its additional yellow-orb timing mechanic.
+Across 100 controlled attempts per level, the frozen policy averages $9.32$\,s and $8.78$\,s of survival on Levels~1 and~2 and $2.14$\,s on the harder Level~3 with its additional yellow-orb timing mechanic.
 A set of architectural variants (joint FSQ+M training, AdaLN-Zero action conditioning, scaling to a larger transformer, an MLP controller on the hidden state) is reported as ablations: each is more elegant on paper but did not improve real-game level progress in our experiments, motivating the deliberately conservative baseline of this paper.
 Structured Label Smoothing is reported as a scoped Geometry Dash design choice and auxiliary diagnostic: it is motivated by FSQ-neighbour equivalence in the application, but the IRIS/Pong transfer test does not support a broad method claim.
 A natural extension is to make the tokenizer-neighbour objective adaptive, but this would require a controlled validation target and safeguards against degenerate soft targets.
