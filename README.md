@@ -5,7 +5,7 @@
 
 DashVMC is a real-time discrete Vision-Model-Controller system for Geometry Dash. It combines an FSQ tokenizer, an action-conditioned transformer world model, and a lightweight actor-critic trained from behavioural cloning plus PPO in latent rollouts.
 
-The deployed controller runs at the same 30 FPS cadence as the captured training data. The full loop measures about 15 ms per frame on an RTX 2060, leaving compute headroom of roughly 67 FPS; the 30 FPS setting is a data/capture cadence choice, not the inference ceiling.
+The deployed controller runs at the same 30 FPS cadence as the captured training data. Over 5,000 optimized-path frames on an RTX 2060, wall-clock latency from capture through the keyboard action update averaged 16.3 ms (median 16.3 ms, p95 18.7 ms), corresponding to roughly 61 FPS of mean compute headroom.
 
 <p align="center">
    <b>[ <a href="https://tariolle.github.io/dash-vmc/static/pdfs/dashvmc.pdf">Paper Draft</a> | <a href="https://tariolle.github.io/dash-vmc/">Website</a> | <a href="https://github.com/Tariolle/dash-vmc">Code</a> ]</b>
@@ -61,17 +61,18 @@ Mean per-stage latency was measured over approximately 5,000 frames on an RTX 20
 
 | Stage | Mean latency |
 | --- | ---: |
-| Screen capture | 2.4 ms |
+| Screen capture | 2.2 ms |
 | Crop | 0.5 ms |
 | Grayscale | 0.5 ms |
-| Sobel | 2.6 ms |
-| Downscale | 2.1 ms |
-| FSQ encode | 1.4 ms |
-| Transformer | 4.2 ms |
-| Controller | 1.1 ms |
-| **Full loop** | **~15.0 ms** |
+| Sobel | 2.5 ms |
+| Downscale | 2.2 ms |
+| FSQ encode | 2.1 ms |
+| Transformer | 4.9 ms |
+| Controller | 0.5 ms |
+| Component-sum mean | 15.3 ms |
+| **Measured end-to-end** | **16.3 ms** |
 
-The stage values are rounded independently. The approximately 15 ms full loop corresponds to roughly 67 FPS of compute headroom; deployment remains fixed at the 30 FPS capture and training-data cadence.
+The wall-clock measurement starts immediately before capture and ends after the keyboard action update when required, excluding only the deliberate frame-rate sleep. Median latency is 16.3 ms, p95 is 18.7 ms, and 2/5,000 frames exceed the 33.3 ms budget. Raw measurements and exact runtime metadata are in [`analysis/2026-07-20_v7_deploy/optimized_wallclock_5000.json`](analysis/2026-07-20_v7_deploy/optimized_wallclock_5000.json). The synchronization-heavy evaluation path is intentionally excluded from this deployment benchmark because it transfers context through CPU/NumPy and synchronizes CUDA after every stage.
 
 ## Scoped Diagnostics
 

@@ -63,26 +63,38 @@ respectively. It retains the BC training log but does not track the intermediate
 
 ## Optimized deployment timing
 
-The deployment benchmark measures the optimized live path over approximately
-5,000 frames on an RTX 2060. This path uses GPU-resident buffers, compiled
-FSQ inference, a CUDA Graph for transformer context encoding, and the natural
-end-of-frame synchronization used to obtain the controller action.
+The deployment benchmark measures 5,000 active post-warmup frames on the
+optimized live path on an RTX 2060. This path uses GPU-resident context,
+compiled FSQ inference, a CUDA Graph for transformer context encoding, and the
+natural end-of-frame synchronization used to obtain the controller action.
 
 | Stage | Mean ms |
 | --- | ---: |
-| Screen capture | 2.4 |
+| Screen capture | 2.2 |
 | Crop | 0.5 |
 | Grayscale | 0.5 |
-| Sobel | 2.6 |
-| Downscale | 2.1 |
-| FSQ encode | 1.4 |
-| Transformer | 4.2 |
-| Controller | 1.1 |
-| **Total** | **15.0** |
+| Sobel | 2.5 |
+| Downscale | 2.2 |
+| FSQ encode | 2.1 |
+| Transformer | 4.9 |
+| Controller | 0.5 |
+| Component-sum mean | 15.3 |
+| **Measured end-to-end** | **16.3** |
 
-The 15.0 ms total corresponds to approximately 67 FPS of compute headroom.
-Deployment remains configured at 30 FPS to match the capture and training-data
-cadence.
+End-to-end wall time begins immediately before screen capture and ends after
+the keyboard action update when required, excluding the deliberate cadence
+sleep. Its mean is 16.289 ms, median 16.308 ms, p75 17.302 ms, and p95
+18.722 ms; 2 of 5,000 frames (0.04%) exceed the 33.3 ms budget. The mean
+corresponds to approximately 61 FPS of compute headroom, while deployment
+remains configured at 30 FPS to match the capture and training-data cadence.
+Raw stage and end-to-end samples, hardware, checkpoint paths, and optimization
+flags are retained in `optimized_wallclock_5000.json`.
+
+The timing fields in the controlled evaluator JSON files are not deployment
+benchmarks. That diagnostic path transfers token context through CPU/NumPy and
+calls `torch.cuda.synchronize()` after every GPU stage so that each component
+can be timed independently; those operations are absent from the optimized
+live path and intentionally make the evaluator slower.
 
 ## Scope
 

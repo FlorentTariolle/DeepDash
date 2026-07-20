@@ -18,7 +18,10 @@ Usage:
 import argparse
 import ctypes
 import ctypes.wintypes as wt
+from datetime import datetime, timezone
+import json
 import os
+from pathlib import Path
 import sys
 import time
 
@@ -81,14 +84,19 @@ class StageBench:
     list grows during the loop.
     """
 
-    def __init__(self, gpu_stages, cpu_stages, device):
+    def __init__(self, gpu_stages, cpu_stages, device,
+                 aggregate_stages=None):
         self._device = device
         self._use_cuda = device.type == "cuda"
         self._order = list(cpu_stages) + list(gpu_stages)
+        self._aggregate_stages = (list(aggregate_stages)
+                                  if aggregate_stages is not None
+                                  else list(self._order))
         self._n = {s: 0 for s in self._order}
         self._sum = {s: 0.0 for s in self._order}
         self._sum_sq = {s: 0.0 for s in self._order}
         self._max = {s: 0.0 for s in self._order}
+        self._samples = {s: [] for s in self._order}
         if self._use_cuda:
             self._events = {
                 s: (torch.cuda.Event(enable_timing=True),
@@ -143,8 +151,39 @@ class StageBench:
         self._n[stage] += 1
         self._sum[stage] += ms
         self._sum_sq[stage] += ms * ms
+        self._samples[stage].append(ms)
         if ms > self._max[stage]:
             self._max[stage] = ms
+
+    def count(self, stage):
+        return self._n[stage]
+
+    def count_above(self, stage, threshold_ms):
+        return sum(value > threshold_ms for value in self._samples[stage])
+
+    def results(self):
+        stages = {}
+        for stage in self._order:
+            values = np.asarray(self._samples[stage], dtype=np.float64)
+            if values.size == 0:
+                continue
+            stages[stage] = {
+                "mean_ms": round(float(values.mean()), 3),
+                "median_ms": round(float(np.median(values)), 3),
+                "p25_ms": round(float(np.percentile(values, 25)), 3),
+                "p75_ms": round(float(np.percentile(values, 75)), 3),
+                "p95_ms": round(float(np.percentile(values, 95)), 3),
+                "min_ms": round(float(values.min()), 3),
+                "max_ms": round(float(values.max()), 3),
+                "std_ms": round(float(values.std()), 3),
+                "n": int(values.size),
+                "samples_ms": [round(float(value), 3) for value in values],
+            }
+        stages["component_sum_mean_ms"] = round(sum(
+            stages[stage]["mean_ms"] for stage in self._aggregate_stages
+            if stage in stages
+        ), 3)
+        return stages
 
     def summary(self):
         n_max = max(self._n.values(), default=0)
@@ -153,19 +192,20 @@ class StageBench:
         lines = [f"\n=== Pipeline timing (averaged over {n_max} frames after warmup) ==="]
         lines.append(f"{'stage':<14}{'mean':>11}{'std':>11}{'max':>11}{'n':>8}")
         lines.append("-" * 55)
-        total_mean = 0.0
+        results = self.results()
         for stage in self._order:
-            n = self._n[stage]
-            if n == 0:
+            if stage not in results:
                 continue
-            mean = self._sum[stage] / n
-            var = max(0.0, self._sum_sq[stage] / n - mean * mean)
-            std = var ** 0.5
-            mx = self._max[stage]
+            stats = results[stage]
+            n = stats["n"]
+            mean = stats["mean_ms"]
+            std = stats["std_ms"]
+            mx = stats["max_ms"]
             lines.append(f"{stage:<14}{mean:>9.3f}ms{std:>9.3f}ms{mx:>9.3f}ms{n:>8}")
-            total_mean += mean
         lines.append("-" * 55)
-        lines.append(f"{'TOTAL':<14}{total_mean:>9.3f}ms")
+        lines.append(
+            f"{'COMPONENT SUM':<14}{results['component_sum_mean_ms']:>9.3f}ms"
+        )
         return "\n".join(lines)
 
 
@@ -180,6 +220,14 @@ def main():
     parser.add_argument("--fps", type=int, default=30)
     parser.add_argument("--jump-threshold", type=float, default=0.5,
                         help="Jump probability threshold (higher = less jumping)")
+    parser.add_argument(
+        "--benchmark-samples", type=int, default=0,
+        help="Stop after this many active post-warmup frames (0 = F10 only).",
+    )
+    parser.add_argument(
+        "--benchmark-output", default=None,
+        help="Write raw optimized-path timing samples and metadata to JSON.",
+    )
     # Model architecture (defaults from configs/v3.yaml)
     parser.add_argument("--config", default=None)
     parser.add_argument("--levels", type=int, nargs="+", default=None)
@@ -260,6 +308,7 @@ def main():
     controller.eval()
 
     # Optimize inference
+    use_compile = False
     use_cuda_graph = False
     if device.type == "cuda":
         torch.backends.cudnn.benchmark = True
@@ -273,6 +322,7 @@ def main():
                 for _ in range(3):
                     vae.encode(dummy_frame)
             torch.cuda.synchronize()
+            use_compile = True
         except Exception as e:
             print(f"torch.compile not available: {e}")
 
@@ -325,13 +375,22 @@ def main():
 
     bench = StageBench(
         gpu_stages=["fsq", "transformer", "controller"],
-        cpu_stages=["capture", "crop", "grayscale", "sobel", "downscale"],
+        cpu_stages=[
+            "capture", "crop", "grayscale", "sobel", "downscale",
+            "end_to_end",
+        ],
         device=device,
+        aggregate_stages=[
+            "capture", "crop", "grayscale", "sobel", "downscale",
+            "fsq", "transformer", "controller",
+        ],
     )
 
     print("Controls:")
     print("  F5  -- toggle agent on/off")
     print("  F10 -- quit + log pipeline timing")
+    if args.benchmark_samples > 0:
+        print(f"  Auto-stop after {args.benchmark_samples} measured frames")
     print("\nWaiting for F5...")
 
     while True:
@@ -362,6 +421,7 @@ def main():
             break
 
         # --- Capture ---
+        bench.cpu_start("end_to_end")
         bench.cpu_start("capture")
         img = cam.grab(region=region)
         bench.cpu_end("capture")
@@ -465,7 +525,6 @@ def main():
         # now safe to query.
         p = prob[0].item()
         jump = p > args.jump_threshold
-        bench.commit()
 
         # --- Execute action ---
         if jump and not jumping:
@@ -474,6 +533,13 @@ def main():
         elif not jump and jumping:
             keyboard.release("space")
             jumping = False
+        bench.cpu_end("end_to_end")
+        bench.commit()
+
+        if (args.benchmark_samples > 0
+                and bench.count("end_to_end") >= args.benchmark_samples):
+            print(f">> Collected {args.benchmark_samples} benchmark frames")
+            break
 
         # Track probability distribution
         if not hasattr(main, '_probs'):
@@ -500,6 +566,60 @@ def main():
     if jumping:
         keyboard.release("space")
     print(bench.summary(), flush=True)
+    if args.benchmark_output and bench.count("end_to_end") > 0:
+        output_path = Path(args.benchmark_output)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        frame_budget_ms = 1000.0 / args.fps
+        frames_over_budget = bench.count_above("end_to_end", frame_budget_ms)
+        payload = {
+            "schema_version": 1,
+            "created_utc": datetime.now(timezone.utc).isoformat(),
+            "measurement": {
+                "path": "scripts/deploy.py optimized live deployment",
+                "end_to_end_definition": (
+                    "wall-clock time from immediately before screen capture "
+                    "through the keyboard action update when required, "
+                    "excluding frame-rate sleep"
+                ),
+                "warmup": f"first {K - 1} context-fill frames excluded",
+                "requested_samples": args.benchmark_samples,
+                "recorded_samples": bench.count("end_to_end"),
+                "requested_cadence_fps": args.fps,
+                "frame_budget_ms": round(frame_budget_ms, 3),
+                "frames_over_budget": frames_over_budget,
+                "frames_over_budget_percent": round(
+                    100.0 * frames_over_budget / bench.count("end_to_end"), 3
+                ),
+            },
+            "hardware": {
+                "device": str(device),
+                "gpu": (torch.cuda.get_device_name(0)
+                        if device.type == "cuda" else None),
+                "torch_version": torch.__version__,
+                "cuda_version": torch.version.cuda,
+            },
+            "optimizations": {
+                "fsq_torch_compile": use_compile,
+                "transformer_cuda_graph": use_cuda_graph,
+                "gpu_resident_context": True,
+                "pinned_frame_buffer": pin_buf is not None,
+                "per_stage_cuda_synchronization": False,
+                "action_probability_sync": "prob[0].item()",
+            },
+            "model": {
+                "config": args.config,
+                "vae_checkpoint": args.vae_checkpoint,
+                "transformer_checkpoint": args.transformer_checkpoint,
+                "controller_checkpoint": args.controller_checkpoint,
+                "policy_class": policy_class,
+                "context_frames": K,
+            },
+            "timing": bench.results(),
+        }
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2)
+            f.write("\n")
+        print(f"Saved benchmark to {output_path}")
     del cam
     print("\nDone.")
 

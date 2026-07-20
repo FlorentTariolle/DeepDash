@@ -80,7 +80,7 @@
 Fast deterministic games expose a practical world model problem: predictions must be visually sharp enough for control, action-conditioned over short timing windows, and cheap enough for live deployment.
 We present \emph{DashVMC}, a real-time discrete Vision-Model-Controller pipeline for Geometry Dash.
 An FSQ tokenizer encodes $\imgsize$ Sobel frames into $\gridsize$ token grids; a causal transformer predicts next-frame tokens from action-conditioned context; and a lightweight actor-critic is warm-started by behavioural cloning and optimized with PPO in latent rollouts.
-The deployed agent runs at the 30\,FPS cadence used by the captured training data, while the measured full loop takes approximately 15\,ms on an RTX 2060, leaving headroom beyond the configured deployment rate.
+The deployed agent runs at the 30\,FPS cadence used by the captured training data, while measured optimized-path latency remains well within the 33\,ms frame budget on an RTX 2060.
 Across 100 consecutive automated attempts, the frozen policy survives roughly ten seconds on each of the first two official levels; qualitative intervention runs show that it can clear most later sections when a small number of recurring blocking obstacles are skipped.
 The same action-conditioned dynamics can also be rolled forward from real gameplay prefixes to produce decoded visual continuations of plausible future Geometry Dash segments.
 We report the system design, latency profile, current model/controller metrics, and implementation diagnostics that motivated the final conservative architecture.
@@ -113,12 +113,12 @@ The application is a fast-paced platformer that demands frame-accurate predictio
 Our system consists of three components: (1) an FSQ tokenizer that encodes $\imgsize$ Sobel edge maps into $\gridsize$ grids of discrete tokens, (2) a causal transformer that interleaves action tokens with frame tokens in a single sequence and predicts the next frame's tokens via parallel decoding, and (3) a lightweight CNN actor-critic on the current token grid, warm-started with Behavioural Cloning and fine-tuned with PPO~\citep{schulman2017ppo} entirely in latent rollouts.
 Because the dynamics model is action-conditioned and autoregressive, it also acts as a procedural level-continuation generator: seeded with a short observed prefix and a candidate action sequence, it samples future token grids that decode into plausible continuations of the current Geometry Dash segment.
 The three components are trained sequentially -- each on the frozen output of the previous one -- and the deployed pipeline runs at the 30\,FPS cadence used to capture the training data.
-The measured full loop is approximately 15\,ms per frame on consumer hardware, so 30\,FPS is a cadence choice rather than a compute ceiling.
+The measured optimized loop averages 16.3\,ms per frame on consumer hardware, so 30\,FPS is a cadence choice rather than a compute ceiling.
 
 Our contributions are:
 \begin{enumerate}
   \item \textbf{A real-time discrete WM control system}: a complete V-M-C pipeline for Geometry Dash, combining FSQ tokenization, a transformer with action tokens interleaved in the sequence and an action-conditional contrastive auxiliary loss~\citep{burchi2025twister}, and a CNN actor-critic trained via BC plus PPO in latent rollouts.
-  \item \textbf{Live deployment under a frame budget}: a screen-capture control loop configured at the 30\,FPS training-data cadence, with measured full-loop latency of approximately 15\,ms per frame and headroom for roughly 67\,FPS.
+  \item \textbf{Live deployment under a frame budget}: a screen-capture control loop configured at the 30\,FPS training-data cadence, with measured end-to-end mean latency of 16.3\,ms per frame and headroom for roughly 61\,FPS.
   \item \textbf{Action-conditioned visual continuations and diagnostics}: decoded rollouts from real gameplay prefixes, plus implementation diagnostics for the tokenizer, action conditioning, controller, and scoped FSQ-neighbour smoothing choices.
 \end{enumerate}
 
@@ -374,9 +374,9 @@ Under these constraints the best local configuration is \texttt{torch.compile} i
 \paragraph{Real-time inference.}
 The deployed agent processes each frame at a fixed 30\,FPS cadence, with a per-iteration sleep padding any spare time so the capture rate stays constant rather than racing the GPU.
 Within each iteration we minimize stalls: the captured image is staged into a pinned-memory tensor and uploaded with \texttt{non\_blocking=True}, so the CPU returns from the H2D copy immediately and queues the subsequent CUDA dispatches (FSQ encode, transformer, controller) without waiting for the transfer to physically complete.
-The transformer's context window is held as a GPU-resident ring buffer of FSQ token indices, eliminating a GPU$\to$CPU$\to$GPU round-trip per frame.
-The encoder forward pass is wrapped in a CUDA Graph after a short warm-up, and the entire model graph is compiled with \texttt{torch.compile} in \texttt{reduce-overhead} mode.
-Under these optimizations the full pipeline (screen capture, Sobel preprocessing, FSQ encode, transformer step, controller action) measures $\sim$15\,ms total per frame on a single RTX 2060, well within the 33\,ms 30-FPS budget; the agent could in principle run at $\sim$67\,FPS, and is configured at 30\,FPS for capture-rate stability rather than as a compute ceiling.
+The transformer's context window is held in a GPU-resident buffer of FSQ token indices, eliminating a GPU$\to$CPU$\to$GPU round-trip per frame.
+The FSQ encoder is compiled with \texttt{torch.compile}, while transformer context encoding is captured in a CUDA Graph after a short warm-up.
+Under these optimizations, 5,000 wall-clock samples from capture through the keyboard action update average 16.3\,ms per frame on a single RTX 2060 (median 16.3\,ms; p95 18.7\,ms), well within the 33\,ms 30-FPS budget; the mean corresponds to approximately 61\,FPS of compute headroom.
 This latency budget also determines the scope of downstream comparisons.
 We do not treat inference-time planning agents, including full LeWorldModel-style planning systems, as direct baselines for live Geometry Dash control: the game cannot be paused, so any online search or trajectory optimization would have to fit inside the same 33\,ms loop as capture, preprocessing, model inference, and action dispatch.
 Our architecture therefore follows a reactive deployment regime: expensive optimization happens offline in imagined rollouts, while the deployed controller executes one fast policy step per frame.
@@ -432,30 +432,33 @@ In separate qualitative intervention runs, bypassing a small number of recurring
 
 Table~\ref{tab:latency} reports the deployment timing of the full screen-capture loop.
 The system is configured at 30\,FPS because the training data were captured at that cadence and because a fixed cadence avoids racing the capture stream.
-The measured full-loop latency is approximately 15\,ms per frame on an RTX 2060, including screen capture, Sobel preprocessing, FSQ encoding, transformer inference, controller inference, and action dispatch.
-Thus the 30\,FPS setting is not the compute ceiling: the same measured latency corresponds to roughly 67\,FPS of compute headroom.
+The measured end-to-end latency averages 16.289\,ms per frame on an RTX 2060, including screen capture, Sobel preprocessing, FSQ encoding, transformer inference, controller inference, and the keyboard action update when required; the deliberate cadence sleep is excluded.
+Median latency is 16.308\,ms and p95 is 18.722\,ms; only 2 of 5,000 frames exceed the 33.3\,ms budget. Thus the 30\,FPS setting is not the compute ceiling: mean latency corresponds to roughly 61\,FPS of compute headroom.
 \begin{table}[t]
   \centering
-  \caption{Mean per-stage latency of the optimized deployment loop over approximately 5{,}000 frames on an RTX 2060.}
+  \caption{Per-stage means and measured wall-clock latency over 5{,}000 optimized deployment frames on an RTX 2060.}
   \label{tab:latency}
   \small
   \begin{tabular}{lr}
     \toprule
     Stage & Mean (ms) \\
     \midrule
-    Screen capture & $2.4$ \\
+    Screen capture & $2.2$ \\
     Crop & $0.5$ \\
     Grayscale & $0.5$ \\
-    Sobel & $2.6$ \\
-    Downscale & $2.1$ \\
-    FSQ encode & $1.4$ \\
-    Transformer & $4.2$ \\
-    Controller & $1.1$ \\
+    Sobel & $2.5$ \\
+    Downscale & $2.2$ \\
+    FSQ encode & $2.1$ \\
+    Transformer & $4.9$ \\
+    Controller & $0.5$ \\
     \midrule
-    \textbf{Total} & $\mathbf{15.0}$ \\
+    Component-sum mean & $15.3$ \\
+    \textbf{Measured end-to-end} & $\mathbf{16.3}$ \\
     \bottomrule
   \end{tabular}
 \end{table}
+
+These optimized-path samples are distinct from the diagnostic timings emitted by the controlled evaluator: that script transfers token context through CPU/NumPy and synchronizes CUDA after every GPU stage to isolate component times, operations that are absent from deployment. We therefore use the evaluator only for survival outcomes and the optimized live path for latency.
 
 \subsection{Action-conditioned visual continuations}
 \label{sec:continuations}
@@ -553,7 +556,7 @@ Recent GQ-style tokenizers improve image-tokenizer rate-distortion benchmarks, b
 
 We presented DashVMC, a real-time discrete-WM system for Geometry Dash: an FSQ-VAE tokenizer, a causal transformer with action tokens interleaved in the sequence and a TWISTER-style action-conditional contrastive auxiliary loss, and a CNN actor-critic on the current token grid trained via BC and PPO entirely in latent rollouts.
 The same action-conditioned dynamics can be used generatively: from a real gameplay prefix, the model rolls out plausible future token grids and decoded frames, providing procedural level-continuation samples in addition to control-oriented latent rollouts.
-The three components are trained sequentially, and the full pipeline is deployed at 30\,FPS on consumer hardware, with measured full-loop latency of approximately 15\,ms.
+The three components are trained sequentially, and the full pipeline is deployed at 30\,FPS on consumer hardware, with measured mean end-to-end latency of 16.3\,ms.
 Across 100 controlled attempts per level, the frozen policy averages $9.32$\,s and $8.78$\,s of survival on Levels~1 and~2 and $2.14$\,s on the harder Level~3 with its additional yellow-orb timing mechanic.
 A set of architectural variants (joint FSQ+M training, AdaLN-Zero action conditioning, scaling to a larger transformer, an MLP controller on the hidden state) is reported as ablations: each is more elegant on paper but did not improve real-game level progress in our experiments, motivating the deliberately conservative baseline of this paper.
 Structured Label Smoothing is reported as a scoped Geometry Dash design choice and auxiliary diagnostic: it is motivated by FSQ-neighbour equivalence in the application, but the IRIS/Pong transfer test does not support a broad method claim.

@@ -119,8 +119,8 @@
           DashVMC uses an FSQ tokenizer, an action-conditioned transformer world model,
           and a lightweight actor-critic trained from behavioural cloning plus PPO in latent
           imagined rollouts. The controller is deployed on live Geometry Dash at the same
-          30 FPS cadence used by the captured training data; the measured full-loop latency is
-          about 15 ms, leaving compute headroom beyond the deployment rate.
+          30 FPS cadence used by the captured training data; optimized wall-clock latency averages
+          16.3 ms, leaving compute headroom beyond the deployment rate.
         </p>
       </div>
 
@@ -135,11 +135,11 @@
         </div>
         <div class="metric-row">
           <span>Full-loop latency</span>
-          <strong>~15 ms</strong>
+          <strong>16.3 ms</strong>
         </div>
         <div class="metric-row">
           <span>Compute headroom</span>
-          <strong>~67 FPS</strong>
+          <strong>~61 FPS</strong>
         </div>
         <div class="metric-row">
           <span>Token grid</span>
@@ -235,7 +235,7 @@
         </article>
         <article>
           <h3>30 FPS deployment</h3>
-          <p>The full loop measures about 15 ms on an RTX 2060, so deployment is set to the 30 FPS data cadence rather than a compute ceiling.</p>
+          <p>The optimized loop averages 16.3 ms on an RTX 2060, so deployment is set to the 30 FPS data cadence rather than a compute ceiling.</p>
         </article>
       </div>
     </div>
@@ -395,23 +395,24 @@
 
         <section class="result-group latency-group" aria-labelledby="latency-results-title">
           <h3 id="latency-results-title">Optimized deployment latency</h3>
-          <p class="result-group-copy">Mean per-stage time over approximately 5,000 frames on an RTX 2060.</p>
+          <p class="result-group-copy">Per-stage means and measured wall-clock latency over 5,000 optimized-path frames on an RTX 2060.</p>
           <div class="table-wrap">
             <table class="results-table compact-table" aria-label="Optimized deployment latency breakdown">
               <tbody>
-                <tr><td>Screen capture</td><td>2.4 ms</td></tr>
+                <tr><td>Screen capture</td><td>2.2 ms</td></tr>
                 <tr><td>Crop</td><td>0.5 ms</td></tr>
                 <tr><td>Grayscale</td><td>0.5 ms</td></tr>
-                <tr><td>Sobel</td><td>2.6 ms</td></tr>
-                <tr><td>Downscale</td><td>2.1 ms</td></tr>
-                <tr><td>FSQ encode</td><td>1.4 ms</td></tr>
-                <tr><td>Transformer</td><td>4.2 ms</td></tr>
-                <tr><td>Controller</td><td>1.1 ms</td></tr>
-                <tr class="total-row"><td>Full loop</td><td>~15.0 ms</td></tr>
+                <tr><td>Sobel</td><td>2.5 ms</td></tr>
+                <tr><td>Downscale</td><td>2.2 ms</td></tr>
+                <tr><td>FSQ encode</td><td>2.1 ms</td></tr>
+                <tr><td>Transformer</td><td>4.9 ms</td></tr>
+                <tr><td>Controller</td><td>0.5 ms</td></tr>
+                <tr><td>Component-sum mean</td><td>15.3 ms</td></tr>
+                <tr class="total-row"><td>Measured end-to-end</td><td>16.3 ms</td></tr>
               </tbody>
             </table>
           </div>
-          <p class="result-note">Stage values are rounded independently. The full loop leaves roughly 67 FPS of compute headroom and is deployed at the 30 FPS data cadence.</p>
+          <p class="result-note">End-to-end median is 16.3 ms and p95 is 18.7 ms; 2 of 5,000 frames exceed the 33.3 ms budget. The measured mean corresponds to roughly 61 FPS of compute headroom.</p>
         </section>
       </div>
     </div>
