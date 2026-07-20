@@ -35,7 +35,7 @@ except ImportError:
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from deepdash.fsq import FSQVAE
 from deepdash.world_model import WorldModel
-from deepdash.controller import CNNPolicy
+from deepdash.controller import CNNPolicy, V3CNNPolicy
 
 
 def compute_val_set(death_dir, expert_dir):
@@ -150,6 +150,9 @@ def main():
     parser.add_argument("--n-layers", type=int, default=None)
     parser.add_argument("--tokens-per-frame", type=int, default=None)
     parser.add_argument("--dropout", type=float, default=None)
+    parser.add_argument("--policy-class", choices=["cnn", "v3_cnn"],
+                        default=None,
+                        help="Controller architecture (V7 uses v3_cnn)")
     parser.add_argument("--max-dream-steps", type=int, default=None,
                         help="Max dream steps before auto-restart (0 = unlimited)")
     args = parser.parse_args()
@@ -189,20 +192,30 @@ def main():
     ctrl_path = Path(args.controller_checkpoint)
     if ctrl_path.exists():
         grid_size = int(args.tokens_per_frame ** 0.5)
-        controller = CNNPolicy(
-            vocab_size=args.vocab_size,
-            grid_size=grid_size,
-            token_embed_dim=getattr(args, 'token_embed_dim', 16),
-            h_dim=args.embed_dim,
-            temporal_dim=getattr(args, 'temporal_dim', 32),
-        ).to(device)
+        policy_class = (getattr(args, "policy_class", None) or "cnn").lower()
+        if policy_class == "v3_cnn":
+            controller = V3CNNPolicy(
+                vocab_size=args.vocab_size,
+                grid_size=grid_size,
+                token_embed_dim=getattr(args, "token_embed_dim", 16),
+                h_dim=args.embed_dim,
+                mtp_steps=int(getattr(args, "mtp_steps", None) or 8),
+            ).to(device)
+        else:
+            controller = CNNPolicy(
+                vocab_size=args.vocab_size,
+                grid_size=grid_size,
+                token_embed_dim=getattr(args, "token_embed_dim", 16),
+                h_dim=args.embed_dim,
+                temporal_dim=getattr(args, "temporal_dim", 32),
+            ).to(device)
         state = torch.load(ctrl_path, map_location=device, weights_only=True)
         if isinstance(state, dict) and "controller" in state:
             state = state["ema_controller"] if "ema_controller" in state and state["ema_controller"] is not None else state["controller"]
         state = {k.removeprefix("_orig_mod."): v for k, v in state.items()}
         controller.load_state_dict(state)
         controller.eval()
-        print("Controller loaded (Y = AI replay)")
+        print(f"Controller loaded: {policy_class} (Y = AI replay)")
     else:
         print(f"No controller at {ctrl_path} (Y disabled)")
 
