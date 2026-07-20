@@ -101,6 +101,16 @@ python scripts/train_controller_ppo.py --pretrained checkpoints/controller_bc_be
 python scripts/eval_real_game.py --config configs/deepdash/v7-phase0.yaml --vae-checkpoint checkpoints_v7/fsq_best.pt --transformer-checkpoint checkpoints_v7/transformer_best.pt --controller-checkpoint checkpoints_v7/controller_ppo_best.pt --n-runs 100 --level-name "Level 1" --output analysis/2026-07-20_v7_deploy/eval_100.json
 ```
 
+To play interactively inside V7 model rollouts:
+
+```bash
+python scripts/play_dream.py --config configs/deepdash/v7-phase0.yaml --vae-checkpoint checkpoints_v7/fsq_best.pt --transformer-checkpoint checkpoints_v7/transformer_best.pt --controller-checkpoint checkpoints_v7/controller_ppo_best.pt --fps 30 --scale 6
+```
+
+Press `P` to start or stop recording the displayed rollout. Frames are written
+as a timestamped PNG sequence under `analysis/dream_rollouts/`; reaching the end
+of a rollout closes the active recording automatically.
+
 **Deploy to the live game at the training cadence:**
 ```bash
 python scripts/deploy.py

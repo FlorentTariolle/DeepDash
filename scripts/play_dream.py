@@ -6,6 +6,7 @@ whether actions visibly affect outcomes.
 
 Controls:
     SPACE / UP  = jump
+    P           = start/stop recording PNG frames
     R           = restart (new episode, human plays)
     Y           = restart (same episode, controller plays)
     T           = next episode
@@ -19,6 +20,7 @@ Usage:
 import argparse
 import re
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -132,6 +134,8 @@ def main():
     parser.add_argument("--fps", type=float, default=30)
     parser.add_argument("--scale", type=int, default=6,
                         help="Display scale (6 = 384x384 window)")
+    parser.add_argument("--recordings-dir", default="analysis/dream_rollouts",
+                        help="Directory for P-key PNG frame recordings")
     parser.add_argument("--start-pos", choices=["uniform", "beginning"],
                         default="uniform")
     parser.add_argument("--filter", choices=["all", "train", "val"],
@@ -271,7 +275,40 @@ def main():
     action = 0
     best_steps = 0
     ai_mode = False
-    print(f"\nControls: SPACE=jump, R=retry, Y=AI replay, T=next episode, Q=quit")
+    recording_dir = None
+    recorded_frames = 0
+
+    def stop_recording(reason=None):
+        nonlocal recording_dir, recorded_frames
+        if recording_dir is None:
+            return
+        suffix = f" ({reason})" if reason else ""
+        print(f"  Recording saved: {recording_dir} "
+              f"({recorded_frames} frames){suffix}")
+        recording_dir = None
+        recorded_frames = 0
+
+    def start_recording():
+        nonlocal recording_dir, recorded_frames
+        root = Path(args.recordings_dir)
+        episode = re.sub(r"[^A-Za-z0-9._-]+", "_", current_ep["name"])
+        mode = "ai" if ai_mode else "human"
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+        recording_dir = root / f"{stamp}_{episode}_{mode}"
+        recording_dir.mkdir(parents=True, exist_ok=False)
+        recorded_frames = 0
+        print(f"  Recording started: {recording_dir}")
+
+    def save_recording_frame():
+        nonlocal recorded_frames
+        if recording_dir is None:
+            return
+        path = recording_dir / f"frame_{recorded_frames:06d}.png"
+        pygame.image.save(screen, str(path))
+        recorded_frames += 1
+
+    print("\nControls: SPACE=jump, P=record, R=retry, "
+          "Y=AI replay, T=next episode, Q=quit")
     print(f"FPS: {args.fps}\n")
 
     running = True
@@ -282,18 +319,26 @@ def main():
             if event.type == pygame.KEYDOWN:
                 if event.key in (pygame.K_q, pygame.K_ESCAPE):
                     running = False
+                if event.key == pygame.K_p:
+                    if recording_dir is None:
+                        start_recording()
+                    else:
+                        stop_recording("stopped by user")
                 if event.key == pygame.K_r:
+                    stop_recording("rollout restarted")
                     ctx_t, ctx_a, frame_img, steps, ep_split = replay_episode()
                     dead = False
                     death_prob_val = 0.0
                     ai_mode = False
                 if event.key == pygame.K_y and controller is not None:
+                    stop_recording("AI replay started")
                     ctx_t, ctx_a, frame_img, steps, ep_split = replay_episode()
                     dead = False
                     death_prob_val = 0.0
                     ai_mode = True
                     print("  AI mode: controller playing")
                 if event.key == pygame.K_t:
+                    stop_recording("next episode selected")
                     ctx_t, ctx_a, frame_img, steps, ep_split = new_episode()
                     dead = False
                     death_prob_val = 0.0
@@ -317,7 +362,8 @@ def main():
         line1 = font.render(
             f"{steps:3d}  {act_str:4s}  d:{death_prob_val:.2f}", True, dp_color)
         line2 = font.render(
-            f"best:{best_steps}  {ep_split}  {actual_fps:.0f}fps",
+            f"best:{best_steps}  {ep_split}  {actual_fps:.0f}fps"
+            + (f"  REC:{recorded_frames}" if recording_dir else ""),
             True, (180, 180, 180))
         hud_h = line1.get_height() + line2.get_height() + 6
         hud_w = max(line1.get_width(), line2.get_width()) + 10
@@ -338,10 +384,13 @@ def main():
             txt2 = font.render("R = retry  Y = AI  T = next  Q = quit", True, (255, 255, 255))
             screen.blit(txt1, (W // 2 - txt1.get_width() // 2, H // 2 - 30))
             screen.blit(txt2, (W // 2 - txt2.get_width() // 2, H // 2 + 20))
+            save_recording_frame()
+            stop_recording("rollout ended")
             pygame.display.flip()
             clock.tick(args.fps)
             continue
 
+        save_recording_frame()
         pygame.display.flip()
 
         # Read action for NEXT step
@@ -388,6 +437,7 @@ def main():
 
         clock.tick(args.fps)
 
+    stop_recording("player closed")
     pygame.quit()
     print(f"\nBest: {best_steps} steps")
 

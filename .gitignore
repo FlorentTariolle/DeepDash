@@ -13,6 +13,7 @@ data/deepdash/death_episodes/*/tokens.npy
 data/deepdash/expert_episodes/*/tokens.npy
 data/deepdash/videos/
 eval_output/
+analysis/dream_rollouts/
 data/deepdash/death_episodes/*_s*/
 data/deepdash/expert_episodes/*_s*/
 data/atari/
