@@ -65,7 +65,7 @@ jobs:
           root_file: main.tex
 
       - name: Copy paper PDF to docs
-        run: cp paper/main.pdf docs/static/pdfs/sls_wm.pdf
+        run: cp paper/main.pdf docs/static/pdfs/dashvmc.pdf
 
       - name: Upload PDF artifact
         uses: actions/upload-artifact@v4
@@ -78,10 +78,10 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if git diff --quiet docs/static/pdfs/sls_wm.pdf; then
+          if git diff --quiet docs/static/pdfs/dashvmc.pdf; then
             echo "No PDF changes"
             exit 0
           fi
-          git add docs/static/pdfs/sls_wm.pdf
+          git add docs/static/pdfs/dashvmc.pdf
           git commit -m "ci: rebuild paper PDF [skip ci]"
           git push
