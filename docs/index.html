@@ -30,7 +30,7 @@
 
   <link rel="icon" type="image/png" href="static/images/ai-brain-icon.png" />
   <link rel="apple-touch-icon" href="static/images/ai-brain-icon.png" />
-  <link rel="stylesheet" href="static/css/style.css?v=20260720-results" />
+  <link rel="stylesheet" href="static/css/style.css?v=20260720-dreams" />
 
   <script>
     window.MathJax = {
@@ -237,6 +237,101 @@
           <h3>30 FPS deployment</h3>
           <p>The full loop measures about 15 ms on an RTX 2060, so deployment is set to the 30 FPS data cadence rather than a compute ceiling.</p>
         </article>
+      </div>
+    </div>
+  </section>
+
+  <section id="dreams" class="section-block dreams-band">
+    <div class="container-narrow">
+      <p class="eyebrow">Interactive dreams</p>
+      <h2 class="section-title">Human-controlled level continuations</h2>
+      <p class="dreams-lead">
+        A recorded gameplay prefix initializes V7, then a human supplies jump or idle actions
+        while the world model generates the continuation autoregressively.
+      </p>
+
+      <figure class="featured-rollout">
+        <video autoplay loop muted playsinline controls preload="metadata"
+               poster="static/videos/dream_rollouts/long-coherent-horizon.jpg">
+          <source src="static/videos/dream_rollouts/long-coherent-horizon-featured.mp4" type="video/mp4" />
+        </video>
+        <figcaption>
+          <strong>Long coherent horizon.</strong> A sustained human-controlled continuation in the V7 dream.
+        </figcaption>
+      </figure>
+
+      <div class="rollout-heading">
+        <h3>Recorded continuations</h3>
+        <span>Human actions, V7-generated frames</span>
+      </div>
+      <div class="rollout-mosaic" aria-label="Human-controlled V7 dream rollouts">
+        <figure class="rollout-tile">
+          <video autoplay loop muted playsinline preload="metadata" poster="static/videos/dream_rollouts/decent-continuation.jpg">
+            <source src="static/videos/dream_rollouts/decent-continuation.mp4" type="video/mp4" />
+          </video>
+          <figcaption>Decent continuation</figcaption>
+        </figure>
+        <figure class="rollout-tile">
+          <video autoplay loop muted playsinline preload="metadata" poster="static/videos/dream_rollouts/height-transitions.jpg">
+            <source src="static/videos/dream_rollouts/height-transitions.mp4" type="video/mp4" />
+          </video>
+          <figcaption>Understanding doable height transitions</figcaption>
+        </figure>
+        <figure class="rollout-tile">
+          <video autoplay loop muted playsinline preload="metadata" poster="static/videos/dream_rollouts/long-coherent-horizon.jpg">
+            <source src="static/videos/dream_rollouts/long-coherent-horizon.mp4" type="video/mp4" />
+          </video>
+          <figcaption>Long coherent horizon</figcaption>
+        </figure>
+        <figure class="rollout-tile">
+          <video autoplay loop muted playsinline preload="metadata" poster="static/videos/dream_rollouts/infinite-end-plausible-opening.jpg">
+            <source src="static/videos/dream_rollouts/infinite-end-plausible-opening.mp4" type="video/mp4" />
+          </video>
+          <figcaption>Infinite ending after a plausible opening</figcaption>
+        </figure>
+        <figure class="rollout-tile">
+          <video autoplay loop muted playsinline preload="metadata" poster="static/videos/dream_rollouts/long-airtime.jpg">
+            <source src="static/videos/dream_rollouts/long-airtime.mp4" type="video/mp4" />
+          </video>
+          <figcaption>Long airtime</figcaption>
+        </figure>
+        <figure class="rollout-tile">
+          <video autoplay loop muted playsinline preload="metadata" poster="static/videos/dream_rollouts/transformation.jpg">
+            <source src="static/videos/dream_rollouts/transformation.mp4" type="video/mp4" />
+          </video>
+          <figcaption>Transformation</figcaption>
+        </figure>
+      </div>
+
+      <div class="rollout-heading failure-heading">
+        <h3>Observed failure modes</h3>
+        <span>Useful limits of long autoregressive generation</span>
+      </div>
+      <div class="rollout-mosaic failure-mosaic" aria-label="Observed V7 dream failure modes">
+        <figure class="rollout-tile">
+          <video autoplay loop muted playsinline preload="metadata" poster="static/videos/dream_rollouts/failure-infinite-replication.jpg">
+            <source src="static/videos/dream_rollouts/failure-infinite-replication.mp4" type="video/mp4" />
+          </video>
+          <figcaption>Infinite replication</figcaption>
+        </figure>
+        <figure class="rollout-tile">
+          <video autoplay loop muted playsinline preload="metadata" poster="static/videos/dream_rollouts/failure-empty-level.jpg">
+            <source src="static/videos/dream_rollouts/failure-empty-level.mp4" type="video/mp4" />
+          </video>
+          <figcaption>Empty-level continuation</figcaption>
+        </figure>
+        <figure class="rollout-tile">
+          <video autoplay loop muted playsinline preload="metadata" poster="static/videos/dream_rollouts/failure-undoable.jpg">
+            <source src="static/videos/dream_rollouts/failure-undoable.mp4" type="video/mp4" />
+          </video>
+          <figcaption>Undoable state</figcaption>
+        </figure>
+        <figure class="rollout-tile">
+          <video autoplay loop muted playsinline preload="metadata" poster="static/videos/dream_rollouts/failure-undoable-obstacle.jpg">
+            <source src="static/videos/dream_rollouts/failure-undoable-obstacle.mp4" type="video/mp4" />
+          </video>
+          <figcaption>Undoable obstacle</figcaption>
+        </figure>
       </div>
     </div>
   </section>

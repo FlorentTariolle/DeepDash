@@ -428,6 +428,109 @@ figure.centered {
   background: #fff;
 }
 
+.dreams-band {
+  background: var(--soft);
+}
+
+.dreams-lead {
+  max-width: 760px;
+  margin-bottom: 1.6rem;
+}
+
+.featured-rollout {
+  margin: 0;
+}
+
+.featured-rollout video {
+  width: 100%;
+  height: clamp(300px, 32vw, 370px);
+  display: block;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #12161c;
+  object-fit: contain;
+}
+
+.featured-rollout figcaption {
+  margin-top: 0.65rem;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.featured-rollout figcaption strong {
+  color: var(--ink);
+}
+
+.rollout-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 2.2rem 0 0.85rem;
+  padding-top: 0.9rem;
+  border-top: 3px solid var(--blue);
+}
+
+.rollout-heading h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.rollout-heading span {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.76rem;
+  text-align: right;
+}
+
+.failure-heading {
+  border-top-color: var(--amber);
+}
+
+.rollout-mosaic {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.failure-mosaic {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.rollout-tile {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.rollout-tile video {
+  width: 100%;
+  aspect-ratio: 1;
+  display: block;
+  background: #12161c;
+  object-fit: cover;
+}
+
+.rollout-tile figcaption {
+  min-height: 3.15rem;
+  display: flex;
+  align-items: center;
+  padding: 0.65rem 0.75rem;
+  border-top: 1px solid var(--line);
+  color: #39424e;
+  font-family: var(--mono);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
 .results-lead {
   max-width: 780px;
   margin-bottom: 1.5rem;
@@ -561,6 +664,11 @@ footer a {
     grid-template-columns: 1fr;
   }
 
+  .rollout-mosaic,
+  .failure-mosaic {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .hero-copy {
     max-width: none;
   }
@@ -613,8 +721,24 @@ footer a {
   .contribution-grid,
   .evidence-cards,
   .feature-grid,
-  .results-columns {
+  .results-columns,
+  .rollout-mosaic,
+  .failure-mosaic {
     grid-template-columns: 1fr;
+  }
+
+  .featured-rollout video {
+    height: min(78vw, 370px);
+  }
+
+  .rollout-heading {
+    display: block;
+  }
+
+  .rollout-heading span {
+    display: block;
+    margin-top: 0.25rem;
+    text-align: left;
   }
 
   .metric-row {
