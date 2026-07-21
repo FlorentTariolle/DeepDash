@@ -9,7 +9,10 @@ on:
       - 'paper/checklist.tex'
       - 'paper/neurips_2026.sty'
       - 'paper/Makefile'
+      - 'paper/figures/continuation.png'
       - 'scripts/gen_sls_figure.py'
+      - 'scripts/gen_counterfactual_spike.py'
+      - 'analysis/2026-07-21_counterfactual_spike/**'
       - 'docs/pipeline.tex'
       - '.github/workflows/build-paper.yml'
   pull_request:
@@ -19,7 +22,10 @@ on:
       - 'paper/checklist.tex'
       - 'paper/neurips_2026.sty'
       - 'paper/Makefile'
+      - 'paper/figures/continuation.png'
       - 'scripts/gen_sls_figure.py'
+      - 'scripts/gen_counterfactual_spike.py'
+      - 'analysis/2026-07-21_counterfactual_spike/**'
       - 'docs/pipeline.tex'
       - '.github/workflows/build-paper.yml'
   workflow_dispatch:

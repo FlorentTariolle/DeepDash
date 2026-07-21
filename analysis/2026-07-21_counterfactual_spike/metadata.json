@@ -1,0 +1,131 @@
+{
+  "description": "Matched greedy world-model branches differing only in the 174->175 action.",
+  "device": "cuda",
+  "source_frames": [
+    "analysis/2026-07-21_counterfactual_spike/source_display/frame_000171.png",
+    "analysis/2026-07-21_counterfactual_spike/source_display/frame_000172.png",
+    "analysis/2026-07-21_counterfactual_spike/source_display/frame_000173.png",
+    "analysis/2026-07-21_counterfactual_spike/source_display/frame_000174.png"
+  ],
+  "source_sha256": {
+    "frame_000171.png": "6ab4c3ac900ab6a813a747dd5deb968503c4c6375d99a371d0383db8e529f4bb",
+    "frame_000172.png": "c9a67ce974f5357d0a493424e146e6a2e52c9dedb9dfd8f5807b9e83eac873a0",
+    "frame_000173.png": "7e2f453e55c715a1bda828249d2d624dfceee435bd4bec115b5f246e375845de",
+    "frame_000174.png": "25f8317aa11ed5a818e8631dc54acf69b0617ddca264c819a7805be3297c5845"
+  },
+  "hud_removal_64px": {
+    "rows": 4,
+    "cols": 32
+  },
+  "context_note": "Display screenshots were cleaned, re-encoded, and decoded; both branches use the resulting identical token context.",
+  "vae_checkpoint": {
+    "path": "checkpoints_v7/fsq_best.pt",
+    "sha256": "8a4c488e0310855bcf411787894f0206f3381387bcd9fc179d6a6610ef32e5f7"
+  },
+  "transformer_checkpoint": {
+    "path": "checkpoints_v7/transformer_best.pt",
+    "sha256": "62db7d8f0dca5cb75684548c2e93a74c4f6dda830250f171e38fe97161dcd770"
+  },
+  "decoding": {
+    "temperature": 0.0,
+    "seed": 0,
+    "steps": 13
+  },
+  "jump_context_actions": [
+    0,
+    0,
+    0,
+    1
+  ],
+  "idle_context_actions": [
+    0,
+    0,
+    0,
+    0
+  ],
+  "post_intervention_actions": {
+    "jump": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "idle": [
+      0,
+      0,
+      0,
+      0
+    ]
+  },
+  "termination_rule": "Stop each branch immediately after the first prediction with p(death) > 0.5.",
+  "jump_death_probabilities": [
+    0.014470331370830536,
+    0.01555719505995512,
+    0.019763734191656113,
+    0.028122710064053535,
+    0.04378858581185341,
+    0.022644562646746635,
+    0.04686955735087395,
+    0.05016033351421356,
+    0.040397126227617264,
+    0.027763478457927704,
+    0.05102009326219559,
+    0.047867920249700546,
+    0.06906981021165848
+  ],
+  "idle_death_probabilities": [
+    0.04124967381358147,
+    0.04370548576116562,
+    0.06228122487664223,
+    0.08585429936647415,
+    0.7419262528419495
+  ],
+  "figure_selected_generated_offsets": [
+    0,
+    2,
+    4,
+    6,
+    8,
+    10,
+    12
+  ],
+  "outputs": {
+    "shared_context": [
+      "analysis/2026-07-21_counterfactual_spike/shared_context/frame_000000.png",
+      "analysis/2026-07-21_counterfactual_spike/shared_context/frame_000001.png",
+      "analysis/2026-07-21_counterfactual_spike/shared_context/frame_000002.png",
+      "analysis/2026-07-21_counterfactual_spike/shared_context/frame_000003.png"
+    ],
+    "jump": [
+      "analysis/2026-07-21_counterfactual_spike/jump/frame_000000.png",
+      "analysis/2026-07-21_counterfactual_spike/jump/frame_000001.png",
+      "analysis/2026-07-21_counterfactual_spike/jump/frame_000002.png",
+      "analysis/2026-07-21_counterfactual_spike/jump/frame_000003.png",
+      "analysis/2026-07-21_counterfactual_spike/jump/frame_000004.png",
+      "analysis/2026-07-21_counterfactual_spike/jump/frame_000005.png",
+      "analysis/2026-07-21_counterfactual_spike/jump/frame_000006.png",
+      "analysis/2026-07-21_counterfactual_spike/jump/frame_000007.png",
+      "analysis/2026-07-21_counterfactual_spike/jump/frame_000008.png",
+      "analysis/2026-07-21_counterfactual_spike/jump/frame_000009.png",
+      "analysis/2026-07-21_counterfactual_spike/jump/frame_000010.png",
+      "analysis/2026-07-21_counterfactual_spike/jump/frame_000011.png",
+      "analysis/2026-07-21_counterfactual_spike/jump/frame_000012.png"
+    ],
+    "idle": [
+      "analysis/2026-07-21_counterfactual_spike/idle/frame_000000.png",
+      "analysis/2026-07-21_counterfactual_spike/idle/frame_000001.png",
+      "analysis/2026-07-21_counterfactual_spike/idle/frame_000002.png",
+      "analysis/2026-07-21_counterfactual_spike/idle/frame_000003.png",
+      "analysis/2026-07-21_counterfactual_spike/idle/frame_000004.png"
+    ],
+    "figure": "analysis/2026-07-21_counterfactual_spike/counterfactual_spike.png"
+  }
+}

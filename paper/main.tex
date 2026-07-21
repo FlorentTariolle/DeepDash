@@ -475,16 +475,18 @@ These optimized-path samples are distinct from the diagnostic timings emitted by
 \subsection{Action-conditioned visual continuations}
 \label{sec:continuations}
 
-Because the transformer is action-conditioned and autoregressive, it can be seeded with real gameplay prefixes and sampled forward under candidate action sequences.
-Decoded rollouts provide a qualitative inspection tool: generated futures should preserve the local Geometry Dash layout, obstacle timing, and survival/death branches implied by the action sequence.
-The decoder is used only for visualization in this setting; policy optimization operates on token grids and hidden states.
+Because the transformer is action-conditioned and autoregressive, decoded rollouts can inspect the futures implied by candidate actions.
+Figure~\ref{fig:continuation} isolates that effect by reconstructing the four-frame token context before a spike in a human-controlled dream rollout and greedily branching from identical tokens.
+Only the action conditioning the first prediction changes; later actions are idle.
+The jump branch clears the spike, while the idle branch reaches $p(\mathrm{death})=0.74$ at $t+5$ and terminates.
+The display-only HUD is removed before re-encoding; decoding is used only for visualization, not policy optimization.
 
-\begin{figure}[t]
+\begin{figure*}[t]
   \centering
   \includegraphics[width=\textwidth]{figures/continuation.png}
-  \caption{Decoded visual continuation from a real gameplay prefix. The first four frames are recorded Sobel observations; the remaining frames are sampled autoregressively from the selected world model under the recorded future action sequence and decoded through the FSQ decoder.}
+  \caption{Matched greedy continuations from the same reconstructed four-frame dream context (last frame shown), differing only in the first action; later actions are idle. Every second prediction is displayed, retaining the terminal idle frame. \textsc{Jump} clears the spike and lands; \textsc{idle} reaches $p(\mathrm{death})=0.74$ at $t+5$ and stops, so the \textsc{dead} columns are not generated.}
   \label{fig:continuation}
-\end{figure}
+\end{figure*}
 
 \subsection{Auxiliary SLS diagnostic}
 \label{sec:sls-diagnostic}
