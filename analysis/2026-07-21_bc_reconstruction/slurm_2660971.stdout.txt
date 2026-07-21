@@ -1,0 +1,85 @@
+Device: cuda
+W&B logging enabled: None
+World model loaded
+FSQ loaded from checkpoints_v7/fsq_best.pt; tokens will be re-encoded on the fly
+Loaded 3781 episodes
+BC samples: 183848 train, 19593 val, 203441 total
+Action distribution: 56507/203441 jumps (27.8%)
+Computing hidden states from world model...
+  Done in 50.1s
+Jump class weight: 1.50x (train data ratio: 2.59x)
+V3CNNPolicy: 45,546 parameters (vocab=1000, embed=16, h_dim=384)
+torch.compile enabled (mode=reduce-overhead)
+AMP: bfloat16
+Epoch   1/50 (1.6s) | Train: loss=0.6939 acc=0.735 | Val: loss=0.6537 acc=0.751 | LR: 1.0e-03
+Epoch   2/50 (1.0s) | Train: loss=0.6369 acc=0.764 | Val: loss=0.6161 acc=0.774 | LR: 1.0e-03
+Epoch   3/50 (1.0s) | Train: loss=0.6007 acc=0.782 | Val: loss=0.5975 acc=0.785 | LR: 9.9e-04
+Epoch   4/50 (1.0s) | Train: loss=0.5740 acc=0.794 | Val: loss=0.5813 acc=0.792 | LR: 9.8e-04
+Epoch   5/50 (1.0s) | Train: loss=0.5534 acc=0.804 | Val: loss=0.5754 acc=0.795 | LR: 9.8e-04
+Epoch   6/50 (1.1s) | Train: loss=0.5375 acc=0.809 | Val: loss=0.5679 acc=0.797 | LR: 9.7e-04
+Epoch   7/50 (1.1s) | Train: loss=0.5244 acc=0.815 | Val: loss=0.5628 acc=0.792 | LR: 9.5e-04
+Epoch   8/50 (1.0s) | Train: loss=0.5126 acc=0.820 | Val: loss=0.5610 acc=0.802 | LR: 9.4e-04
+Epoch   9/50 (1.0s) | Train: loss=0.5031 acc=0.823 | Val: loss=0.5608 acc=0.798 | LR: 9.2e-04
+Epoch  10/50 (1.1s) | Train: loss=0.4944 acc=0.826 | Val: loss=0.5557 acc=0.801 | LR: 9.1e-04
+Epoch  11/50 (1.0s) | Train: loss=0.4864 acc=0.829 | Val: loss=0.5572 acc=0.798 | LR: 8.9e-04
+Epoch  12/50 (1.0s) | Train: loss=0.4794 acc=0.832 | Val: loss=0.5604 acc=0.799 | LR: 8.7e-04
+Epoch  13/50 (1.0s) | Train: loss=0.4726 acc=0.835 | Val: loss=0.5605 acc=0.798 | LR: 8.4e-04
+Epoch  14/50 (1.0s) | Train: loss=0.4661 acc=0.838 | Val: loss=0.5617 acc=0.789 | LR: 8.2e-04
+Epoch  15/50 (1.0s) | Train: loss=0.4601 acc=0.839 | Val: loss=0.5636 acc=0.793 | LR: 8.0e-04
+Epoch  16/50 (1.0s) | Train: loss=0.4548 acc=0.842 | Val: loss=0.5655 acc=0.789 | LR: 7.7e-04
+Epoch  17/50 (1.0s) | Train: loss=0.4495 acc=0.844 | Val: loss=0.5679 acc=0.784 | LR: 7.4e-04
+Epoch  18/50 (1.0s) | Train: loss=0.4450 acc=0.845 | Val: loss=0.5688 acc=0.794 | LR: 7.2e-04
+Epoch  19/50 (1.1s) | Train: loss=0.4403 acc=0.847 | Val: loss=0.5750 acc=0.790 | LR: 6.9e-04
+Epoch  20/50 (1.0s) | Train: loss=0.4361 acc=0.848 | Val: loss=0.5737 acc=0.787 | LR: 6.6e-04
+Epoch  21/50 (1.0s) | Train: loss=0.4318 acc=0.850 | Val: loss=0.5766 acc=0.783 | LR: 6.3e-04
+Epoch  22/50 (1.0s) | Train: loss=0.4279 acc=0.851 | Val: loss=0.5791 acc=0.775 | LR: 6.0e-04
+Epoch  23/50 (1.0s) | Train: loss=0.4243 acc=0.853 | Val: loss=0.5841 acc=0.787 | LR: 5.7e-04
+Epoch  24/50 (1.0s) | Train: loss=0.4210 acc=0.854 | Val: loss=0.5873 acc=0.792 | LR: 5.4e-04
+Epoch  25/50 (1.0s) | Train: loss=0.4175 acc=0.856 | Val: loss=0.5844 acc=0.783 | LR: 5.0e-04
+Epoch  26/50 (1.0s) | Train: loss=0.4145 acc=0.857 | Val: loss=0.5918 acc=0.789 | LR: 4.7e-04
+Epoch  27/50 (1.1s) | Train: loss=0.4114 acc=0.858 | Val: loss=0.5897 acc=0.786 | LR: 4.4e-04
+Epoch  28/50 (1.0s) | Train: loss=0.4089 acc=0.859 | Val: loss=0.5939 acc=0.782 | LR: 4.1e-04
+Epoch  29/50 (1.0s) | Train: loss=0.4058 acc=0.860 | Val: loss=0.5993 acc=0.779 | LR: 3.8e-04
+Epoch  30/50 (1.0s) | Train: loss=0.4034 acc=0.860 | Val: loss=0.6039 acc=0.788 | LR: 3.5e-04
+Epoch  31/50 (1.0s) | Train: loss=0.4011 acc=0.862 | Val: loss=0.6024 acc=0.785 | LR: 3.2e-04
+Epoch  32/50 (1.1s) | Train: loss=0.3987 acc=0.862 | Val: loss=0.6043 acc=0.779 | LR: 2.9e-04
+Epoch  33/50 (1.0s) | Train: loss=0.3963 acc=0.864 | Val: loss=0.6058 acc=0.776 | LR: 2.7e-04
+Epoch  34/50 (1.0s) | Train: loss=0.3943 acc=0.864 | Val: loss=0.6088 acc=0.774 | LR: 2.4e-04
+Epoch  35/50 (1.0s) | Train: loss=0.3926 acc=0.865 | Val: loss=0.6147 acc=0.783 | LR: 2.1e-04
+Epoch  36/50 (1.0s) | Train: loss=0.3907 acc=0.866 | Val: loss=0.6163 acc=0.783 | LR: 1.9e-04
+Epoch  37/50 (1.1s) | Train: loss=0.3891 acc=0.867 | Val: loss=0.6147 acc=0.781 | LR: 1.7e-04
+Epoch  38/50 (1.1s) | Train: loss=0.3874 acc=0.867 | Val: loss=0.6178 acc=0.782 | LR: 1.4e-04
+Epoch  39/50 (1.1s) | Train: loss=0.3862 acc=0.868 | Val: loss=0.6196 acc=0.777 | LR: 1.2e-04
+Epoch  40/50 (1.0s) | Train: loss=0.3849 acc=0.868 | Val: loss=0.6187 acc=0.777 | LR: 1.0e-04
+Epoch  41/50 (1.1s) | Train: loss=0.3838 acc=0.868 | Val: loss=0.6198 acc=0.779 | LR: 8.7e-05
+Epoch  42/50 (1.1s) | Train: loss=0.3828 acc=0.869 | Val: loss=0.6196 acc=0.777 | LR: 7.1e-05
+Epoch  43/50 (1.1s) | Train: loss=0.3820 acc=0.870 | Val: loss=0.6224 acc=0.775 | LR: 5.7e-05
+Epoch  44/50 (1.0s) | Train: loss=0.3813 acc=0.870 | Val: loss=0.6218 acc=0.779 | LR: 4.5e-05
+Epoch  45/50 (1.0s) | Train: loss=0.3807 acc=0.870 | Val: loss=0.6234 acc=0.778 | LR: 3.4e-05
+Epoch  46/50 (1.1s) | Train: loss=0.3802 acc=0.871 | Val: loss=0.6228 acc=0.775 | LR: 2.6e-05
+Epoch  47/50 (1.1s) | Train: loss=0.3798 acc=0.871 | Val: loss=0.6244 acc=0.778 | LR: 1.9e-05
+Epoch  48/50 (1.0s) | Train: loss=0.3795 acc=0.871 | Val: loss=0.6244 acc=0.777 | LR: 1.4e-05
+Epoch  49/50 (1.1s) | Train: loss=0.3792 acc=0.871 | Val: loss=0.6242 acc=0.776 | LR: 1.1e-05
+Epoch  50/50 (1.0s) | Train: loss=0.3791 acc=0.871 | Val: loss=0.6249 acc=0.778 | LR: 1.0e-05
+
+Done. Best val loss: 0.5557
+Checkpoints: checkpoints_v7/controller_bc_best.pt
+
+########################################
+   Comptabilité du calcul 2660971
+########################################
+$ sacct --format='JobID,Partition,JobName,MaxRSS,MaxVMSize,NTasks,AllocCPUS,Start,End,Elapsed,AveCPU,MinCPU,NNodes,ExitCode,State' -j 2660971
+JobID           Partition  JobName            MaxRSS   MaxVMSize  NTasks  AllocCPUS  Start                End                  Elapsed   AveCPU  MinCPU  NNodes  ExitCode  State
+-----           ---------  -------            -------  ---------  ------  ---------  -----                ---                  -------   ------  ------  ------  --------  -----
+2660971         ar_a100    reconstruct_v7_bc                              8          2026-07-21T23:20:15  2026-07-21T23:22:21  00:02:06                  1       0:0       COMPLETED
+2660971.batch              batch                                  1       8          2026-07-21T23:20:15  2026-07-21T23:22:21  00:02:06                  1       0:0       COMPLETED
+2660971.extern             extern                                 1       8          2026-07-21T23:20:15  2026-07-21T23:22:21  00:02:06                  1       0:0       COMPLETED
+
+$ sacct --format='JobID,JobName,AllocCPUS,ReqTRES,AllocTRES,NNodes,NodeList,Elapsed,CPUTime' -j 2660971
+JobID           JobName            AllocCPUS  ReqTRES                                                     AllocTRES                                                   NNodes  NodeList  Elapsed   CPUTime
+-----           -------            ---------  -------                                                     ---------                                                   ------  --------  -------   -------
+2660971         reconstruct_v7_bc  8          billing=16,cpu=8,gres/gpu:a100=1,gres/gpu=1,mem=64G,node=1  billing=16,cpu=8,gres/gpu:a100=1,gres/gpu=1,mem=64G,node=1  1       c23gpu1   00:02:06  00:16:48
+2660971.batch   batch              8                                                                      cpu=8,gres/gpu:a100=1,gres/gpu=1,mem=64G,node=1             1       c23gpu1   00:02:06  00:16:48
+2660971.extern  extern             8                                                                      billing=16,cpu=8,gres/gpu:a100=1,gres/gpu=1,mem=64G,node=1  1       c23gpu1   00:02:06  00:16:48
+
+Pour plus d'informations sur la comptabilité du calcul, merci de consulter la documentation http://www-tech.criann.fr ou le manuel 'man sacct'

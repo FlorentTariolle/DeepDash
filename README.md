@@ -37,7 +37,7 @@ The decoder is used for tokenizer training and visual inspection. Policy optimiz
 | BC controller | Validation action accuracy at the selected epoch | 79.76% |
 | PPO controller | Selected-checkpoint latent evaluation survival | 29.71 / 45 steps |
 
-These rows use the metric values at each V7 selection point rather than independent per-metric maxima. The FSQ checkpoint is epoch 920 (minimum validation reconstruction SSE), the world-model checkpoint is epoch 139 (maximum validation death F1), the BC selection point is epoch 9 (minimum validation loss), and the PPO checkpoint is iteration 3250 (maximum fixed latent-evaluation survival). The branch retains the BC training log but ships the downstream PPO checkpoint rather than the intermediate BC checkpoint. The FSQ loss is squared error summed over each 64x64 frame and averaged over samples, not pixelwise mean squared error.
+These rows use the metric values at each selection point rather than independent per-metric maxima. The FSQ checkpoint is epoch 920 (minimum validation reconstruction SSE), the world-model checkpoint is epoch 139 (maximum validation death F1), the BC selection point is epoch 9 (minimum validation loss), and the PPO checkpoint is iteration 3250 (maximum fixed latent-evaluation survival). The original intermediate BC checkpoint was not archived; the repository retains a clearly labelled epoch-9 reconstruction for the live BC control. The FSQ loss is squared error summed over each 64x64 frame and averaged over samples, not pixelwise mean squared error.
 
 ### Training provenance
 
@@ -45,15 +45,15 @@ The archived tokenizer job loaded the selected FSQ checkpoint and retokenized al
 
 ### Controlled live evaluation
 
-The frozen V7 policy was evaluated over 100 consecutive attempts on each of the first three official levels at 30 FPS with Auto-Retry enabled.
+The frozen PPO policy and two controls were evaluated on the first three official levels at 30 FPS with Auto-Retry enabled. Every invocation begins with an unscored synchronization episode, excluded because manually resuming the game can inflate its survival.
 
-| Level | Mean frames [95% CI] | Mean time | Median frames | Maximum frames |
+| Policy | Scored attempts per level | Level 1 mean +/- SD [95% CI] | Level 2 mean +/- SD [95% CI] | Level 3 mean +/- SD [95% CI] |
 | --- | ---: | ---: | ---: | ---: |
-| 1 - Stereo Madness | 279.6 [270.5, 289.2] | 9.32 s | 289 | 439 |
-| 2 - Back on Track | 263.3 [239.8, 287.2] | 8.78 s | 239 | 457 |
-| 3 - Polargeist | 64.3 [59.3, 70.0] | 2.14 s | 51 | 199 |
+| No-op | 10 | 46.2 +/- 0.7 [45.7, 46.6] | 63.4 +/- 0.7 [63.0, 63.8] | 41.5 +/- 0.7 [41.1, 41.9] |
+| BC (reconstructed epoch 9) | 100 | 130.4 +/- 91.1 [112.6, 148.3] | 119.7 +/- 71.5 [105.8, 133.8] | 45.2 +/- 9.0 [43.5, 47.0] |
+| PPO | 99 | 279.4 +/- 48.0 [270.2, 289.0] | 262.9 +/- 121.2 [239.4, 287.2] | 63.8 +/- 27.1 [58.8, 69.5] |
 
-The evaluator reports acted frames survived rather than level percentage. Results remain level-specific: the official levels increase in difficulty, and Polargeist introduces a yellow-orb mechanic requiring an additional timed jump while airborne. Raw attempts and bootstrap confidence intervals are available in [`analysis/2026-07-20_v7_deploy/`](analysis/2026-07-20_v7_deploy/).
+The evaluator reports acted frames survived rather than level percentage. PPO substantially improves over BC on Levels 1 and 2; Level 3 remains difficult for both learned policies because Polargeist introduces a yellow-orb mechanic requiring an additional timed jump while airborne. Raw PPO attempts are in [`analysis/2026-07-20_v7_deploy/`](analysis/2026-07-20_v7_deploy/), the controls are in [`analysis/2026-07-21_live_baselines/`](analysis/2026-07-21_live_baselines/), and the reconstructed BC checkpoint provenance is documented in [`analysis/2026-07-21_bc_reconstruction/`](analysis/2026-07-21_bc_reconstruction/).
 
 ### Optimized deployment latency
 

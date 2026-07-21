@@ -1,0 +1,37 @@
+{
+  "episodes_dir": "data/death_episodes",
+  "expert_episodes_dir": "data/expert_episodes",
+  "transformer_checkpoint": "checkpoints_v7/transformer_best.pt",
+  "fsq_checkpoint": "checkpoints_v7/fsq_best.pt",
+  "checkpoint_dir": "checkpoints_v7",
+  "epochs": 50,
+  "batch_size": 512,
+  "lr": 0.001,
+  "weight_decay": 0.0001,
+  "jump_class_weight": 1.5,
+  "val_ratio": 0.1,
+  "seed": 42,
+  "snapshot_epochs": [
+    9
+  ],
+  "config": "configs/v7-phase0.yaml",
+  "vocab_size": 1000,
+  "embed_dim": 384,
+  "n_heads": 8,
+  "n_layers": 8,
+  "tokens_per_frame": 64,
+  "context_frames": 4,
+  "dropout": 0.1,
+  "controller_dropout": 0.0,
+  "token_embed_dim": 16,
+  "policy_class": "v3_cnn",
+  "amp_dtype": null,
+  "compile_mode": null,
+  "levels": [
+    8,
+    5,
+    5,
+    5
+  ],
+  "adaln": false
+}

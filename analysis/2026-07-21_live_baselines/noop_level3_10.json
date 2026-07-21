@@ -1,0 +1,146 @@
+{
+  "system_variant": "V7",
+  "policy": "no-op",
+  "date_utc": "2026-07-21T21:54:20.221892+00:00",
+  "n_runs": 10,
+  "n_episodes_executed": 11,
+  "excluded_initial_episodes": 1,
+  "initial_episode_exclusion_reason": "Manual game resume can inflate the first episode.",
+  "level_name": "Level 3 - Polargeist",
+  "fps": 30,
+  "unscored_warmup_frames": 3,
+  "death_detection": "Geometry Dash process memory",
+  "gpu": "NVIDIA GeForce RTX 2060 SUPER",
+  "mean_frames": 41.5,
+  "mean_frames_ci95": [
+    41.1,
+    41.9
+  ],
+  "std_frames": 0.7,
+  "min_frames": 40,
+  "max_frames": 42,
+  "median_frames": 42.0,
+  "p25_frames": 41.0,
+  "p75_frames": 42.0,
+  "mean_time_s": 1.38,
+  "mean_time_s_ci95": [
+    1.37,
+    1.4
+  ],
+  "median_time_s": 1.4,
+  "min_time_s": 1.33,
+  "max_time_s": 1.4,
+  "p25_time_s": 1.37,
+  "p75_time_s": 1.4,
+  "level_progress_available": false,
+  "survival_bootstrap_resamples": 50000,
+  "survival_bootstrap_seed": 20260720,
+  "checkpoints": {
+    "vae": null,
+    "transformer": null,
+    "controller": null
+  },
+  "checkpoint_sha256": {
+    "vae": null,
+    "transformer": null,
+    "controller": null
+  },
+  "config": "configs/deepdash/v7-phase0.yaml",
+  "policy_class": null,
+  "latency": {
+    "bootstrap_resamples": 10000,
+    "bootstrap_seed": 20260720
+  },
+  "excluded_episodes": [
+    {
+      "episode": 1,
+      "frames_survived": 137,
+      "seconds_survived": 4.57,
+      "wall_time_s": 4.71,
+      "level_progress": null,
+      "exclusion_reason": "Initial synchronization episode; manual game resume can inflate survival time."
+    }
+  ],
+  "runs": [
+    {
+      "episode": 2,
+      "frames_survived": 42,
+      "seconds_survived": 1.4,
+      "wall_time_s": 1.51,
+      "level_progress": null,
+      "run": 1
+    },
+    {
+      "episode": 3,
+      "frames_survived": 41,
+      "seconds_survived": 1.37,
+      "wall_time_s": 1.49,
+      "level_progress": null,
+      "run": 2
+    },
+    {
+      "episode": 4,
+      "frames_survived": 42,
+      "seconds_survived": 1.4,
+      "wall_time_s": 1.51,
+      "level_progress": null,
+      "run": 3
+    },
+    {
+      "episode": 5,
+      "frames_survived": 42,
+      "seconds_survived": 1.4,
+      "wall_time_s": 1.51,
+      "level_progress": null,
+      "run": 4
+    },
+    {
+      "episode": 6,
+      "frames_survived": 42,
+      "seconds_survived": 1.4,
+      "wall_time_s": 1.52,
+      "level_progress": null,
+      "run": 5
+    },
+    {
+      "episode": 7,
+      "frames_survived": 41,
+      "seconds_survived": 1.37,
+      "wall_time_s": 1.48,
+      "level_progress": null,
+      "run": 6
+    },
+    {
+      "episode": 8,
+      "frames_survived": 40,
+      "seconds_survived": 1.33,
+      "wall_time_s": 1.46,
+      "level_progress": null,
+      "run": 7
+    },
+    {
+      "episode": 9,
+      "frames_survived": 41,
+      "seconds_survived": 1.37,
+      "wall_time_s": 1.48,
+      "level_progress": null,
+      "run": 8
+    },
+    {
+      "episode": 10,
+      "frames_survived": 42,
+      "seconds_survived": 1.4,
+      "wall_time_s": 1.51,
+      "level_progress": null,
+      "run": 9
+    },
+    {
+      "episode": 11,
+      "frames_survived": 42,
+      "seconds_survived": 1.4,
+      "wall_time_s": 1.51,
+      "level_progress": null,
+      "run": 10
+    }
+  ]
+}

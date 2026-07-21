@@ -1,0 +1,24 @@
+wandb: Tracking run with wandb version 0.27.0
+wandb: W&B syncing is set to `offline` in this directory. Run `wandb online` or set WANDB_MODE=online to enable cloud syncing.
+wandb: Run data is saved locally in /home/2500001/ftari001/dash-vmc-v7/wandb/offline-run-20260721_232020-tkxt5rgb
+wandb: WARNING URL not available in offline run
+wandb:
+wandb: Run history:
+wandb:         bc/lr ██████▇▇▇▇▇▇▆▆▆▆▅▅▅▅▄▄▄▄▃▃▃▃▂▂▂▂▂▁▁▁▁▁▁▁
+wandb:  bc/train/acc ▁▂▃▄▅▅▆▆▆▆▆▆▇▇▇▇▇▇▇▇▇▇▇▇████████████████
+wandb: bc/train/loss █▇▆▅▅▄▄▄▄▃▃▃▃▃▂▂▂▂▂▂▂▂▂▂▂▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:    bc/val/acc ▁▄▆▇▇▇████▆▇▆▆▇▆▆▄▇▆▆▅▅▆▆▅▄▅▅▅▅▅▅▅▄▅▄▅▅▅
+wandb:   bc/val/loss █▅▄▃▂▂▁▁▁▁▁▁▂▂▂▂▂▃▃▃▄▃▄▄▄▄▅▅▅▅▆▅▆▆▆▆▆▆▆▆
+wandb:         epoch ▁▁▁▁▂▂▂▂▂▂▃▃▃▃▃▄▄▄▄▄▅▅▅▅▅▅▆▆▆▆▆▇▇▇▇▇▇███
+wandb:
+wandb: Run summary:
+wandb:         bc/lr 1e-05
+wandb:  bc/train/acc 0.87089
+wandb: bc/train/loss 0.37914
+wandb:    bc/val/acc 0.77814
+wandb:   bc/val/loss 0.62492
+wandb:         epoch 50
+wandb:
+wandb: You can sync this run to the cloud by running:
+wandb: wandb sync /home/2500001/ftari001/dash-vmc-v7/wandb/offline-run-20260721_232020-tkxt5rgb
+wandb: Find logs at: ./wandb/offline-run-20260721_232020-tkxt5rgb/logs

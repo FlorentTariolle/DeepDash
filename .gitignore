@@ -2,6 +2,8 @@
 !analysis/2026-07-20_v7_deploy/eval_100.json
 !analysis/2026-07-20_v7_deploy/eval_100_level2.json
 !analysis/2026-07-20_v7_deploy/eval_100_level3.json
+!analysis/2026-07-21_live_baselines/*.json
+!analysis/2026-07-21_bc_reconstruction/controller_bc_args.json
 __pycache__/
 .venv/
 .codex_tmp/
@@ -59,3 +61,4 @@ papers/
 !checkpoints_v7/fsq_best.pt
 !checkpoints_v7/transformer_best.pt
 !checkpoints_v7/controller_ppo_best.pt
+!checkpoints_v7/controller_bc_epoch9_reconstructed.pt

@@ -81,7 +81,7 @@ Fast deterministic games expose a practical world model problem: predictions mus
 We present \emph{DashVMC}, a real-time discrete Vision-Model-Controller pipeline for Geometry Dash.
 An FSQ tokenizer encodes $\imgsize$ Sobel frames into $\gridsize$ token grids; a block-causal transformer predicts next-frame tokens from action-conditioned context; and a lightweight actor-critic is warm-started by behavioural cloning and optimized with PPO in latent rollouts.
 The deployed agent runs at the 30\,FPS cadence used by the captured training data, while measured optimized-path latency remains well within the 33\,ms frame budget on an RTX 2060.
-Across 100 consecutive automated attempts, the frozen policy survives roughly ten seconds on each of the first two official levels; qualitative intervention runs show that it can clear most later sections when a small number of recurring blocking obstacles are skipped.
+Across 99 scored automated attempts, the frozen policy survives roughly ten seconds on each of the first two official levels; qualitative intervention runs show that it can clear most later sections when a small number of recurring blocking obstacles are skipped.
 The same action-conditioned dynamics can also be rolled forward from real gameplay prefixes to produce decoded visual continuations of plausible future Geometry Dash segments.
 We report the system design, latency profile, current model/controller metrics, and implementation diagnostics that motivated the final conservative architecture.
 \end{abstract}
@@ -400,7 +400,8 @@ BC is retained in the pipeline on this basis.
 
 \paragraph{Evaluation metrics.}
 We report: (1) next-token prediction accuracy and cross-entropy on held-out episodes, (2) death prediction precision/recall/F1, (3) BC action prediction accuracy, (4) PPO survival on fixed latent-rollout development contexts, (5) live-loop deployment latency, and (6) acted frames survived in the real game.
-For PPO checkpoint development, we pre-sample 512 fixed contexts from the nominal validation episodes and reevaluate them every ten iterations. Because PPO rollout seeds are drawn from the full episode collection, including those episodes, and the best checkpoint is selected adaptively on this fixed set, we report this quantity as a development metric rather than held-out validation. For the controlled deployment evaluation, we freeze the selected checkpoints and run 100 consecutive attempts on each of the first three official levels at 30\,FPS with Auto-Retry enabled. The evaluator uses game memory only to delimit alive/dead episodes; the reported outcome is acted frames survived rather than level percentage. We compute each confidence interval of the mean using a percentile bootstrap over attempts with 50{,}000 resamples.
+For PPO checkpoint development, we pre-sample 512 fixed contexts from the nominal validation episodes and reevaluate them every ten iterations. Because PPO rollout seeds are drawn from the full episode collection, including those episodes, and the best checkpoint is selected adaptively on this fixed set, we report this quantity as a development metric rather than held-out validation. For the controlled deployment evaluation, we freeze the selected checkpoints and retain 99 scored PPO attempts on each of the first three official levels at 30\,FPS with Auto-Retry enabled. We also run 100 attempts with the epoch-9 BC policy and 10 no-op attempts per level. We exclude the initial synchronization episode of every invocation because manually resuming the game can inflate its measured survival. The evaluator uses game memory only to delimit alive/dead episodes; the reported outcome is acted frames survived rather than level percentage. We compute each confidence interval of the mean using a percentile bootstrap over scored attempts with 50{,}000 resamples.
+The original intermediate BC checkpoint was not archived, so the live BC control uses an explicitly labelled epoch-9 reconstruction from the archived tag, training corpus, configuration, and seed. Its validation loss and accuracy at epoch 9 are $0.560845$ and $79.85\%$, compared with $0.558837$ and $79.76\%$ in the archived trace; we do not treat the reconstruction as bit-identical to the missing original.
 For the application section, we retain qualitative generated rollouts: the WM is seeded with real gameplay frames and action tokens, then rolled forward to visualize level continuations and failure/survival branches in token space.
 
 % ===========================================================================
@@ -415,12 +416,13 @@ Table~\ref{tab:gd-system} summarizes the frozen DashVMC checkpoints and controll
 The selected tokenizer checkpoint (epoch 920, minimum validation reconstruction loss) has held-out reconstruction SSE $1.595$ per frame on pixels normalized to $[0,1]$. Because squared errors are summed over each $64\!\times\!64$ frame and averaged over samples, this is an aggregate per-pixel MSE of $3.894\times10^{-4}$, or 34.10\,dB PSNR computed from that mean MSE.
 The selected transformer checkpoint (epoch 139, maximum validation death F1) reaches $29.74\%$ held-out token accuracy, with death precision $0.7337$, recall $0.8654$, and F1 $0.7941$.
 The BC checkpoint selected by minimum validation loss at epoch 9 reaches $79.76\%$ held-out action accuracy, and the PPO checkpoint selected at iteration 3250 reaches fixed-context latent-rollout development survival of $29.71$ out of $45$ steps.
-On Levels~1 and~2, the frozen policy survives $279.6$ and $263.3$ acted frames on average, with overlapping 95\% bootstrap CIs of $[270.5, 289.2]$ and $[239.8, 287.2]$. Mean survival on Level~3 is $64.3$ frames (95\% CI $[59.3, 70.0]$), and 75\% of attempts end by frame~93. This reduction is expected to some degree: the official levels increase in difficulty, and Level~3 introduces yellow orbs that require an additional timed jump input while airborne. We therefore report each level separately rather than interpreting the values as a controlled generalization comparison.
+On Levels~1 and~2, the frozen policy survives $279.4$ and $262.9$ acted frames on average, with overlapping 95\% bootstrap CIs of $[270.2, 289.0]$ and $[239.4, 287.2]$. Mean survival on Level~3 is $63.8$ frames (95\% CI $[58.8, 69.5]$), and 75\% of attempts end by frame~92. This reduction is expected to some degree: the official levels increase in difficulty, and Level~3 introduces yellow orbs that require an additional timed jump input while airborne. We therefore report each level separately rather than interpreting the values as a controlled generalization comparison.
+The BC control averages $130.4$, $119.7$, and $45.2$ frames on Levels~1--3, while no-op reaches $46.2$, $63.4$, and $41.5$. PPO therefore improves over BC by $149.0$, $143.2$, and $18.6$ mean frames on Levels~1--3; on the harder third level, the reported mean confidence intervals do not overlap, but the absolute gain is much smaller.
 In separate qualitative intervention runs, bypassing a small number of recurring blocking obstacles allows the same policy to clear most later sections; this observation is not included in the controlled survival statistics.
 
 \begin{table}[t]
   \centering
-  \caption{Selection-aligned frozen DashVMC system metrics. Model rows report metrics at the model-selection point rather than independent maxima across training; each live row contains 100 consecutive automated attempts.}
+  \caption{Selection-aligned frozen DashVMC system metrics. Model rows report metrics at the model-selection point rather than independent maxima across training; each live row contains 99 scored automated attempts after excluding the initial synchronization episode.}
   \label{tab:gd-system}
   \begin{tabular}{lll}
     \toprule
@@ -432,9 +434,25 @@ In separate qualitative intervention runs, bypassing a small number of recurring
     World model & Selected validation death F1 & $0.7941$ \\
     BC controller & Selected-epoch validation accuracy & $79.76\%$ \\
     PPO controller & Selected latent development survival & $29.71 / 45$ steps \\
-    Live Level 1 & Mean survival (95\% CI) & $279.6\ [270.5, 289.2]$ frames \\
-    Live Level 2 & Mean survival (95\% CI) & $263.3\ [239.8, 287.2]$ frames \\
-    Live Level 3 & Mean survival (95\% CI) & $64.3\ [59.3, 70.0]$ frames \\
+    Live Level 1 & Mean survival (95\% CI) & $279.4\ [270.2, 289.0]$ frames \\
+    Live Level 2 & Mean survival (95\% CI) & $262.9\ [239.4, 287.2]$ frames \\
+    Live Level 3 & Mean survival (95\% CI) & $63.8\ [58.8, 69.5]$ frames \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{table}[t]
+  \centering
+  \small
+  \caption{Live acted-frame survival by policy. Entries are mean $\pm$ standard deviation; $n$ is the number of scored attempts per level after excluding each invocation's initial synchronization episode.}
+  \label{tab:live-controls}
+  \begin{tabular}{lrrrr}
+    \toprule
+    Policy & $n$ & Level 1 & Level 2 & Level 3 \\
+    \midrule
+    No-op & 10 & $46.2 \pm 0.7$ & $63.4 \pm 0.7$ & $41.5 \pm 0.7$ \\
+    BC reconstruction & 100 & $130.4 \pm 91.1$ & $119.7 \pm 71.5$ & $45.2 \pm 9.0$ \\
+    PPO & 99 & $279.4 \pm 48.0$ & $262.9 \pm 121.2$ & $63.8 \pm 27.1$ \\
     \bottomrule
   \end{tabular}
 \end{table}
@@ -571,7 +589,7 @@ Recent GQ-style tokenizers improve image-tokenizer rate-distortion benchmarks, b
 We presented DashVMC, a real-time discrete-WM system for Geometry Dash: an FSQ tokenizer, a block-causal transformer with action tokens interleaved in the sequence and a TWISTER-style action-conditional contrastive auxiliary loss, and a CNN actor-critic on the current token grid trained via BC and PPO entirely in latent rollouts.
 The same action-conditioned dynamics can be used generatively: from a real gameplay prefix, the model rolls out plausible future token grids and decoded frames, providing procedural level-continuation samples in addition to control-oriented latent rollouts.
 The three components are trained sequentially, and the full pipeline is deployed at 30\,FPS on consumer hardware, with measured mean end-to-end latency of 16.3\,ms.
-Across 100 controlled attempts per level, the frozen policy averages $9.32$\,s and $8.78$\,s of survival on Levels~1 and~2 and $2.14$\,s on the harder Level~3 with its additional yellow-orb timing mechanic.
+Across 99 scored controlled attempts per level, the frozen policy averages $9.31$\,s and $8.76$\,s of survival on Levels~1 and~2 and $2.13$\,s on the harder Level~3 with its additional yellow-orb timing mechanic.
 A set of architectural variants (joint FSQ+M training, AdaLN-Zero action conditioning, scaling to a larger transformer, an MLP controller on the hidden state) is reported as ablations: each is more elegant on paper but did not improve real-game level progress in our experiments, motivating the deliberately conservative baseline of this paper.
 Structured Label Smoothing is reported as a scoped Geometry Dash design choice and auxiliary diagnostic: it is motivated by FSQ-neighbour equivalence in the application, but the IRIS/Pong transfer test does not support a broad method claim.
 A natural extension is to make the tokenizer-neighbour objective adaptive, but this would require a controlled validation target and safeguards against degenerate soft targets.

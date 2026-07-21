@@ -10,10 +10,12 @@ and starts the next episode automatically.
 Usage:
     python scripts/eval_real_game.py --n-runs 100
     python scripts/eval_real_game.py --n-runs 50 --output eval_results.json
+    python scripts/eval_real_game.py --policy no-op --n-runs 10
 """
 
 import argparse
 from datetime import datetime, timezone
+import hashlib
 import json
 import sys
 import time
@@ -30,6 +32,17 @@ from deepdash.fsq import FSQVAE
 from deepdash.world_model import WorldModel
 from deepdash.controller import CNNPolicy, MLPPolicy, V3CNNPolicy
 from deepdash.gd_mem import GDReader
+
+
+def file_sha256(path):
+    """Return a file SHA-256, or None when the policy has no checkpoint."""
+    if path is None:
+        return None
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def bootstrap_mean_ci(values, n_resamples, seed):
@@ -139,11 +152,14 @@ def preprocess_frame(rgb, crop_x, crop_y, crop_size, target_size, device=None):
 def main():
     parser = argparse.ArgumentParser(description="Automated real-game evaluation")
     parser.add_argument("--n-runs", type=int, default=100)
+    parser.add_argument("--policy", choices=["ppo", "bc", "no-op"],
+                        default="ppo",
+                        help="Action policy. BC and PPO use the full model path; "
+                             "no-op never presses jump.")
     parser.add_argument("--vae-checkpoint", default="checkpoints/fsq_best.pt")
     parser.add_argument("--transformer-checkpoint",
                         default="checkpoints/transformer_best.pt")
-    parser.add_argument("--controller-checkpoint",
-                        default="checkpoints/controller_ppo_best.pt")
+    parser.add_argument("--controller-checkpoint", default=None)
     parser.add_argument("--fps", type=int, default=30)
     parser.add_argument("--jump-threshold", type=float, default=0.5)
     parser.add_argument("--level-name", default=None)
@@ -173,64 +189,77 @@ def main():
     apply_config(args)
     apply_config(args, section="controller_ppo")
 
+    if args.controller_checkpoint is None and args.policy != "no-op":
+        checkpoint_dir = Path(getattr(args, "checkpoint_dir", "checkpoints"))
+        filename = "controller_bc_best.pt" if args.policy == "bc" \
+            else "controller_ppo_best.pt"
+        args.controller_checkpoint = str(checkpoint_dir / filename)
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
     K = args.context_frames
+    uses_controller = args.policy in {"ppo", "bc"}
 
-    # Load models
-    print("Loading models...")
-    vae = FSQVAE(levels=args.levels).to(device)
-    state = torch.load(args.vae_checkpoint, map_location=device, weights_only=True)
-    state = {k.removeprefix("_orig_mod."): v for k, v in state.items()}
-    vae.load_state_dict(state)
-    vae.eval()
+    vae = None
+    wm = None
+    controller = None
+    policy_class = None
+    if uses_controller:
+        print("Loading models...")
+        vae = FSQVAE(levels=args.levels).to(device)
+        state = torch.load(args.vae_checkpoint, map_location=device, weights_only=True)
+        state = {k.removeprefix("_orig_mod."): v for k, v in state.items()}
+        vae.load_state_dict(state)
+        vae.eval()
 
-    wm = WorldModel(
-        vocab_size=args.vocab_size, embed_dim=args.embed_dim,
-        n_heads=args.n_heads, n_layers=args.n_layers,
-        context_frames=args.context_frames, dropout=args.dropout,
-        tokens_per_frame=args.tokens_per_frame,
-        adaln=getattr(args, 'adaln', False),
-        fsq_dim=len(args.levels) if getattr(args, 'levels', None) else None,
-    ).to(device)
-    state = torch.load(args.transformer_checkpoint, map_location=device,
-                       weights_only=True)
-    state = {k.removeprefix("_orig_mod."): v for k, v in state.items()}
-    wm.load_state_dict(state, strict=False)
-    wm.eval()
-
-    grid_size = int(args.tokens_per_frame ** 0.5)
-    policy_class = (getattr(args, "policy_class", None) or "mlp").lower()
-    if policy_class == "v3_cnn":
-        controller = V3CNNPolicy(
-            vocab_size=args.vocab_size,
-            grid_size=grid_size,
-            token_embed_dim=getattr(args, "token_embed_dim", 16),
-            h_dim=args.embed_dim,
-            mtp_steps=int(getattr(args, "mtp_steps", None) or 8),
+        wm = WorldModel(
+            vocab_size=args.vocab_size, embed_dim=args.embed_dim,
+            n_heads=args.n_heads, n_layers=args.n_layers,
+            context_frames=args.context_frames, dropout=args.dropout,
+            tokens_per_frame=args.tokens_per_frame,
+            adaln=getattr(args, 'adaln', False),
+            fsq_dim=len(args.levels) if getattr(args, 'levels', None) else None,
         ).to(device)
-    elif policy_class == "cnn":
-        controller = CNNPolicy(
-            vocab_size=args.vocab_size,
-            grid_size=grid_size,
-            token_embed_dim=getattr(args, "token_embed_dim", 16),
-            h_dim=args.embed_dim,
-            temporal_dim=getattr(args, "temporal_dim", 32),
-        ).to(device)
+        state = torch.load(args.transformer_checkpoint, map_location=device,
+                           weights_only=True)
+        state = {k.removeprefix("_orig_mod."): v for k, v in state.items()}
+        wm.load_state_dict(state, strict=False)
+        wm.eval()
+
+        grid_size = int(args.tokens_per_frame ** 0.5)
+        policy_class = (getattr(args, "policy_class", None) or "mlp").lower()
+        if policy_class == "v3_cnn":
+            controller = V3CNNPolicy(
+                vocab_size=args.vocab_size,
+                grid_size=grid_size,
+                token_embed_dim=getattr(args, "token_embed_dim", 16),
+                h_dim=args.embed_dim,
+                mtp_steps=int(getattr(args, "mtp_steps", None) or 8),
+            ).to(device)
+        elif policy_class == "cnn":
+            controller = CNNPolicy(
+                vocab_size=args.vocab_size,
+                grid_size=grid_size,
+                token_embed_dim=getattr(args, "token_embed_dim", 16),
+                h_dim=args.embed_dim,
+                temporal_dim=getattr(args, "temporal_dim", 32),
+            ).to(device)
+        else:
+            controller = MLPPolicy(h_dim=args.embed_dim).to(device)
+        state = torch.load(args.controller_checkpoint, map_location=device,
+                           weights_only=True)
+        if "controller" in state and isinstance(state["controller"], dict):
+            state = state["controller"]
+        controller.load_state_dict(state)
+        controller.eval()
+        print(f"All models loaded. Controller: {policy_class}")
     else:
-        controller = MLPPolicy(h_dim=args.embed_dim).to(device)
-    state = torch.load(args.controller_checkpoint, map_location=device,
-                       weights_only=True)
-    if "controller" in state and isinstance(state["controller"], dict):
-        state = state["controller"]
-    controller.load_state_dict(state)
-    controller.eval()
-    print(f"All models loaded. Controller: {policy_class}")
+        print("No-op policy: model loading and screen capture are disabled.")
 
     # Screen capture setup
     region = (0, 0, 1920, 1080)
     crop_x, crop_y, crop_size = 660, 48, 1032
-    cam = dxcam.create()
+    cam = dxcam.create() if uses_controller else None
     frame_interval = 1.0 / args.fps
 
     # Memory reader
@@ -238,16 +267,18 @@ def main():
     print(f"GD memory reader connected (PID: {gd.pid})")
 
     results = []
+    excluded_episodes = []
     stage_timer = StageTimer(
-        enabled=args.latency_samples > 0,
+        enabled=False,
         bootstrap_resamples=args.latency_bootstrap_resamples,
     )
     latency_frames = 0
-    print(f"\nRunning {args.n_runs} evaluation episodes...")
+    print(f"\nRunning one unscored synchronization episode, then "
+          f"{args.n_runs} {args.policy} evaluation episodes...")
     print("Press F10 to abort.\n")
 
-    run_idx = 0
-    while run_idx < args.n_runs:
+    episode_idx = 0
+    while len(results) < args.n_runs:
         if keyboard.is_pressed("f10"):
             print("Aborted by user.")
             break
@@ -263,8 +294,10 @@ def main():
         ctx_tokens = []
         ctx_actions = []
         jumping = False
+        warmup_frames = K - 1
         frames_survived = 0
         t_start = time.perf_counter()
+        keyboard.release("space")
 
         while True:
             t0 = time.perf_counter()
@@ -279,6 +312,16 @@ def main():
                     keyboard.release("space")
                     jumping = False
                 break
+
+            if not uses_controller:
+                if warmup_frames > 0:
+                    warmup_frames -= 1
+                else:
+                    frames_survived += 1
+                elapsed = time.perf_counter() - t0
+                if elapsed < frame_interval:
+                    time.sleep(frame_interval - elapsed)
+                continue
 
             # Capture
             stage_timer.start("capture")
@@ -360,17 +403,33 @@ def main():
                 time.sleep(frame_interval - elapsed)
 
         episode_time = time.perf_counter() - t_start
-        results.append({
-            "run": run_idx + 1,
+        episode_idx += 1
+        episode = {
+            "episode": episode_idx,
             "frames_survived": frames_survived,
             "seconds_survived": round(frames_survived / args.fps, 2),
             "wall_time_s": round(episode_time, 2),
             "level_progress": None,
-        })
+        }
 
-        run_idx += 1
-        print(f"  Run {run_idx:3d}/{args.n_runs}: "
-              f"{frames_survived} frames ({episode_time:.1f}s)")
+        if episode_idx == 1:
+            episode["exclusion_reason"] = (
+                "Initial synchronization episode; manual game resume can "
+                "inflate survival time."
+            )
+            excluded_episodes.append(episode)
+            stage_timer = StageTimer(
+                enabled=uses_controller and args.latency_samples > 0,
+                bootstrap_resamples=args.latency_bootstrap_resamples,
+            )
+            latency_frames = 0
+            print(f"  Sync episode: {frames_survived} frames "
+                  f"({episode_time:.1f}s) [excluded]")
+        else:
+            episode["run"] = len(results) + 1
+            results.append(episode)
+            print(f"  Run {len(results):3d}/{args.n_runs}: "
+                  f"{frames_survived} frames ({episode_time:.1f}s)")
 
         # Wait for respawn (death animation + respawn)
         time.sleep(1.0)
@@ -396,10 +455,18 @@ def main():
         gpu_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else None
         summary = {
             "system_variant": args.system_variant,
+            "policy": args.policy,
             "date_utc": datetime.now(timezone.utc).isoformat(),
             "n_runs": len(results),
+            "n_episodes_executed": episode_idx,
+            "excluded_initial_episodes": len(excluded_episodes),
+            "initial_episode_exclusion_reason": (
+                "Manual game resume can inflate the first episode."
+            ),
             "level_name": args.level_name,
             "fps": args.fps,
+            "unscored_warmup_frames": K - 1,
+            "death_detection": "Geometry Dash process memory",
             "gpu": gpu_name,
             "mean_frames": round(float(np.mean(survivals)), 1),
             "mean_frames_ci95": [
@@ -426,13 +493,21 @@ def main():
             "survival_bootstrap_resamples": args.survival_bootstrap_resamples,
             "survival_bootstrap_seed": 20260720,
             "checkpoints": {
-                "vae": args.vae_checkpoint,
-                "transformer": args.transformer_checkpoint,
+                "vae": args.vae_checkpoint if uses_controller else None,
+                "transformer": args.transformer_checkpoint if uses_controller else None,
                 "controller": args.controller_checkpoint,
+            },
+            "checkpoint_sha256": {
+                "vae": file_sha256(args.vae_checkpoint) if uses_controller else None,
+                "transformer": file_sha256(args.transformer_checkpoint)
+                if uses_controller else None,
+                "controller": file_sha256(args.controller_checkpoint)
+                if uses_controller else None,
             },
             "config": args.config,
             "policy_class": policy_class,
             "latency": stage_timer.summary(),
+            "excluded_episodes": excluded_episodes,
             "runs": results,
         }
 

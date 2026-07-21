@@ -1,24 +1,24 @@
 {
   "system_variant": "V7",
   "date_utc": "2026-07-20T17:20:03.958507+00:00",
-  "n_runs": 100,
+  "n_runs": 99,
   "level_name": "Level 2 - Back on Track",
   "fps": 30,
   "gpu": "NVIDIA GeForce RTX 2060 SUPER",
-  "mean_frames": 263.3,
+  "mean_frames": 262.9,
   "mean_frames_ci95": [
-    239.8,
+    239.4,
     287.2
   ],
-  "std_frames": 120.7,
+  "std_frames": 121.2,
   "min_frames": 44,
   "max_frames": 457,
   "median_frames": 239.0,
   "p25_frames": 145.0,
   "p75_frames": 367.0,
-  "mean_time_s": 8.78,
+  "mean_time_s": 8.76,
   "mean_time_s_ci95": [
-    7.99,
+    7.98,
     9.57
   ],
   "median_time_s": 7.97,
@@ -1950,704 +1950,816 @@
   },
   "runs": [
     {
-      "run": 1,
-      "frames_survived": 303,
-      "seconds_survived": 10.1,
-      "wall_time_s": 11.25,
-      "level_progress": null
-    },
-    {
-      "run": 2,
       "frames_survived": 452,
       "seconds_survived": 15.07,
       "wall_time_s": 15.31,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 2,
+      "run": 1
     },
     {
-      "run": 3,
       "frames_survived": 452,
       "seconds_survived": 15.07,
       "wall_time_s": 15.31,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 3,
+      "run": 2
     },
     {
-      "run": 4,
       "frames_survived": 145,
       "seconds_survived": 4.83,
       "wall_time_s": 4.98,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 4,
+      "run": 3
     },
     {
-      "run": 5,
       "frames_survived": 145,
       "seconds_survived": 4.83,
       "wall_time_s": 4.99,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 5,
+      "run": 4
     },
     {
-      "run": 6,
       "frames_survived": 451,
       "seconds_survived": 15.03,
       "wall_time_s": 15.28,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 6,
+      "run": 5
     },
     {
-      "run": 7,
       "frames_survived": 144,
       "seconds_survived": 4.8,
       "wall_time_s": 4.95,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 7,
+      "run": 6
     },
     {
-      "run": 8,
       "frames_survived": 239,
       "seconds_survived": 7.97,
       "wall_time_s": 8.14,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 8,
+      "run": 7
     },
     {
-      "run": 9,
       "frames_survived": 238,
       "seconds_survived": 7.93,
       "wall_time_s": 8.13,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 9,
+      "run": 8
     },
     {
-      "run": 10,
       "frames_survived": 278,
       "seconds_survived": 9.27,
       "wall_time_s": 9.46,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 10,
+      "run": 9
     },
     {
-      "run": 11,
       "frames_survived": 450,
       "seconds_survived": 15.0,
       "wall_time_s": 15.25,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 11,
+      "run": 10
     },
     {
-      "run": 12,
       "frames_survived": 146,
       "seconds_survived": 4.87,
       "wall_time_s": 5.02,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 12,
+      "run": 11
     },
     {
-      "run": 13,
       "frames_survived": 145,
       "seconds_survived": 4.83,
       "wall_time_s": 4.98,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 13,
+      "run": 12
     },
     {
-      "run": 14,
       "frames_survived": 239,
       "seconds_survived": 7.97,
       "wall_time_s": 8.14,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 14,
+      "run": 13
     },
     {
-      "run": 15,
       "frames_survived": 452,
       "seconds_survived": 15.07,
       "wall_time_s": 15.31,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 15,
+      "run": 14
     },
     {
-      "run": 16,
       "frames_survived": 145,
       "seconds_survived": 4.83,
       "wall_time_s": 4.98,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 16,
+      "run": 15
     },
     {
-      "run": 17,
       "frames_survived": 451,
       "seconds_survived": 15.03,
       "wall_time_s": 15.28,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 17,
+      "run": 16
     },
     {
-      "run": 18,
       "frames_survived": 450,
       "seconds_survived": 15.0,
       "wall_time_s": 15.24,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 18,
+      "run": 17
     },
     {
-      "run": 19,
       "frames_survived": 145,
       "seconds_survived": 4.83,
       "wall_time_s": 4.98,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 19,
+      "run": 18
     },
     {
-      "run": 20,
       "frames_survived": 239,
       "seconds_survived": 7.97,
       "wall_time_s": 8.14,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 20,
+      "run": 19
     },
     {
-      "run": 21,
       "frames_survived": 238,
       "seconds_survived": 7.93,
       "wall_time_s": 8.12,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 21,
+      "run": 20
     },
     {
-      "run": 22,
       "frames_survived": 144,
       "seconds_survived": 4.8,
       "wall_time_s": 4.95,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 22,
+      "run": 21
     },
     {
-      "run": 23,
       "frames_survived": 451,
       "seconds_survived": 15.03,
       "wall_time_s": 15.26,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 23,
+      "run": 22
     },
     {
-      "run": 24,
       "frames_survived": 239,
       "seconds_survived": 7.97,
       "wall_time_s": 8.14,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 24,
+      "run": 23
     },
     {
-      "run": 25,
       "frames_survived": 457,
       "seconds_survived": 15.23,
       "wall_time_s": 15.48,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 25,
+      "run": 24
     },
     {
-      "run": 26,
       "frames_survived": 238,
       "seconds_survived": 7.93,
       "wall_time_s": 8.11,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 26,
+      "run": 25
     },
     {
-      "run": 27,
       "frames_survived": 239,
       "seconds_survived": 7.97,
       "wall_time_s": 8.14,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 27,
+      "run": 26
     },
     {
-      "run": 28,
       "frames_survived": 145,
       "seconds_survived": 4.83,
       "wall_time_s": 4.98,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 28,
+      "run": 27
     },
     {
-      "run": 29,
       "frames_survived": 277,
       "seconds_survived": 9.23,
       "wall_time_s": 9.42,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 29,
+      "run": 28
     },
     {
-      "run": 30,
       "frames_survived": 238,
       "seconds_survived": 7.93,
       "wall_time_s": 8.11,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 30,
+      "run": 29
     },
     {
-      "run": 31,
       "frames_survived": 451,
       "seconds_survived": 15.03,
       "wall_time_s": 15.27,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 31,
+      "run": 30
     },
     {
-      "run": 32,
       "frames_survived": 239,
       "seconds_survived": 7.97,
       "wall_time_s": 8.14,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 32,
+      "run": 31
     },
     {
-      "run": 33,
       "frames_survived": 451,
       "seconds_survived": 15.03,
       "wall_time_s": 15.28,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 33,
+      "run": 32
     },
     {
-      "run": 34,
       "frames_survived": 278,
       "seconds_survived": 9.27,
       "wall_time_s": 9.45,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 34,
+      "run": 33
     },
     {
-      "run": 35,
       "frames_survived": 221,
       "seconds_survived": 7.37,
       "wall_time_s": 7.53,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 35,
+      "run": 34
     },
     {
-      "run": 36,
       "frames_survived": 144,
       "seconds_survived": 4.8,
       "wall_time_s": 4.95,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 36,
+      "run": 35
     },
     {
-      "run": 37,
       "frames_survived": 367,
       "seconds_survived": 12.23,
       "wall_time_s": 12.44,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 37,
+      "run": 36
     },
     {
-      "run": 38,
       "frames_survived": 451,
       "seconds_survived": 15.03,
       "wall_time_s": 15.26,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 38,
+      "run": 37
     },
     {
-      "run": 39,
       "frames_survived": 144,
       "seconds_survived": 4.8,
       "wall_time_s": 4.95,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 39,
+      "run": 38
     },
     {
-      "run": 40,
       "frames_survived": 278,
       "seconds_survived": 9.27,
       "wall_time_s": 9.45,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 40,
+      "run": 39
     },
     {
-      "run": 41,
       "frames_survived": 239,
       "seconds_survived": 7.97,
       "wall_time_s": 8.14,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 41,
+      "run": 40
     },
     {
-      "run": 42,
       "frames_survived": 239,
       "seconds_survived": 7.97,
       "wall_time_s": 8.14,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 42,
+      "run": 41
     },
     {
-      "run": 43,
       "frames_survived": 239,
       "seconds_survived": 7.97,
       "wall_time_s": 8.14,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 43,
+      "run": 42
     },
     {
-      "run": 44,
       "frames_survived": 145,
       "seconds_survived": 4.83,
       "wall_time_s": 4.98,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 44,
+      "run": 43
     },
     {
-      "run": 45,
       "frames_survived": 145,
       "seconds_survived": 4.83,
       "wall_time_s": 4.99,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 45,
+      "run": 44
     },
     {
-      "run": 46,
       "frames_survived": 451,
       "seconds_survived": 15.03,
       "wall_time_s": 15.27,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 46,
+      "run": 45
     },
     {
-      "run": 47,
       "frames_survived": 239,
       "seconds_survived": 7.97,
       "wall_time_s": 8.14,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 47,
+      "run": 46
     },
     {
-      "run": 48,
       "frames_survived": 278,
       "seconds_survived": 9.27,
       "wall_time_s": 9.45,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 48,
+      "run": 47
     },
     {
-      "run": 49,
       "frames_survived": 144,
       "seconds_survived": 4.8,
       "wall_time_s": 4.95,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 49,
+      "run": 48
     },
     {
-      "run": 50,
       "frames_survived": 44,
       "seconds_survived": 1.47,
       "wall_time_s": 1.59,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 50,
+      "run": 49
     },
     {
-      "run": 51,
       "frames_survived": 451,
       "seconds_survived": 15.03,
       "wall_time_s": 15.27,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 51,
+      "run": 50
     },
     {
-      "run": 52,
       "frames_survived": 145,
       "seconds_survived": 4.83,
       "wall_time_s": 4.97,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 52,
+      "run": 51
     },
     {
-      "run": 53,
       "frames_survived": 367,
       "seconds_survived": 12.23,
       "wall_time_s": 12.45,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 53,
+      "run": 52
     },
     {
-      "run": 54,
       "frames_survived": 451,
       "seconds_survived": 15.03,
       "wall_time_s": 15.27,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 54,
+      "run": 53
     },
     {
-      "run": 55,
       "frames_survived": 146,
       "seconds_survived": 4.87,
       "wall_time_s": 5.02,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 55,
+      "run": 54
     },
     {
-      "run": 56,
       "frames_survived": 239,
       "seconds_survived": 7.97,
       "wall_time_s": 8.14,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 56,
+      "run": 55
     },
     {
-      "run": 57,
       "frames_survived": 367,
       "seconds_survived": 12.23,
       "wall_time_s": 12.45,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 57,
+      "run": 56
     },
     {
-      "run": 58,
       "frames_survived": 278,
       "seconds_survived": 9.27,
       "wall_time_s": 9.45,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 58,
+      "run": 57
     },
     {
-      "run": 59,
       "frames_survived": 146,
       "seconds_survived": 4.87,
       "wall_time_s": 5.01,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 59,
+      "run": 58
     },
     {
-      "run": 60,
       "frames_survived": 239,
       "seconds_survived": 7.97,
       "wall_time_s": 8.15,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 60,
+      "run": 59
     },
     {
-      "run": 61,
       "frames_survived": 145,
       "seconds_survived": 4.83,
       "wall_time_s": 4.98,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 61,
+      "run": 60
     },
     {
-      "run": 62,
       "frames_survived": 145,
       "seconds_survived": 4.83,
       "wall_time_s": 4.98,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 62,
+      "run": 61
     },
     {
-      "run": 63,
       "frames_survived": 238,
       "seconds_survived": 7.93,
       "wall_time_s": 8.11,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 63,
+      "run": 62
     },
     {
-      "run": 64,
       "frames_survived": 145,
       "seconds_survived": 4.83,
       "wall_time_s": 4.97,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 64,
+      "run": 63
     },
     {
-      "run": 65,
       "frames_survived": 278,
       "seconds_survived": 9.27,
       "wall_time_s": 9.46,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 65,
+      "run": 64
     },
     {
-      "run": 66,
       "frames_survived": 145,
       "seconds_survived": 4.83,
       "wall_time_s": 4.98,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 66,
+      "run": 65
     },
     {
-      "run": 67,
       "frames_survived": 96,
       "seconds_survived": 3.2,
       "wall_time_s": 3.33,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 67,
+      "run": 66
     },
     {
-      "run": 68,
       "frames_survived": 145,
       "seconds_survived": 4.83,
       "wall_time_s": 4.98,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 68,
+      "run": 67
     },
     {
-      "run": 69,
       "frames_survived": 450,
       "seconds_survived": 15.0,
       "wall_time_s": 15.24,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 69,
+      "run": 68
     },
     {
-      "run": 70,
       "frames_survived": 145,
       "seconds_survived": 4.83,
       "wall_time_s": 4.98,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 70,
+      "run": 69
     },
     {
-      "run": 71,
       "frames_survived": 278,
       "seconds_survived": 9.27,
       "wall_time_s": 9.45,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 71,
+      "run": 70
     },
     {
-      "run": 72,
       "frames_survived": 144,
       "seconds_survived": 4.8,
       "wall_time_s": 4.95,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 72,
+      "run": 71
     },
     {
-      "run": 73,
       "frames_survived": 146,
       "seconds_survived": 4.87,
       "wall_time_s": 5.01,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 73,
+      "run": 72
     },
     {
-      "run": 74,
       "frames_survived": 451,
       "seconds_survived": 15.03,
       "wall_time_s": 15.27,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 74,
+      "run": 73
     },
     {
-      "run": 75,
       "frames_survived": 366,
       "seconds_survived": 12.2,
       "wall_time_s": 12.42,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 75,
+      "run": 74
     },
     {
-      "run": 76,
       "frames_survived": 409,
       "seconds_survived": 13.63,
       "wall_time_s": 13.85,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 76,
+      "run": 75
     },
     {
-      "run": 77,
       "frames_survived": 352,
       "seconds_survived": 11.73,
       "wall_time_s": 11.93,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 77,
+      "run": 76
     },
     {
-      "run": 78,
       "frames_survived": 450,
       "seconds_survived": 15.0,
       "wall_time_s": 15.23,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 78,
+      "run": 77
     },
     {
-      "run": 79,
       "frames_survived": 145,
       "seconds_survived": 4.83,
       "wall_time_s": 4.98,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 79,
+      "run": 78
     },
     {
-      "run": 80,
       "frames_survived": 278,
       "seconds_survived": 9.27,
       "wall_time_s": 9.45,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 80,
+      "run": 79
     },
     {
-      "run": 81,
       "frames_survived": 145,
       "seconds_survived": 4.83,
       "wall_time_s": 4.98,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 81,
+      "run": 80
     },
     {
-      "run": 82,
       "frames_survived": 239,
       "seconds_survived": 7.97,
       "wall_time_s": 8.14,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 82,
+      "run": 81
     },
     {
-      "run": 83,
       "frames_survived": 451,
       "seconds_survived": 15.03,
       "wall_time_s": 15.28,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 83,
+      "run": 82
     },
     {
-      "run": 84,
       "frames_survived": 145,
       "seconds_survived": 4.83,
       "wall_time_s": 4.99,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 84,
+      "run": 83
     },
     {
-      "run": 85,
       "frames_survived": 367,
       "seconds_survived": 12.23,
       "wall_time_s": 12.45,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 85,
+      "run": 84
     },
     {
-      "run": 86,
       "frames_survived": 145,
       "seconds_survived": 4.83,
       "wall_time_s": 4.98,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 86,
+      "run": 85
     },
     {
-      "run": 87,
       "frames_survived": 367,
       "seconds_survived": 12.23,
       "wall_time_s": 12.44,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 87,
+      "run": 86
     },
     {
-      "run": 88,
       "frames_survived": 367,
       "seconds_survived": 12.23,
       "wall_time_s": 12.44,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 88,
+      "run": 87
     },
     {
-      "run": 89,
       "frames_survived": 145,
       "seconds_survived": 4.83,
       "wall_time_s": 4.99,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 89,
+      "run": 88
     },
     {
-      "run": 90,
       "frames_survived": 145,
       "seconds_survived": 4.83,
       "wall_time_s": 4.98,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 90,
+      "run": 89
     },
     {
-      "run": 91,
       "frames_survived": 145,
       "seconds_survived": 4.83,
       "wall_time_s": 4.98,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 91,
+      "run": 90
     },
     {
-      "run": 92,
       "frames_survived": 145,
       "seconds_survived": 4.83,
       "wall_time_s": 4.98,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 92,
+      "run": 91
     },
     {
-      "run": 93,
       "frames_survived": 145,
       "seconds_survived": 4.83,
       "wall_time_s": 4.98,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 93,
+      "run": 92
     },
     {
-      "run": 94,
       "frames_survived": 239,
       "seconds_survived": 7.97,
       "wall_time_s": 8.14,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 94,
+      "run": 93
     },
     {
-      "run": 95,
       "frames_survived": 451,
       "seconds_survived": 15.03,
       "wall_time_s": 15.28,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 95,
+      "run": 94
     },
     {
-      "run": 96,
       "frames_survived": 238,
       "seconds_survived": 7.93,
       "wall_time_s": 8.11,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 96,
+      "run": 95
     },
     {
-      "run": 97,
       "frames_survived": 365,
       "seconds_survived": 12.17,
       "wall_time_s": 12.39,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 97,
+      "run": 96
     },
     {
-      "run": 98,
       "frames_survived": 146,
       "seconds_survived": 4.87,
       "wall_time_s": 5.01,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 98,
+      "run": 97
     },
     {
-      "run": 99,
       "frames_survived": 457,
       "seconds_survived": 15.23,
       "wall_time_s": 15.48,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 99,
+      "run": 98
     },
     {
-      "run": 100,
       "frames_survived": 145,
       "seconds_survived": 4.83,
       "wall_time_s": 4.98,
-      "level_progress": null
+      "level_progress": null,
+      "episode": 100,
+      "run": 99
     }
-  ]
+  ],
+  "n_episodes_executed": 100,
+  "excluded_initial_episodes": 1,
+  "initial_episode_exclusion_reason": "Manual game resume can inflate the first episode.",
+  "excluded_episodes": [
+    {
+      "frames_survived": 303,
+      "seconds_survived": 10.1,
+      "wall_time_s": 11.25,
+      "level_progress": null,
+      "episode": 1,
+      "exclusion_reason": "Initial synchronization episode; manual game resume can inflate survival time."
+    }
+  ],
+  "policy": "ppo",
+  "checkpoint_sha256": {
+    "vae": "8a4c488e0310855bcf411787894f0206f3381387bcd9fc179d6a6610ef32e5f7",
+    "transformer": "62db7d8f0dca5cb75684548c2e93a74c4f6dda830250f171e38fe97161dcd770",
+    "controller": "b00a30ccad4e3298785e418916fa6dba48e060b9d5b2bef06201f60f5d90d4be"
+  },
+  "death_detection": "Geometry Dash process memory"
 }

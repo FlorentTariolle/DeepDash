@@ -132,6 +132,8 @@ def main():
                         help="Jump class weight for BCE (0 = auto from data ratio)")
     parser.add_argument("--val-ratio", type=float, default=None)
     parser.add_argument("--seed", type=int, default=None)
+    parser.add_argument("--snapshot-epochs", type=int, nargs="*", default=None,
+                        help="Also save controller_bc_epoch_N.pt at these epochs.")
     # Model architecture (defaults from configs/v3.yaml)
     parser.add_argument("--config", default=None)
     parser.add_argument("--vocab-size", type=int, default=None)
@@ -427,6 +429,10 @@ def main():
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             torch.save(_clean_state(), ckpt_dir / "controller_bc_best.pt")
+        if args.snapshot_epochs and epoch in args.snapshot_epochs:
+            torch.save(
+                _clean_state(), ckpt_dir / f"controller_bc_epoch_{epoch}.pt"
+            )
 
     log_file.close()
     wandb_finish()
