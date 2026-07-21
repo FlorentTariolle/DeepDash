@@ -51,7 +51,7 @@ The frozen PPO policy and two controls were evaluated on the first three officia
 | --- | ---: | ---: | ---: | ---: |
 | No-op | 10 | 46.2 +/- 0.7 [45.7, 46.6] | 63.4 +/- 0.7 [63.0, 63.8] | 41.5 +/- 0.7 [41.1, 41.9] |
 | BC (reconstructed epoch 9) | 100 | 130.4 +/- 91.1 [112.6, 148.3] | 119.7 +/- 71.5 [105.8, 133.8] | 45.2 +/- 9.0 [43.5, 47.0] |
-| PPO | 99 | 279.4 +/- 48.0 [270.2, 289.0] | 262.9 +/- 121.2 [239.4, 287.2] | 63.8 +/- 27.1 [58.8, 69.5] |
+| PPO | 99 | **279.4 +/- 48.0 [270.2, 289.0]** | **262.9 +/- 121.2 [239.4, 287.2]** | **63.8 +/- 27.1 [58.8, 69.5]** |
 
 The evaluator reports acted frames survived rather than level percentage. PPO substantially improves over BC on Levels 1 and 2; Level 3 remains difficult for both learned policies because Polargeist introduces a yellow-orb mechanic requiring an additional timed jump while airborne. Raw PPO attempts are in [`analysis/2026-07-20_v7_deploy/`](analysis/2026-07-20_v7_deploy/), the controls are in [`analysis/2026-07-21_live_baselines/`](analysis/2026-07-21_live_baselines/), and the reconstructed BC checkpoint provenance is documented in [`analysis/2026-07-21_bc_reconstruction/`](analysis/2026-07-21_bc_reconstruction/).
 
