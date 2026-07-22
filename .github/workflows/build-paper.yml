@@ -5,26 +5,30 @@ on:
     branches: [main]
     paths:
       - 'paper/main.tex'
+      - 'paper/dashvmc-preprint.tex'
+      - 'paper/dashvmc-submission.tex'
       - 'paper/references.bib'
       - 'paper/checklist.tex'
       - 'paper/neurips_2026.sty'
       - 'paper/Makefile'
       - 'paper/figures/continuation.png'
-      - 'scripts/gen_sls_figure.py'
       - 'scripts/gen_counterfactual_spike.py'
+      - 'scripts/render_counterfactual_spike_figure.py'
       - 'analysis/2026-07-21_counterfactual_spike/**'
       - 'docs/pipeline.tex'
       - '.github/workflows/build-paper.yml'
   pull_request:
     paths:
       - 'paper/main.tex'
+      - 'paper/dashvmc-preprint.tex'
+      - 'paper/dashvmc-submission.tex'
       - 'paper/references.bib'
       - 'paper/checklist.tex'
       - 'paper/neurips_2026.sty'
       - 'paper/Makefile'
       - 'paper/figures/continuation.png'
-      - 'scripts/gen_sls_figure.py'
       - 'scripts/gen_counterfactual_spike.py'
+      - 'scripts/render_counterfactual_spike_figure.py'
       - 'analysis/2026-07-21_counterfactual_spike/**'
       - 'docs/pipeline.tex'
       - '.github/workflows/build-paper.yml'
@@ -39,22 +43,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install figure-generation deps
-        run: |
-          python -m pip install --upgrade pip
-          pip install --index-url https://download.pytorch.org/whl/cpu torch
-          pip install matplotlib numpy
-
-      - name: Generate SLS kernel figure
-        run: |
-          mkdir -p paper/figures
-          python scripts/gen_sls_figure.py --output paper/figures/sls_kernel.pdf
-
       - name: Compile pipeline figure
         uses: xu-cheng/latex-action@v3
         with:
@@ -64,20 +52,26 @@ jobs:
       - name: Copy pipeline figure into paper
         run: cp docs/pipeline.pdf paper/figures/pipeline.pdf
 
-      - name: Compile paper
+      - name: Compile public preprint
         uses: xu-cheng/latex-action@v3
         with:
           working_directory: paper
-          root_file: main.tex
+          root_file: dashvmc-preprint.tex
+
+      - name: Compile anonymous submission
+        uses: xu-cheng/latex-action@v3
+        with:
+          working_directory: paper
+          root_file: dashvmc-submission.tex
 
       - name: Copy paper PDF to docs
-        run: cp paper/main.pdf docs/static/pdfs/dashvmc.pdf
+        run: cp paper/dashvmc-preprint.pdf docs/static/pdfs/dashvmc.pdf
 
       - name: Upload PDF artifact
         uses: actions/upload-artifact@v4
         with:
-          name: paper-pdf
-          path: paper/main.pdf
+          name: public-preprint
+          path: paper/dashvmc-preprint.pdf
 
       - name: Commit updated PDF
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'

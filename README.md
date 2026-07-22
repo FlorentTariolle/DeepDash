@@ -8,8 +8,10 @@ DashVMC is a real-time discrete Vision-Model-Controller system for Geometry Dash
 The deployed controller runs at the same 30 FPS cadence as the captured training data. Over 5,000 optimized-path frames on an RTX 2060, wall-clock latency from capture through the keyboard action update averaged 16.3 ms (median 16.3 ms, p95 18.7 ms), corresponding to roughly 61 FPS of mean compute headroom.
 
 <p align="center">
-   <b>[ <a href="https://tariolle.github.io/dash-vmc/static/pdfs/dashvmc.pdf">Paper Draft</a> | <a href="https://tariolle.github.io/dash-vmc/">Website</a> | <a href="https://github.com/Tariolle/dash-vmc">Code</a> ]</b>
+   <b>[ <a href="https://tariolle.github.io/dash-vmc/static/pdfs/dashvmc.pdf">Technical Preprint</a> | <a href="https://tariolle.github.io/dash-vmc/">Website</a> | <a href="https://github.com/Tariolle/dash-vmc">Code</a> ]</b>
 </p>
+
+The linked manuscript is the public, authored preprint. From `paper/`, run `make` for that version, `make submission` for the anonymous review artifact, and `make website` to refresh the website PDF. CI validates both builds but publishes only the preprint.
 
 <p align="center">
   <img src="docs/static/images/pipeline.png" width="82%">

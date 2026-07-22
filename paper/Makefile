@@ -1,23 +1,36 @@
-TEX = pdflatex -interaction=nonstopmode
+TEX = pdflatex -interaction=nonstopmode -halt-on-error
 BIB = bibtex
-SRC = main
+PREPRINT = dashvmc-preprint
+SUBMISSION = dashvmc-submission
 PY = python
 
-all: figures $(SRC).pdf
+all: preprint
 
-figures:
+preprint: $(PREPRINT).pdf
+
+submission: $(SUBMISSION).pdf
+
+website: $(PREPRINT).pdf
+	$(PY) -c "import shutil; shutil.copyfile('$(PREPRINT).pdf', '../docs/static/pdfs/dashvmc.pdf')"
+
+figures/pipeline.pdf: ../docs/pipeline.tex
 	$(PY) -c "import os; os.makedirs('figures', exist_ok=True)"
-	$(PY) ../scripts/gen_sls_figure.py --output figures/sls_kernel.pdf --slide-output ../presentation/figures/sls_kernel.png
 	cd ../docs && $(TEX) pipeline.tex
 	$(PY) -c "import shutil; shutil.copy('../docs/pipeline.pdf', 'figures/pipeline.pdf')"
 
-$(SRC).pdf: $(SRC).tex references.bib checklist.tex neurips_2026.sty figures/pipeline.pdf figures/sls_kernel.pdf figures/continuation.png
-	$(TEX) $(SRC)
-	$(BIB) $(SRC)
-	$(TEX) $(SRC)
-	$(TEX) $(SRC)
+$(PREPRINT).pdf: $(PREPRINT).tex main.tex references.bib neurips_2026.sty figures/pipeline.pdf figures/continuation.png
+	$(TEX) $(PREPRINT)
+	$(BIB) $(PREPRINT)
+	$(TEX) $(PREPRINT)
+	$(TEX) $(PREPRINT)
+
+$(SUBMISSION).pdf: $(SUBMISSION).tex main.tex references.bib checklist.tex neurips_2026.sty figures/pipeline.pdf figures/continuation.png
+	$(TEX) $(SUBMISSION)
+	$(BIB) $(SUBMISSION)
+	$(TEX) $(SUBMISSION)
+	$(TEX) $(SUBMISSION)
 
 clean:
-	$(PY) -c "import os; files=['$(SRC).aux','$(SRC).bbl','$(SRC).blg','$(SRC).log','$(SRC).out','$(SRC).pdf','$(SRC).fls','$(SRC).fdb_latexmk','$(SRC).synctex.gz','figures/sls_kernel.pdf','figures/pipeline.pdf']; [os.remove(f) for f in files if os.path.exists(f)]"
+	$(PY) -c "import os; bases=['$(PREPRINT)','$(SUBMISSION)','main']; suffixes=['.aux','.bbl','.blg','.log','.out','.pdf','.fls','.fdb_latexmk','.synctex.gz']; files=[base + suffix for base in bases for suffix in suffixes] + ['figures/pipeline.pdf']; [os.remove(f) for f in files if os.path.exists(f)]"
 
-.PHONY: all clean figures
+.PHONY: all preprint submission website clean
