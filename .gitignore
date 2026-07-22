@@ -3,6 +3,8 @@
 !analysis/2026-07-20_v7_deploy/eval_100_level2.json
 !analysis/2026-07-20_v7_deploy/eval_100_level3.json
 !analysis/2026-07-21_live_baselines/*.json
+!analysis/2026-07-22_ship_segment_eval/*.json
+!analysis/2026-07-22_heldout_stereo_insane_nerfed/*.json
 !analysis/2026-07-21_bc_reconstruction/controller_bc_args.json
 __pycache__/
 .venv/

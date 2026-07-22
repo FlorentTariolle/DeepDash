@@ -1,6 +1,6 @@
 # Project Roadmap
 
-Last updated on 2026-07-20.
+Last updated on 2026-07-22.
 
 ## Paper Direction
 
@@ -35,11 +35,14 @@ Frozen V7 logs support these current system numbers:
 | Deployment | Median / maximum live survival | 289 / 439 frames | `analysis/2026-07-20_v7_deploy/eval_100.json` |
 | Deployment | Mean Level 2 survival (95% CI) | 263.3 [239.8, 287.2] frames | `analysis/2026-07-20_v7_deploy/eval_100_level2.json` |
 | Deployment | Mean Level 3 survival (95% CI) | 64.3 [59.3, 70.0] frames | `analysis/2026-07-20_v7_deploy/eval_100_level3.json` |
-| Deployment | Full-loop latency | ~15 ms | `paper/main.tex` deployment notes |
+| Deployment | Full-loop latency | 16.3 ms end-to-end (component sum 15.3 ms) | `analysis/2026-07-20_v7_deploy/optimized_wallclock_5000.json` |
 | Deployment | Configured cadence | 30 FPS | dataset/capture cadence |
-| Deployment | Compute headroom | ~67 FPS | 1 / 15 ms |
+| Deployment | Compute headroom | ~61 FPS | 1 / 16.3 ms |
+| Aux live | Stereo Madness Copy PPO mean [CI] | 525.6 [503.9, 548.4] | `analysis/2026-07-22_ship_segment_eval/` |
+| Aux live | Stereo INSANE Nerfed PPO mean [CI] | 215.7 [184.1, 249.9] | `analysis/2026-07-22_heldout_stereo_insane_nerfed/` |
+| Machine | Live GPU | RTX 2060 SUPER / PyTorch 2.11.0+cu126 | `analysis/2026-07-22_experiment_machine/MACHINE_FACTS.md` |
 
-The controlled V7 evaluator runs are complete for the first three official levels. They measure acted frames survived rather than level percentage. Results remain level-specific: difficulty increases across the sequence, and Level 3 introduces timed mid-air yellow-orb inputs.
+The controlled V7 evaluator runs are complete for the first three official levels, plus a late Level-1 copy (ship-reachable proxy) and one custom held-out community level. They measure acted frames survived rather than level percentage. Results remain level-specific: difficulty increases across the sequence, Level 3 introduces timed mid-air yellow-orb inputs, and the custom level is reported as within-mechanic transfer only.
 
 ## Compute To Finish
 

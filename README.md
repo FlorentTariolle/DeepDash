@@ -4,7 +4,7 @@ https://github.com/user-attachments/assets/1de92e9c-cc41-48cc-8305-c0d4491b676b
 
 DashVMC is a real-time discrete Vision-Model-Controller system for Geometry Dash. It combines an FSQ tokenizer, an action-conditioned transformer world model, and a lightweight actor-critic trained from behavioural cloning plus PPO in latent rollouts.
 
-The deployed controller runs at the same 30 FPS cadence as the captured training data. Over 5,000 optimized-path frames on an RTX 2060, wall-clock latency from capture through the keyboard action update averaged 16.3 ms, corresponding to roughly 61 FPS of mean compute headroom.
+The deployed controller runs at the same 30 FPS cadence as the captured training data. Over 5,000 optimized-path frames on an RTX 2060 SUPER, wall-clock latency from capture through the keyboard action update averaged 16.3 ms, corresponding to roughly 61 FPS of mean compute headroom.
 
 <p align="center">
    <b>[ <a href="https://tariolle.github.io/dash-vmc/static/pdfs/dashvmc.pdf">Preprint</a> | <a href="https://tariolle.github.io/dash-vmc/">Website</a> ]</b>
@@ -28,7 +28,7 @@ The deployed controller runs at the same 30 FPS cadence as the captured training
 
 ## Using the Code
 
-**Environment.** Conda, PyTorch 2.10, CUDA 12.6.
+**Environment.** Conda, PyTorch 2.11.0+cu126, CUDA 12.6. Live eval/deploy hardware: AMD Ryzen 5 3600X, 16 GB RAM, NVIDIA GeForce RTX 2060 SUPER (8 GB), Windows 11.
 ```bash
 conda run -n <env> python -m pip install -r requirements.txt
 ```
@@ -62,8 +62,27 @@ python scripts/play_dream.py --config configs/deepdash/v7-phase0.yaml --vae-chec
 
 **Deploy to the live game at the training cadence:**
 ```bash
-python scripts/deploy.py
+python scripts/deploy.py --config configs/deepdash/v7-phase0.yaml --vae-checkpoint checkpoints_v7/fsq_best.pt --transformer-checkpoint checkpoints_v7/transformer_best.pt --controller-checkpoint checkpoints_v7/controller_ppo_best.pt
 ```
+
+
+## Live evaluation suite (V7)
+
+Controlled live survival uses the frozen V7 stack at 30 FPS with Auto-Retry:
+
+| Setting | Levels / role | PPO / BC / no-op scored attempts |
+| --- | --- | ---: |
+| Official | Levels 1--3 | 99 / 100 / 10 |
+| Late Level-1 copy (not held-out) | Stereo Madness Copy | 20 / 20 / 10 |
+| Custom held-out (supported mechanics) | Stereo INSANE Nerfed | 20 / 20 / 10 |
+
+Artifacts:
+- Official + latency: `analysis/2026-07-20_v7_deploy/`, `analysis/2026-07-21_live_baselines/`
+- Ship-segment proxy: `analysis/2026-07-22_ship_segment_eval/`
+- Held-out custom: `analysis/2026-07-22_heldout_stereo_insane_nerfed/`
+- Machine facts: `analysis/2026-07-22_experiment_machine/MACHINE_FACTS.md`
+
+Expert-subset note: 33,153 frames equal 18.42 minutes at exact 30 FPS; recorded wall-clock capture duration is 18.95 minutes (~29.16 FPS average).
 
 ## Contact
 

@@ -1,0 +1,146 @@
+{
+  "system_variant": "V7",
+  "policy": "no-op",
+  "date_utc": "2026-07-22T21:04:02.006749+00:00",
+  "n_runs": 10,
+  "n_episodes_executed": 11,
+  "excluded_initial_episodes": 1,
+  "initial_episode_exclusion_reason": "Manual game resume can inflate the first episode.",
+  "level_name": "Stereo Madness Copy",
+  "fps": 30,
+  "unscored_warmup_frames": 3,
+  "death_detection": "Geometry Dash process memory",
+  "gpu": "NVIDIA GeForce RTX 2060 SUPER",
+  "mean_frames": 135.0,
+  "mean_frames_ci95": [
+    135.0,
+    135.0
+  ],
+  "std_frames": 0.0,
+  "min_frames": 135,
+  "max_frames": 135,
+  "median_frames": 135.0,
+  "p25_frames": 135.0,
+  "p75_frames": 135.0,
+  "mean_time_s": 4.5,
+  "mean_time_s_ci95": [
+    4.5,
+    4.5
+  ],
+  "median_time_s": 4.5,
+  "min_time_s": 4.5,
+  "max_time_s": 4.5,
+  "p25_time_s": 4.5,
+  "p75_time_s": 4.5,
+  "level_progress_available": false,
+  "survival_bootstrap_resamples": 50000,
+  "survival_bootstrap_seed": 20260720,
+  "checkpoints": {
+    "vae": null,
+    "transformer": null,
+    "controller": null
+  },
+  "checkpoint_sha256": {
+    "vae": null,
+    "transformer": null,
+    "controller": null
+  },
+  "config": "configs/deepdash/v7-phase0.yaml",
+  "policy_class": null,
+  "latency": {
+    "bootstrap_resamples": 10000,
+    "bootstrap_seed": 20260720
+  },
+  "excluded_episodes": [
+    {
+      "episode": 1,
+      "frames_survived": 281,
+      "seconds_survived": 9.37,
+      "wall_time_s": 9.56,
+      "level_progress": null,
+      "exclusion_reason": "Initial synchronization episode; manual game resume can inflate survival time."
+    }
+  ],
+  "runs": [
+    {
+      "episode": 2,
+      "frames_survived": 135,
+      "seconds_survived": 4.5,
+      "wall_time_s": 4.65,
+      "level_progress": null,
+      "run": 1
+    },
+    {
+      "episode": 3,
+      "frames_survived": 135,
+      "seconds_survived": 4.5,
+      "wall_time_s": 4.65,
+      "level_progress": null,
+      "run": 2
+    },
+    {
+      "episode": 4,
+      "frames_survived": 135,
+      "seconds_survived": 4.5,
+      "wall_time_s": 4.64,
+      "level_progress": null,
+      "run": 3
+    },
+    {
+      "episode": 5,
+      "frames_survived": 135,
+      "seconds_survived": 4.5,
+      "wall_time_s": 4.65,
+      "level_progress": null,
+      "run": 4
+    },
+    {
+      "episode": 6,
+      "frames_survived": 135,
+      "seconds_survived": 4.5,
+      "wall_time_s": 4.64,
+      "level_progress": null,
+      "run": 5
+    },
+    {
+      "episode": 7,
+      "frames_survived": 135,
+      "seconds_survived": 4.5,
+      "wall_time_s": 4.65,
+      "level_progress": null,
+      "run": 6
+    },
+    {
+      "episode": 8,
+      "frames_survived": 135,
+      "seconds_survived": 4.5,
+      "wall_time_s": 4.65,
+      "level_progress": null,
+      "run": 7
+    },
+    {
+      "episode": 9,
+      "frames_survived": 135,
+      "seconds_survived": 4.5,
+      "wall_time_s": 4.65,
+      "level_progress": null,
+      "run": 8
+    },
+    {
+      "episode": 10,
+      "frames_survived": 135,
+      "seconds_survived": 4.5,
+      "wall_time_s": 4.65,
+      "level_progress": null,
+      "run": 9
+    },
+    {
+      "episode": 11,
+      "frames_survived": 135,
+      "seconds_survived": 4.5,
+      "wall_time_s": 4.65,
+      "level_progress": null,
+      "run": 10
+    }
+  ]
+}

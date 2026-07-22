@@ -48,7 +48,7 @@ We present \emph{DashVMC}, a discrete Vision--Model--Controller system that play
 An FSQ tokenizer maps \(\imgsize\) Sobel frames to \(\gridsize\) token grids, a block-causal transformer predicts action-conditioned transitions, and a lightweight actor--critic is initialized by behavioural cloning (BC) and improved with PPO in latent rollouts.
 Training uses approximately 2 hours of captured gameplay, including only 20 minutes of expert segments; PPO requires no additional environment interaction.
 The frozen policy more than doubles BC mean survival on each of the first two official levels in controlled live evaluation, with a smaller gain on the harder third level.
-The optimized capture-to-action loop averages 16.3\,ms over 5,000 frames on an RTX 2060, below the 33.3\,ms budget of the 30-FPS data cadence.
+The optimized capture-to-action loop averages 16.3\,ms over 5,000 frames on an RTX 2060 SUPER, below the 33.3\,ms budget of the 30-FPS data cadence.
 Beyond control, the same recurrent dynamics support interactive, open-ended visual level continuations that often remain plausible for extended stretches before autoregressive errors accumulate.
 Together, these results show that a compact discrete world-model controller can support imagined policy improvement, generative rollouts, and live reactive control within a consumer-GPU frame budget.%
 }
@@ -224,11 +224,11 @@ The unaugmented corpus contains 4,264 base gameplay episodes and 251,963 source 
 It includes deliberate failures and 36 expert trajectories or segments.
 The base episodes span primarily official Levels 1--7 and multiple community-created levels.
 Episodes containing mechanics outside the selected model's scope, including gravity inversion, were excluded to keep the learned dynamics tractable at this scale.
-The expert subset comprises 33,153 frames (18.95 minutes).
+The expert subset comprises 33,153 frames; at the nominal 30-FPS capture cadence this is 18.42 minutes, while the recorded wall-clock capture duration is 18.95 minutes (mean capture rate $\approx$29.16 FPS).
 Capture metadata do not identify every segment's in-level start state or completion status, so expert segments are not treated as verified full-level clears.
 Episodes are split once, 90/10, by base identifier and source with seed 42; vertical shifts of \(\pm2\) and \(\pm4\) pixels inherit the base assignment and expand the tokenized corpus to 21,320 episodes.
 The frozen encoder retokenizes the corpus before dynamics training.
-All stages use seed 42; primary training is sequential in BF16 on one A100, while live inference is measured on an RTX 2060.
+All stages use seed 42; primary training is sequential in BF16 on one A100, while live inference is measured on an RTX 2060 SUPER.
 Table~\ref{tab:training} records the optimization and selection details that materially determine the frozen system.
 
 \begin{table}[ht!]
@@ -255,10 +255,14 @@ For live evaluation, all checkpoints are frozen and Auto-Retry is enabled.
 Auto-Retry only standardizes restarts and supplies no observation to the policy; the policy receives neither a level identifier, elapsed time or frame index, level progress, nor game memory.
 Live actions are deterministic: jump is selected exactly when the controller output exceeds 0.5.
 We retain 99 scored PPO attempts, 100 BC attempts, and 10 no-op attempts on each of the first three official levels.
-The deterministic no-op diagnostic is repeated ten times because it always reaches the first obstacle; the repeats quantify capture and action-timing jitter, with a standard deviation of 0.7 frames on every level.
+Two auxiliary live evaluations reuse the same 30-FPS Auto-Retry protocol with smaller sample sizes: 20 PPO, 20 BC, and 10 no-op scored attempts.
+The first uses \emph{Stereo Madness Copy} (KRUTOYARBUS), a community copy of a later Level-1 segment, as a late-stage/ship-reachable proxy because official Level 1--3 attempts die before ship.
+The second uses one custom community level, \emph{Stereo INSANE Nerfed} (XXcapta1n), as a single held-out layout within the supported mechanic distribution (no gravity inversion or other out-of-scope mechanics).
+The deterministic no-op diagnostic is repeated ten times because it always reaches the first obstacle; the repeats quantify capture and action-timing jitter, with a standard deviation of 0.7 frames on every official level and 0.8 frames on the held-out custom level.
 Each invocation's manually resumed synchronization episode is excluded; game memory is used only to delimit alive/dead episodes, never as policy input.
-The endpoint is frames survived, and reported PPO intervals are 95\% percentile-bootstrap confidence intervals for the policy mean using 50,000 resamples.
+The endpoint is frames survived, and reported intervals are 95\% percentile-bootstrap confidence intervals for the policy mean using 50,000 resamples.
 The original selected BC file was not archived, so the live control uses an epoch-9 rerun whose validation accuracy is close, but not bit-identical, to the archived trace (79.85\% versus 79.76\%).
+Deployment measurements use Desktop Duplication via \texttt{dxcam} over a $1920\times1080$ region, crop $(x,y,s)=(660,48,1032)$, Sobel preprocessing to $64\times64$, and \texttt{keyboard} space dispatch; optimized inference enables FSQ \texttt{torch.compile}, a transformer CUDA graph, and GPU-resident context on PyTorch 2.11.0+cu126.
 
 \paragraph{Latency and continuation protocols.}
 Latency is measured on 5,000 consecutive frames of the optimized deployment path, from capture through action update, with CUDA synchronization only at the end-to-end boundary.
@@ -297,8 +301,28 @@ Table~\ref{tab:live-controls} shows that PPO adds 149.0 and 143.2 mean frames ov
 At the fixed 30-FPS cadence, PPO's three means correspond to 9.31, 8.76, and 2.13 seconds of survival.
 The Level-3 gain is only 18.6 frames (PPO mean 95\% interval \([58.8,69.5]\)).
 Level 3 is harder and introduces yellow orbs requiring a second timed input while airborne, so these per-level results are not a controlled test of generalization.
-All three live-evaluation levels occur in the offline corpus, but the controller receives no live-game interaction during PPO; the results therefore measure deployment transfer from offline data and imagined policy optimization, not held-out-level generalization.
+All three official live-evaluation levels occur in the offline corpus, but the controller receives no live-game interaction during PPO; those results therefore measure deployment transfer from offline data and imagined policy optimization, not held-out-level generalization.
+Table~\ref{tab:aux-controls} reports the two auxiliary live evaluations under the same frozen checkpoints.
+On the Level-1 copy, no-op dies deterministically at 135 frames, BC reaches $271.2\pm107.0$, and PPO reaches $525.6\pm51.6$ (PPO mean 95\% interval $[503.9,548.4]$), preserving a clear PPO $\gg$ BC $\gg$ no-op ranking on a later/ship-reachable segment that official Level 1--3 evals never enter.
+On the single custom held-out level, the same ordering transfers at lower absolute survival: no-op $46.1\pm0.8$, BC $113.7\pm69.6$, and PPO $215.7\pm75.7$ (PPO mean 95\% interval $[184.1,249.9]$).
+We report the custom-level result as unseen-level transfer within the supported mechanic distribution, not as novel-mechanic or broad out-of-distribution generalization; the Level-1 copy is not counted as held-out content.
 Separate intervention runs suggest that skipping a few recurring blocking obstacles lets the policy reach later sections, but those assisted runs are not part of the controlled statistics.
+
+\begin{table}[ht!]
+  \centering
+  \small
+  \caption{Auxiliary live acted-frame survival (mean $\pm$ standard deviation). Stereo Madness Copy is a late Level-1 community copy used as a ship-reachable segment proxy; Stereo INSANE Nerfed is one custom held-out community level. Sample sizes are 10 no-op / 20 BC / 20 PPO scored attempts.}
+  \label{tab:aux-controls}
+  \begin{tabular}{lrrrr}
+    \toprule
+    Policy & $n$ & Stereo Madness Copy & Stereo INSANE Nerfed \\
+    \midrule
+    No-op & 10 & $135.0\pm0.0$ & $46.1\pm0.8$ \\
+    BC & 20 & $271.2\pm107.0$ & $113.7\pm69.6$ \\
+    PPO & 20 & $\mathbf{525.6\pm51.6}$ & $\mathbf{215.7\pm75.7}$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
 
 \subsection{Capture-to-action latency}
 \label{sec:deployment-results}
@@ -309,7 +333,7 @@ The reciprocal mean is about 61 FPS of compute-equivalent throughput; the deploy
 \begin{table}[ht!]
   \centering
   \small
-  \caption{Optimized RTX-2060 deployment timing. Component values are means in milliseconds; end-to-end is measured independently and includes dispatch overhead.}
+  \caption{Optimized RTX 2060 SUPER deployment timing. Component values are means in milliseconds; end-to-end is measured independently and includes dispatch overhead.}
   \label{tab:latency}
   \begin{tabular}{lrlr}
     \toprule
@@ -381,6 +405,8 @@ In particular, the joint variant is an FSQ-token adaptation inspired by LeWorldM
 
 DashVMC is a single-game study with binary actions, deterministic layouts, and one training seed.
 The hundreds of live attempts quantify deployment variability for one frozen policy, not uncertainty across training runs, and survival time is not level completion.
+The auxiliary custom-level evaluation uses a single held-out community layout and smaller sample sizes than the official-level suite; it supports within-mechanic transfer rather than broad generalization.
+The Level-1 copy evaluates later-stage survival but does not isolate ship mode with explicit mode labels.
 The BC control is an epoch-9 rerun close to the archived training trace, not the missing original checkpoint.
 Because no other world-model agent is available under the same captured-pixel, non-paused Geometry-Dash protocol, the results are a controlled within-system comparison rather than a state-of-the-art benchmark.
 
@@ -399,7 +425,7 @@ The 16.3-ms result covers this hardware and 64-pixel edge observations; RGB inpu
 \label{sec:conclusion}
 
 DashVMC shows that a compact discrete world model can support both imagined policy improvement and live reactive control in a timing-sensitive game.
-Its frozen PPO controller improves substantially over BC on the first two tested levels, while the capture-to-action path remains below the 30-FPS frame budget on a consumer GPU.
+Its frozen PPO controller improves substantially over BC on the first two official levels and preserves that ranking on a late Level-1 copy and one custom held-out community level, while the capture-to-action path remains below the 30-FPS frame budget on a consumer GPU.
 Matched continuations confirm that the model's visual futures respond to action interventions, and interactive rollouts show that those dynamics can produce open-ended, often plausible level continuations, albeit without indefinite coherence guarantees.
 
 \ifdashvmcsubmission\else
