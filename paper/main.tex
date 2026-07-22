@@ -111,16 +111,17 @@ Our contributions are:
 \label{sec:related}
 
 \paragraph{World models and imagination.}
-The original Vision--Model--Controller pipeline compressed observations with a VAE, modeled dynamics recurrently, and optimized a small controller in dreams~\citep{ha2018world}.
-IRIS instead learns a discrete image language and composes it over time with a transformer, enabling policy learning entirely in imagination~\citep{micheli2023iris}.
+The original Vision--Model--Controller pipeline compressed observations with a VAE, modeled latent dynamics with an MDN--RNN, and demonstrated in VizDoom that a compact controller could be optimized entirely in learned dreams and transferred to the real environment~\citep{ha2018world}.
+IRIS retains this imagination-only policy-learning paradigm while replacing recurrent continuous-latent dynamics with a discrete autoencoder and autoregressive transformer, scaling it to data-efficient learning on Atari 100k~\citep{micheli2023iris}.
 \(\Delta\)-IRIS reduces the sequence cost of this template by separating stochastic changes into discrete tokens from continuous context tokens~\citep{micheli2024deltairis}.
 DIAMOND removes discrete compression from the dynamics model and uses diffusion to preserve control-relevant visual details~\citep{alonso2024diamond}, while DreamerV3 demonstrates broad control with categorical recurrent state-space latents~\citep{hafner2025dreamerv3}.
-Contemporaneous MIRA scales action-conditioned latent diffusion to four-player Rocket League and combines factorized space--time RoPE, QK-normalized attention, SwiGLU feed-forward layers, and AdaLN action conditioning for real-time video generation on a B200~\citep{hu2026mira}.
-DashVMC shares the factorized positional abstraction but instead uses discrete FSQ tokens and one-pass next-grid prediction to close an end-to-end capture-to-action loop on consumer hardware.
-Its transformer also uses the action-conditional contrastive auxiliary objective introduced by TWISTER~\citep{burchi2025twister}.
+Contemporaneous MIRA scales interactive world modeling to tightly coupled multiplayer dynamics, generating real-time four-player Rocket League rollouts conditioned on each player's actions~\citep{hu2026mira}.
 MineWorld likewise interleaves discrete visual and action tokens and predicts each frame's spatial tokens in parallel, while Matrix-Game 2.0 uses few-step diffusion for streaming action-conditioned video~\citep{guo2025mineworld,he2025matrixgame}.
-Those systems target interactive video generation; DashVMC instead uses the learned dynamics to optimize a policy and then closes the control loop through the original live game.
-Geometry Dash has also been controlled from screenshots~\citep{li2017geometrydash}, but that earlier framework injected a fabricated timestep to discretize the application, whereas our protocol leaves the game clock running.
+These systems target interactive video generation.
+DashVMC instead uses a compact discrete world model to optimize a policy in imagination and closes the control loop through the original non-paused game on consumer hardware.
+Its transformer also uses the action-conditional contrastive auxiliary objective introduced by TWISTER~\citep{burchi2025twister}.
+Earlier screenshot-based Geometry Dash control used direct DQN and imitation learning under a DLL-fabricated timestep, and highlighted that narrow jump windows can make nearly identical frames require different actions~\citep{li2017geometrydash}.
+Our protocol leaves the game clock running and supplies the controller with temporal context through the learned world model.
 
 \paragraph{Compact tokenization and policy initialization.}
 FSQ replaces learned vector-quantization codebooks with bounded scalar levels, avoiding commitment losses and codebook collapse while exposing an integer coordinate lattice~\citep{mentzer2024fsq}; we use the improved iFSQ bounding function~\citep{lin2026ifsq}.
