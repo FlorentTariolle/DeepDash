@@ -5,6 +5,7 @@
 !analysis/2026-07-21_live_baselines/*.json
 !analysis/2026-07-22_ship_segment_eval/*.json
 !analysis/2026-07-22_heldout_stereo_insane_nerfed/*.json
+!analysis/2026-07-23_fps60_stereo_madness_copy/*.json
 !analysis/2026-07-21_bc_reconstruction/controller_bc_args.json
 __pycache__/
 .venv/

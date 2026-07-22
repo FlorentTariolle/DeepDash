@@ -46,11 +46,12 @@
 World-model agents are usually evaluated in simulators that can wait for the policy; live games impose the opposite constraint, requiring capture, prediction, and action before the next frame.
 We present \emph{DashVMC}, a discrete Vision--Model--Controller system that plays Geometry Dash from screen pixels.
 An FSQ tokenizer maps \(\imgsize\) Sobel frames to \(\gridsize\) token grids, a block-causal transformer predicts action-conditioned transitions, and a lightweight actor--critic is initialized by behavioural cloning (BC) and improved with PPO in latent rollouts.
-Training uses approximately 2 hours of captured gameplay, including only 20 minutes of expert segments; PPO requires no additional environment interaction.
+Training uses approximately 2 hours of gameplay captured at a nominal 30-FPS cadence, including only 20 minutes of expert segments; PPO requires no additional environment interaction.
 The frozen policy more than doubles BC mean survival on each of the first two official levels in controlled live evaluation, with a smaller gain on the harder third level.
-The optimized capture-to-action loop averages 16.3\,ms over 5,000 frames on an RTX 2060 SUPER, below the 33.3\,ms budget of the 30-FPS data cadence.
+The optimized capture-to-action loop averages 16.3\,ms over 5,000 frames on an RTX 2060 SUPER, supporting a 60-FPS live deployment cadence despite 30-FPS training data.
+On a late Level-1 community copy, 60-FPS deployment yields wall-clock survival comparable to 30-FPS deployment.
 Beyond control, the same recurrent dynamics support interactive, open-ended visual level continuations that often remain plausible for extended stretches before autoregressive errors accumulate.
-Together, these results show that a compact discrete world-model controller can support imagined policy improvement, generative rollouts, and live reactive control within a consumer-GPU frame budget.%
+Together, these results show that a compact discrete world-model controller can support imagined policy improvement, generative rollouts, and live 60-FPS reactive control on a consumer GPU.%
 }
 
 \ifdashvmcsubmission
@@ -208,13 +209,13 @@ We use GAE with \(\gamma=0.995\), \(\lambda=0.95\), PPO clip 0.2, and auxiliary-
 \subsection{Reactive deployment path}
 \label{sec:deployment-method}
 
-Deployment is fixed at the 30-FPS data cadence.
+The training corpus is captured at a nominal 30-FPS cadence, but the optimized live stack is deployed at 60 FPS.
 Captured images enter pinned host memory and are transferred asynchronously; token context remains in a GPU-resident ring buffer.
 At each step, the transformer runs context prefill only to obtain \(\mathbf h_t\); its masked next-grid prediction phase is not executed.
 The FSQ encoder uses \texttt{torch.compile}, and transformer context encoding is captured in a CUDA Graph after warm-up.
 The decoder is omitted, and a keyboard update is issued only when the binary action changes.
-The loop sleeps after action dispatch to maintain cadence, but that deliberate sleep is excluded from capture-to-action latency.
-This is deliberately reactive rather than an inference-time planning system: online search or trajectory optimization would have to share the same 33.3-ms budget with capture and dispatch.
+The loop sleeps after action dispatch to maintain the selected cadence, but that deliberate sleep is excluded from capture-to-action latency.
+This is deliberately reactive rather than an inference-time planning system: online search or trajectory optimization would have to share the same 16.7-ms (60-FPS) budget with capture and dispatch.
 
 \section{Experimental setup}
 \label{sec:setup}
@@ -255,14 +256,16 @@ For live evaluation, all checkpoints are frozen and Auto-Retry is enabled.
 Auto-Retry only standardizes restarts and supplies no observation to the policy; the policy receives neither a level identifier, elapsed time or frame index, level progress, nor game memory.
 Live actions are deterministic: jump is selected exactly when the controller output exceeds 0.5.
 We retain 99 scored PPO attempts, 100 BC attempts, and 10 no-op attempts on each of the first three official levels.
-Two auxiliary live evaluations reuse the same 30-FPS Auto-Retry protocol with smaller sample sizes: 20 PPO, 20 BC, and 10 no-op scored attempts.
+Two auxiliary live evaluations reuse the same Auto-Retry protocol with smaller sample sizes: 20 PPO, 20 BC, and 10 no-op scored attempts at the 30-FPS evaluation cadence.
 The first uses \emph{Stereo Madness Copy} (KRUTOYARBUS), a community copy of a later Level-1 segment, as a late-stage/ship-reachable proxy because official Level 1--3 attempts die before ship.
 The second uses one custom community level, \emph{Stereo INSANE Nerfed} (XXcapta1n), as a single held-out layout within the supported mechanic distribution (no gravity inversion or other out-of-scope mechanics).
+In addition, a cadence-transfer probe reruns the frozen PPO controller for 20 scored attempts on Stereo Madness Copy at 60 FPS on the optimized deploy-equivalent inference path (FSQ \texttt{torch.compile}, transformer CUDA graph, GPU-resident context, no per-stage CUDA synchronization).
 The deterministic no-op diagnostic is repeated ten times because it always reaches the first obstacle; the repeats quantify capture and action-timing jitter, with a standard deviation of 0.7 frames on every official level and 0.8 frames on the held-out custom level.
 Each invocation's manually resumed synchronization episode is excluded; game memory is used only to delimit alive/dead episodes, never as policy input.
-The endpoint is frames survived, and reported intervals are 95\% percentile-bootstrap confidence intervals for the policy mean using 50,000 resamples.
+The primary endpoint is frames survived; when comparing 30-FPS and 60-FPS deployments we report wall-clock survival (acted frames divided by the requested cadence, cross-checked against episode wall time), because frame counts are not comparable across cadences.
+Reported intervals are 95\% percentile-bootstrap confidence intervals for the policy mean using 50,000 resamples.
 The original selected BC file was not archived, so the live control uses an epoch-9 rerun whose validation accuracy is close, but not bit-identical, to the archived trace (79.85\% versus 79.76\%).
-Deployment measurements use Desktop Duplication via \texttt{dxcam} over a $1920\times1080$ region, crop $(x,y,s)=(660,48,1032)$, Sobel preprocessing to $64\times64$, and \texttt{keyboard} space dispatch; optimized inference enables FSQ \texttt{torch.compile}, a transformer CUDA graph, and GPU-resident context on PyTorch 2.11.0+cu126.
+Deployment measurements use Desktop Duplication via \texttt{dxcam} over a $1920\times1080$ region, crop $(x,y,s)=(660,48,1032)$, Sobel preprocessing to $64\times64$, and \texttt{keyboard} space dispatch on PyTorch 2.11.0+cu126.
 
 \paragraph{Latency and continuation protocols.}
 Latency is measured on 5,000 consecutive frames of the optimized deployment path, from capture through action update, with CUDA synchronization only at the end-to-end boundary.
@@ -306,6 +309,9 @@ Table~\ref{tab:aux-controls} reports the two auxiliary live evaluations under th
 On the Level-1 copy, no-op dies deterministically at 135 frames, BC reaches $271.2\pm107.0$, and PPO reaches $525.6\pm51.6$ (PPO mean 95\% interval $[503.9,548.4]$), preserving a clear PPO $\gg$ BC $\gg$ no-op ranking on a later/ship-reachable segment that official Level 1--3 evals never enter.
 On the single custom held-out level, the same ordering transfers at lower absolute survival: no-op $46.1\pm0.8$, BC $113.7\pm69.6$, and PPO $215.7\pm75.7$ (PPO mean 95\% interval $[184.1,249.9]$).
 We report the custom-level result as unseen-level transfer within the supported mechanic distribution, not as novel-mechanic or broad out-of-distribution generalization; the Level-1 copy is not counted as held-out content.
+The 60-FPS cadence probe on Stereo Madness Copy yields comparable real-time survival: mean wall-clock survival is 16.64\,s at 60 FPS versus 17.52\,s at 30 FPS (mean episode wall times 17.03\,s versus 17.79\,s), with both conditions dying in the same recurring 15--21\,s band.
+Frame counts roughly double under the higher cadence, as expected, so we compare seconds rather than frames.
+This supports practical 60-FPS deployment from 30-FPS training data on this layout, without claiming broad frame-rate adaptation as a separate contribution.
 Separate intervention runs suggest that skipping a few recurring blocking obstacles lets the policy reach later sections, but those assisted runs are not part of the controlled statistics.
 
 \begin{table}[ht!]
@@ -327,13 +333,14 @@ Separate intervention runs suggest that skipping a few recurring blocking obstac
 \subsection{Capture-to-action latency}
 \label{sec:deployment-results}
 
-End-to-end latency averages 16.289\,ms (median 16.308\,ms, p95 18.722\,ms), and only 2 of 5,000 frames exceed the 33.3\,ms budget.
-The reciprocal mean is about 61 FPS of compute-equivalent throughput; the deployed rate remains 30 FPS to match the training distribution.
+End-to-end latency averages 16.289\,ms (median 16.308\,ms, p95 18.722\,ms), and only 2 of 5,000 frames exceed the 33.3\,ms (30-FPS) budget; the same mean remains below the 16.7\,ms (60-FPS) budget.
+The reciprocal mean is about 61 FPS of compute-equivalent throughput, so the optimized stack is deployed at 60 FPS even though the training captures are 30 FPS.
+On the optimized Stereo Madness Copy probe, mean full-loop latency is 14.4\,ms, confirming that the survival evaluation itself ran at the 60-FPS target.
 
 \begin{table}[ht!]
   \centering
   \small
-  \caption{Optimized RTX 2060 SUPER deployment timing. Component values are means in milliseconds; end-to-end is measured independently and includes dispatch overhead.}
+  \caption{Optimized RTX 2060 SUPER deployment timing. Component values are means in milliseconds; end-to-end is measured independently and includes dispatch overhead. The 5,000-frame benchmark is reported against the 33.3\,ms (30-FPS) reference; the 16.3\,ms mean also fits a 16.7\,ms (60-FPS) budget.}
   \label{tab:latency}
   \begin{tabular}{lrlr}
     \toprule
@@ -350,7 +357,7 @@ The reciprocal mean is about 61 FPS of compute-equivalent throughput; the deploy
 \end{table}
 
 These timings differ from diagnostic evaluator logs that move context through CPU/NumPy and synchronize after each GPU stage.
-We use that evaluator for survival only and the optimized path for deployment latency.
+Official-level and 30-FPS auxiliary survival use that diagnostic path; the 60-FPS cadence probe and deployment latency use the optimized path.
 
 \subsection{Action-conditioned continuations}
 \label{sec:continuations}
@@ -407,6 +414,7 @@ DashVMC is a single-game study with binary actions, deterministic layouts, and o
 The hundreds of live attempts quantify deployment variability for one frozen policy, not uncertainty across training runs, and survival time is not level completion.
 The auxiliary custom-level evaluation uses a single held-out community layout and smaller sample sizes than the official-level suite; it supports within-mechanic transfer rather than broad generalization.
 The Level-1 copy evaluates later-stage survival but does not isolate ship mode with explicit mode labels.
+The 60-FPS cadence comparison is a single-level, single-policy probe with $n=20$ and is not a broad study of frame-rate adaptation.
 The BC control is an epoch-9 rerun close to the archived training trace, not the missing original checkpoint.
 Because no other world-model agent is available under the same captured-pixel, non-paused Geometry-Dash protocol, the results are a controlled within-system comparison rather than a state-of-the-art benchmark.
 
@@ -419,13 +427,13 @@ Successive development-time dataset doublings produced visibly more coherent, hi
 Although the system is learned from a small offline corpus, we do not report a data-scaling curve or matched larger-data baseline.
 The results therefore demonstrate viability under a constrained data budget, not general sample efficiency.
 
-The 16.3-ms result covers this hardware and 64-pixel edge observations; RGB input, stochastic environments, larger action spaces, or weaker devices require new accuracy--latency measurements.
+The 16.3-ms / 60-FPS result covers this hardware and 64-pixel edge observations; RGB input, stochastic environments, larger action spaces, or weaker devices require new accuracy--latency measurements.
 
 \section{Conclusion}
 \label{sec:conclusion}
 
 DashVMC shows that a compact discrete world model can support both imagined policy improvement and live reactive control in a timing-sensitive game.
-Its frozen PPO controller improves substantially over BC on the first two official levels and preserves that ranking on a late Level-1 copy and one custom held-out community level, while the capture-to-action path remains below the 30-FPS frame budget on a consumer GPU.
+Its frozen PPO controller improves substantially over BC on the first two official levels and preserves that ranking on a late Level-1 copy and one custom held-out community level, while the optimized capture-to-action path sustains a 60-FPS live cadence on a consumer GPU despite 30-FPS training data.
 Matched continuations confirm that the model's visual futures respond to action interventions, and interactive rollouts show that those dynamics can produce open-ended, often plausible level continuations, albeit without indefinite coherence guarantees.
 
 \ifdashvmcsubmission\else

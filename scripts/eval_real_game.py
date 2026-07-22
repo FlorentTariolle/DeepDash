@@ -3,6 +3,11 @@
 Runs the full deploy pipeline (screen capture -> FSQ -> Transformer -> Controller)
 on the real game, detects death via memory reading, and logs survival stats.
 
+Two inference paths are available:
+  diagnostic (default): CPU/NumPy context + per-stage CUDA syncs for stage timing
+  optimized: same hot path as scripts/deploy.py (FSQ torch.compile, transformer
+             CUDA graph, GPU-resident context, no per-stage syncs)
+
 The game must be running and the player must be in a level.
 After each death, the game auto-respawns -- the script waits for respawn
 and starts the next episode automatically.
@@ -11,6 +16,7 @@ Usage:
     python scripts/eval_real_game.py --n-runs 100
     python scripts/eval_real_game.py --n-runs 50 --output eval_results.json
     python scripts/eval_real_game.py --policy no-op --n-runs 10
+    python scripts/eval_real_game.py --inference-path optimized --fps 60 --n-runs 20
 """
 
 import argparse
@@ -32,6 +38,25 @@ from deepdash.fsq import FSQVAE
 from deepdash.world_model import WorldModel
 from deepdash.controller import CNNPolicy, MLPPolicy, V3CNNPolicy
 from deepdash.gd_mem import GDReader
+
+
+_SOBEL_X = torch.tensor(
+    [[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]],
+    dtype=torch.float32,
+).reshape(1, 1, 3, 3)
+_SOBEL_Y = torch.tensor(
+    [[-1, -2, -1], [0, 0, 0], [1, 2, 1]],
+    dtype=torch.float32,
+).reshape(1, 1, 3, 3)
+_sobel_device = None
+
+
+def _init_sobel_kernels(device):
+    global _SOBEL_X, _SOBEL_Y, _sobel_device
+    if _sobel_device != device:
+        _SOBEL_X = _SOBEL_X.to(device)
+        _SOBEL_Y = _SOBEL_Y.to(device)
+        _sobel_device = device
 
 
 def file_sha256(path):
@@ -149,6 +174,391 @@ def preprocess_frame(rgb, crop_x, crop_y, crop_size, target_size, device=None):
                       interpolation=cv2.INTER_AREA)
 
 
+def preprocess_frame_optimized(rgb, crop_x, crop_y, crop_size, target_size, device):
+    """Deploy-equivalent preprocess: GPU Sobel + CPU resize, no stage syncs."""
+    cropped = rgb[crop_y:crop_y + crop_size, crop_x:crop_x + crop_size]
+    gray = cv2.cvtColor(cropped, cv2.COLOR_RGB2GRAY)
+    if device.type == "cuda":
+        _init_sobel_kernels(device)
+        gray_t = torch.from_numpy(gray).float().unsqueeze(0).unsqueeze(0).to(device)
+        padded = torch.nn.functional.pad(gray_t, (1, 1, 1, 1), mode="reflect")
+        sx = torch.nn.functional.conv2d(padded, _SOBEL_X)
+        sy = torch.nn.functional.conv2d(padded, _SOBEL_Y)
+        mag = torch.sqrt(sx ** 2 + sy ** 2)
+        edges = torch.clamp(torch.round(mag), 0, 255).to(torch.uint8).squeeze().cpu().numpy()
+    else:
+        sobel_x = cv2.Sobel(gray, cv2.CV_16S, 1, 0, ksize=3)
+        sobel_y = cv2.Sobel(gray, cv2.CV_16S, 0, 1, ksize=3)
+        edges = cv2.convertScaleAbs(cv2.magnitude(
+            sobel_x.astype(np.float32), sobel_y.astype(np.float32)))
+    return cv2.resize(edges, (target_size, target_size), interpolation=cv2.INTER_AREA)
+
+
+def enable_optimized_inference(vae, wm, device, context_frames):
+    """Match scripts/deploy.py optimized path: compile FSQ + CUDA graph encode."""
+    use_compile = False
+    use_cuda_graph = False
+    encode_graph = None
+    graph_ctx_t = None
+    graph_ctx_a = None
+    graph_h_t = None
+    pin_buf = None
+
+    if device.type != "cuda":
+        return {
+            "fsq_torch_compile": False,
+            "transformer_cuda_graph": False,
+            "gpu_resident_context": True,
+            "pinned_frame_buffer": False,
+            "per_stage_cuda_synchronization": False,
+            "encode_graph": None,
+            "graph_ctx_t": None,
+            "graph_ctx_a": None,
+            "graph_h_t_holder": None,
+            "pin_buf": None,
+        }
+
+    torch.backends.cudnn.benchmark = True
+    try:
+        vae.encode = torch.compile(vae.encode)
+        print("torch.compile enabled for FSQ")
+        with torch.no_grad():
+            dummy_frame = torch.zeros(1, 1, 64, 64, device=device)
+            for _ in range(3):
+                vae.encode(dummy_frame)
+        torch.cuda.synchronize()
+        use_compile = True
+    except Exception as exc:
+        print(f"torch.compile not available: {exc}")
+
+    try:
+        graph_ctx_t = torch.zeros(
+            1, context_frames, 65, dtype=torch.long, device=device
+        )
+        graph_ctx_a = torch.zeros(
+            1, context_frames, dtype=torch.long, device=device
+        )
+        with torch.no_grad():
+            for _ in range(3):
+                wm.encode_context(graph_ctx_t, graph_ctx_a)
+        torch.cuda.synchronize()
+        encode_graph = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(encode_graph):
+            with torch.no_grad():
+                graph_h_t = wm.encode_context(graph_ctx_t, graph_ctx_a)
+        use_cuda_graph = True
+        print("CUDA Graph captured for encode_context")
+    except Exception as exc:
+        print(f"CUDA Graph capture failed, using eager: {exc}")
+        encode_graph = None
+        graph_ctx_t = None
+        graph_ctx_a = None
+        graph_h_t = None
+
+    pin_buf = torch.zeros(1, 1, 64, 64, dtype=torch.float32, pin_memory=True)
+    return {
+        "fsq_torch_compile": use_compile,
+        "transformer_cuda_graph": use_cuda_graph,
+        "gpu_resident_context": True,
+        "pinned_frame_buffer": True,
+        "per_stage_cuda_synchronization": False,
+        "encode_graph": encode_graph,
+        "graph_ctx_t": graph_ctx_t,
+        "graph_ctx_a": graph_ctx_a,
+        "graph_h_t_holder": [graph_h_t],
+        "pin_buf": pin_buf,
+    }
+
+
+def run_episode_diagnostic(
+    *,
+    gd,
+    cam,
+    device,
+    vae,
+    wm,
+    controller,
+    policy_class,
+    uses_controller,
+    region,
+    crop_x,
+    crop_y,
+    crop_size,
+    frame_interval,
+    jump_threshold,
+    K,
+    stage_timer,
+    latency_samples,
+    latency_frames,
+):
+    """Original diagnostic path with per-stage CUDA syncs."""
+    ctx_tokens = []
+    ctx_actions = []
+    jumping = False
+    warmup_frames = K - 1
+    frames_survived = 0
+    t_start = time.perf_counter()
+    keyboard.release("space")
+
+    while True:
+        t0 = time.perf_counter()
+        stage_timer.start("full_loop")
+
+        if keyboard.is_pressed("f10"):
+            break
+
+        if gd.is_dead():
+            if jumping:
+                keyboard.release("space")
+                jumping = False
+            break
+
+        if not uses_controller:
+            if warmup_frames > 0:
+                warmup_frames -= 1
+            else:
+                frames_survived += 1
+            elapsed = time.perf_counter() - t0
+            if elapsed < frame_interval:
+                time.sleep(frame_interval - elapsed)
+            continue
+
+        stage_timer.start("capture")
+        img = cam.grab(region=region)
+        stage_timer.end("capture")
+        if img is None:
+            time.sleep(0.001)
+            continue
+
+        stage_timer.start("sobel_preprocess")
+        edge_frame = preprocess_frame(img, crop_x, crop_y, crop_size, 64, device)
+        stage_timer.cuda_sync(device)
+        stage_timer.end("sobel_preprocess")
+
+        stage_timer.start("fsq_encode")
+        with torch.no_grad(), torch.amp.autocast("cuda", enabled=device.type == "cuda"):
+            frame_t = torch.from_numpy(edge_frame.astype(np.float32) / 255.0)
+            frame_t = frame_t.unsqueeze(0).unsqueeze(0).to(device)
+            tokens = vae.encode(frame_t)
+            tokens_flat = tokens.reshape(-1).cpu().numpy().astype(np.int64)
+        stage_timer.cuda_sync(device)
+        stage_timer.end("fsq_encode")
+
+        ctx_tokens.append(tokens_flat)
+        ctx_actions.append(1 if jumping else 0)
+        if len(ctx_tokens) > K:
+            ctx_tokens = ctx_tokens[-K:]
+            ctx_actions = ctx_actions[-K:]
+
+        if len(ctx_tokens) < K:
+            elapsed = time.perf_counter() - t0
+            if elapsed < frame_interval:
+                time.sleep(frame_interval - elapsed)
+            continue
+
+        stage_timer.start("transformer")
+        with torch.no_grad(), torch.amp.autocast("cuda", enabled=device.type == "cuda"):
+            ctx_tok_np = np.array(ctx_tokens)
+            ctx_act_np = np.array(ctx_actions)
+            status = np.full((K, 1), wm.ALIVE_TOKEN, dtype=np.int64)
+            ctx_with_status = np.concatenate([ctx_tok_np, status], axis=1)
+            ctx_t = torch.from_numpy(ctx_with_status[None]).to(device)
+            ctx_a = torch.from_numpy(ctx_act_np[None]).to(device)
+            h_t = wm.encode_context(ctx_t, ctx_a)
+        stage_timer.cuda_sync(device)
+        stage_timer.end("transformer")
+
+        stage_timer.start("controller_action")
+        with torch.no_grad():
+            if policy_class == "mlp":
+                prob, _ = controller(h_t.float())
+            else:
+                z_t = torch.from_numpy(ctx_tokens[-1][None]).to(device)
+                prob, _ = controller(z_t, h_t.float())
+            jump = prob[0].item() > jump_threshold
+        stage_timer.cuda_sync(device)
+        stage_timer.end("controller_action")
+
+        if jump and not jumping:
+            keyboard.press("space")
+            jumping = True
+        elif not jump and jumping:
+            keyboard.release("space")
+            jumping = False
+
+        frames_survived += 1
+        stage_timer.end("full_loop")
+        if stage_timer.enabled:
+            latency_frames += 1
+            if latency_frames >= latency_samples:
+                stage_timer.enabled = False
+
+        elapsed = time.perf_counter() - t0
+        if elapsed < frame_interval:
+            time.sleep(frame_interval - elapsed)
+
+    return frames_survived, time.perf_counter() - t_start, latency_frames
+
+
+def run_episode_optimized(
+    *,
+    gd,
+    cam,
+    device,
+    vae,
+    wm,
+    controller,
+    policy_class,
+    uses_controller,
+    region,
+    crop_x,
+    crop_y,
+    crop_size,
+    frame_interval,
+    jump_threshold,
+    K,
+    stage_timer,
+    latency_samples,
+    latency_frames,
+    opt,
+):
+    """Deploy-equivalent optimized path without per-stage CUDA syncs."""
+    jumping = False
+    frames_survived = 0
+    t_start = time.perf_counter()
+    keyboard.release("space")
+
+    if not uses_controller:
+        warmup_frames = K - 1
+        while True:
+            t0 = time.perf_counter()
+            if keyboard.is_pressed("f10"):
+                break
+            if gd.is_dead():
+                break
+            if warmup_frames > 0:
+                warmup_frames -= 1
+            else:
+                frames_survived += 1
+            elapsed = time.perf_counter() - t0
+            if elapsed < frame_interval:
+                time.sleep(frame_interval - elapsed)
+        return frames_survived, time.perf_counter() - t_start, latency_frames
+
+    tokens_per_frame = 64
+    ctx_tokens = torch.zeros(K, tokens_per_frame, dtype=torch.long, device=device)
+    ctx_actions = torch.zeros(K, dtype=torch.long, device=device)
+    ctx_status = torch.full((K, 1), wm.ALIVE_TOKEN, dtype=torch.long, device=device)
+    ctx_fill = 0
+    pin_buf = opt["pin_buf"]
+    encode_graph = opt["encode_graph"]
+    graph_ctx_t = opt["graph_ctx_t"]
+    graph_ctx_a = opt["graph_ctx_a"]
+    graph_h_holder = opt["graph_h_t_holder"]
+
+    while True:
+        t0 = time.perf_counter()
+        stage_timer.start("full_loop")
+
+        if keyboard.is_pressed("f10"):
+            break
+
+        if gd.is_dead():
+            if jumping:
+                keyboard.release("space")
+                jumping = False
+            break
+
+        stage_timer.start("capture")
+        img = cam.grab(region=region)
+        stage_timer.end("capture")
+        if img is None:
+            time.sleep(0.001)
+            continue
+
+        stage_timer.start("sobel_preprocess")
+        edge_frame = preprocess_frame_optimized(
+            img, crop_x, crop_y, crop_size, 64, device
+        )
+        stage_timer.end("sobel_preprocess")
+
+        stage_timer.start("fsq_encode")
+        with torch.no_grad():
+            if pin_buf is not None:
+                pin_buf[0, 0] = torch.from_numpy(
+                    edge_frame.astype(np.float32) * (1.0 / 255.0)
+                )
+                frame_t = pin_buf.to(device, non_blocking=True)
+            else:
+                frame_t = torch.from_numpy(
+                    edge_frame.astype(np.float32) * (1.0 / 255.0)
+                )
+                frame_t = frame_t.unsqueeze(0).unsqueeze(0).to(device)
+            tokens = vae.encode(frame_t).reshape(tokens_per_frame)
+        stage_timer.end("fsq_encode")
+
+        if ctx_fill < K:
+            ctx_tokens[ctx_fill] = tokens
+            ctx_actions[ctx_fill] = 1 if jumping else 0
+            ctx_fill += 1
+        else:
+            ctx_tokens[:-1] = ctx_tokens[1:].clone()
+            ctx_actions[:-1] = ctx_actions[1:].clone()
+            ctx_tokens[-1] = tokens
+            ctx_actions[-1] = 1 if jumping else 0
+
+        if ctx_fill < K:
+            elapsed = time.perf_counter() - t0
+            if elapsed < frame_interval:
+                time.sleep(frame_interval - elapsed)
+            continue
+
+        stage_timer.start("transformer")
+        if encode_graph is not None:
+            ctx_t = torch.cat([ctx_tokens, ctx_status], dim=1).unsqueeze(0)
+            graph_ctx_t.copy_(ctx_t)
+            graph_ctx_a.copy_(ctx_actions.unsqueeze(0))
+            encode_graph.replay()
+            h_t = graph_h_holder[0]
+        else:
+            with torch.no_grad():
+                ctx_t = torch.cat([ctx_tokens, ctx_status], dim=1).unsqueeze(0)
+                ctx_a = ctx_actions.unsqueeze(0)
+                h_t = wm.encode_context(ctx_t, ctx_a)
+        stage_timer.end("transformer")
+
+        stage_timer.start("controller_action")
+        with torch.no_grad():
+            if policy_class == "mlp":
+                prob, _ = controller(h_t.float())
+            else:
+                z_t = ctx_tokens[-1:].clone()
+                prob, _ = controller(z_t, h_t.float())
+            # Natural end-of-frame sync, same as deploy.py
+            jump = prob[0].item() > jump_threshold
+        stage_timer.end("controller_action")
+
+        if jump and not jumping:
+            keyboard.press("space")
+            jumping = True
+        elif not jump and jumping:
+            keyboard.release("space")
+            jumping = False
+
+        frames_survived += 1
+        stage_timer.end("full_loop")
+        if stage_timer.enabled:
+            latency_frames += 1
+            if latency_frames >= latency_samples:
+                stage_timer.enabled = False
+
+        elapsed = time.perf_counter() - t0
+        if elapsed < frame_interval:
+            time.sleep(frame_interval - elapsed)
+
+    return frames_survived, time.perf_counter() - t_start, latency_frames
+
+
 def main():
     parser = argparse.ArgumentParser(description="Automated real-game evaluation")
     parser.add_argument("--n-runs", type=int, default=100)
@@ -164,6 +574,13 @@ def main():
     parser.add_argument("--jump-threshold", type=float, default=0.5)
     parser.add_argument("--level-name", default=None)
     parser.add_argument("--system-variant", default="V7")
+    parser.add_argument(
+        "--inference-path",
+        choices=["diagnostic", "optimized"],
+        default="diagnostic",
+        help="diagnostic = stage-synced evaluator path; optimized = deploy.py "
+             "compiled/CUDA-graph path without per-stage syncs.",
+    )
     parser.add_argument("--latency-samples", type=int, default=300,
                         help="Number of acted frames to include in stage timing.")
     parser.add_argument("--latency-bootstrap-resamples", type=int, default=10_000,
@@ -199,11 +616,28 @@ def main():
     print(f"Device: {device}")
     K = args.context_frames
     uses_controller = args.policy in {"ppo", "bc"}
+    use_optimized = args.inference_path == "optimized"
+
+    if use_optimized and not uses_controller:
+        print("Note: optimized path has no effect for no-op policy.")
 
     vae = None
     wm = None
     controller = None
     policy_class = None
+    opt = {
+        "fsq_torch_compile": False,
+        "transformer_cuda_graph": False,
+        "gpu_resident_context": False,
+        "pinned_frame_buffer": False,
+        "per_stage_cuda_synchronization": True,
+        "encode_graph": None,
+        "graph_ctx_t": None,
+        "graph_ctx_a": None,
+        "graph_h_t_holder": None,
+        "pin_buf": None,
+    }
+
     if uses_controller:
         print("Loading models...")
         vae = FSQVAE(levels=args.levels).to(device)
@@ -253,16 +687,18 @@ def main():
         controller.load_state_dict(state)
         controller.eval()
         print(f"All models loaded. Controller: {policy_class}")
+
+        if use_optimized:
+            print("Enabling optimized inference path (deploy-equivalent)...")
+            opt = enable_optimized_inference(vae, wm, device, K)
     else:
         print("No-op policy: model loading and screen capture are disabled.")
 
-    # Screen capture setup
     region = (0, 0, 1920, 1080)
     crop_x, crop_y, crop_size = 660, 48, 1032
     cam = dxcam.create() if uses_controller else None
     frame_interval = 1.0 / args.fps
 
-    # Memory reader
     gd = GDReader()
     print(f"GD memory reader connected (PID: {gd.pid})")
 
@@ -275,6 +711,7 @@ def main():
     latency_frames = 0
     print(f"\nRunning one unscored synchronization episode, then "
           f"{args.n_runs} {args.policy} evaluation episodes...")
+    print(f"Inference path: {args.inference_path} | target cadence: {args.fps} FPS")
     print("Press F10 to abort.\n")
 
     episode_idx = 0
@@ -283,126 +720,41 @@ def main():
             print("Aborted by user.")
             break
 
-        # Wait for player to be alive in level
         while True:
             state_dict = gd.get_state()
             if state_dict["in_level"] and not state_dict["is_dead"]:
                 break
             time.sleep(0.05)
 
-        # Run one episode
-        ctx_tokens = []
-        ctx_actions = []
-        jumping = False
-        warmup_frames = K - 1
-        frames_survived = 0
-        t_start = time.perf_counter()
-        keyboard.release("space")
+        common = dict(
+            gd=gd,
+            cam=cam,
+            device=device,
+            vae=vae,
+            wm=wm,
+            controller=controller,
+            policy_class=policy_class,
+            uses_controller=uses_controller,
+            region=region,
+            crop_x=crop_x,
+            crop_y=crop_y,
+            crop_size=crop_size,
+            frame_interval=frame_interval,
+            jump_threshold=args.jump_threshold,
+            K=K,
+            stage_timer=stage_timer,
+            latency_samples=args.latency_samples,
+            latency_frames=latency_frames,
+        )
+        if use_optimized and uses_controller:
+            frames_survived, episode_time, latency_frames = run_episode_optimized(
+                **common, opt=opt
+            )
+        else:
+            frames_survived, episode_time, latency_frames = run_episode_diagnostic(
+                **common
+            )
 
-        while True:
-            t0 = time.perf_counter()
-            stage_timer.start("full_loop")
-
-            if keyboard.is_pressed("f10"):
-                break
-
-            # Check death
-            if gd.is_dead():
-                if jumping:
-                    keyboard.release("space")
-                    jumping = False
-                break
-
-            if not uses_controller:
-                if warmup_frames > 0:
-                    warmup_frames -= 1
-                else:
-                    frames_survived += 1
-                elapsed = time.perf_counter() - t0
-                if elapsed < frame_interval:
-                    time.sleep(frame_interval - elapsed)
-                continue
-
-            # Capture
-            stage_timer.start("capture")
-            img = cam.grab(region=region)
-            stage_timer.end("capture")
-            if img is None:
-                time.sleep(0.001)
-                continue
-
-            # Preprocess
-            stage_timer.start("sobel_preprocess")
-            edge_frame = preprocess_frame(img, crop_x, crop_y, crop_size, 64, device)
-            stage_timer.cuda_sync(device)
-            stage_timer.end("sobel_preprocess")
-
-            # FSQ encode
-            stage_timer.start("fsq_encode")
-            with torch.no_grad(), torch.amp.autocast("cuda", enabled=device.type == "cuda"):
-                frame_t = torch.from_numpy(edge_frame.astype(np.float32) / 255.0)
-                frame_t = frame_t.unsqueeze(0).unsqueeze(0).to(device)
-                tokens = vae.encode(frame_t)
-                tokens_flat = tokens.reshape(-1).cpu().numpy().astype(np.int64)
-            stage_timer.cuda_sync(device)
-            stage_timer.end("fsq_encode")
-
-            ctx_tokens.append(tokens_flat)
-            ctx_actions.append(1 if jumping else 0)
-
-            if len(ctx_tokens) > K:
-                ctx_tokens = ctx_tokens[-K:]
-                ctx_actions = ctx_actions[-K:]
-
-            # Need K frames before acting
-            if len(ctx_tokens) < K:
-                elapsed = time.perf_counter() - t0
-                if elapsed < frame_interval:
-                    time.sleep(frame_interval - elapsed)
-                continue
-
-            # Transformer
-            stage_timer.start("transformer")
-            with torch.no_grad(), torch.amp.autocast("cuda", enabled=device.type == "cuda"):
-                ctx_tok_np = np.array(ctx_tokens)
-                ctx_act_np = np.array(ctx_actions)
-                status = np.full((K, 1), wm.ALIVE_TOKEN, dtype=np.int64)
-                ctx_with_status = np.concatenate([ctx_tok_np, status], axis=1)
-                ctx_t = torch.from_numpy(ctx_with_status[None]).to(device)
-                ctx_a = torch.from_numpy(ctx_act_np[None]).to(device)
-                h_t = wm.encode_context(ctx_t, ctx_a)
-            stage_timer.cuda_sync(device)
-            stage_timer.end("transformer")
-
-            stage_timer.start("controller_action")
-            with torch.no_grad():
-                if policy_class == "mlp":
-                    prob, _ = controller(h_t.float())
-                else:
-                    z_t = torch.from_numpy(ctx_tokens[-1][None]).to(device)
-                    prob, _ = controller(z_t, h_t.float())
-                jump = prob[0].item() > args.jump_threshold
-            stage_timer.cuda_sync(device)
-            stage_timer.end("controller_action")
-            if jump and not jumping:
-                keyboard.press("space")
-                jumping = True
-            elif not jump and jumping:
-                keyboard.release("space")
-                jumping = False
-
-            frames_survived += 1
-            stage_timer.end("full_loop")
-            if stage_timer.enabled:
-                latency_frames += 1
-                if latency_frames >= args.latency_samples:
-                    stage_timer.enabled = False
-
-            elapsed = time.perf_counter() - t0
-            if elapsed < frame_interval:
-                time.sleep(frame_interval - elapsed)
-
-        episode_time = time.perf_counter() - t_start
         episode_idx += 1
         episode = {
             "episode": episode_idx,
@@ -431,10 +783,8 @@ def main():
             print(f"  Run {len(results):3d}/{args.n_runs}: "
                   f"{frames_survived} frames ({episode_time:.1f}s)")
 
-        # Wait for respawn (death animation + respawn)
         time.sleep(1.0)
 
-    # Summary
     if results:
         survivals = [r["frames_survived"] for r in results]
         print(f"\n{'='*50}")
@@ -465,6 +815,16 @@ def main():
             ),
             "level_name": args.level_name,
             "fps": args.fps,
+            "inference_path": args.inference_path,
+            "optimizations": {
+                "fsq_torch_compile": bool(opt.get("fsq_torch_compile")),
+                "transformer_cuda_graph": bool(opt.get("transformer_cuda_graph")),
+                "gpu_resident_context": bool(opt.get("gpu_resident_context")),
+                "pinned_frame_buffer": bool(opt.get("pinned_frame_buffer")),
+                "per_stage_cuda_synchronization": bool(
+                    opt.get("per_stage_cuda_synchronization")
+                ),
+            },
             "unscored_warmup_frames": K - 1,
             "death_detection": "Geometry Dash process memory",
             "gpu": gpu_name,

@@ -1,19 +1,19 @@
 # Project Roadmap
 
-Last updated on 2026-07-22.
+Last updated on 2026-07-23.
 
 ## Paper Direction
 
 DashVMC is a Geometry Dash world-model control paper.
 
-The defensible claim is narrow and system-level: a compact discrete Vision-Model-Controller stack can tokenize Geometry Dash observations, model action-conditioned dynamics, train a controller in latent rollouts, and deploy live at the 30 FPS cadence used by the dataset.
+The defensible claim is narrow and system-level: a compact discrete Vision-Model-Controller stack can tokenize Geometry Dash observations, model action-conditioned dynamics, train a controller in latent rollouts from 30-FPS captures, and deploy live at 60 FPS on consumer hardware.
 
 The paper should emphasize:
 
 - FSQ tokenization of 64x64 Sobel frames into an 8x8 discrete grid.
 - Action-conditioned transformer dynamics with interleaved jump/idle tokens.
 - Behavioural-cloning warm-start followed by PPO in latent model rollouts.
-- Live deployment at 30 FPS, with measured full-loop latency around 15 ms and roughly 67 FPS compute headroom.
+- Live deployment at 60 FPS from 30-FPS training data, with measured full-loop latency around 16.3 ms (fits the 16.7 ms budget).
 - Decoded rollout visualizations as inspection/generation artifacts, not as the policy training signal.
 - Implementation diagnostics explaining conservative design choices.
 
@@ -36,13 +36,15 @@ Frozen V7 logs support these current system numbers:
 | Deployment | Mean Level 2 survival (95% CI) | 263.3 [239.8, 287.2] frames | `analysis/2026-07-20_v7_deploy/eval_100_level2.json` |
 | Deployment | Mean Level 3 survival (95% CI) | 64.3 [59.3, 70.0] frames | `analysis/2026-07-20_v7_deploy/eval_100_level3.json` |
 | Deployment | Full-loop latency | 16.3 ms end-to-end (component sum 15.3 ms) | `analysis/2026-07-20_v7_deploy/optimized_wallclock_5000.json` |
-| Deployment | Configured cadence | 30 FPS | dataset/capture cadence |
-| Deployment | Compute headroom | ~61 FPS | 1 / 16.3 ms |
-| Aux live | Stereo Madness Copy PPO mean [CI] | 525.6 [503.9, 548.4] | `analysis/2026-07-22_ship_segment_eval/` |
+| Deployment | Dataset capture cadence | 30 FPS | corpus / capture |
+| Deployment | Live deployment cadence | **60 FPS** | optimized path |
+| Deployment | Compute headroom | ~61 FPS mean | 1 / 16.3 ms |
+| Aux live | Stereo Madness Copy PPO mean [CI] | 525.6 [503.9, 548.4] frames / 17.52 s | `analysis/2026-07-22_ship_segment_eval/` |
+| Aux live | Stereo Madness Copy @ 60 FPS | 16.64 s mean (wall 17.03 s) | `analysis/2026-07-23_fps60_stereo_madness_copy/` |
 | Aux live | Stereo INSANE Nerfed PPO mean [CI] | 215.7 [184.1, 249.9] | `analysis/2026-07-22_heldout_stereo_insane_nerfed/` |
 | Machine | Live GPU | RTX 2060 SUPER / PyTorch 2.11.0+cu126 | `analysis/2026-07-22_experiment_machine/MACHINE_FACTS.md` |
 
-The controlled V7 evaluator runs are complete for the first three official levels, plus a late Level-1 copy (ship-reachable proxy) and one custom held-out community level. They measure acted frames survived rather than level percentage. Results remain level-specific: difficulty increases across the sequence, Level 3 introduces timed mid-air yellow-orb inputs, and the custom level is reported as within-mechanic transfer only.
+The controlled V7 evaluator runs are complete for the first three official levels, plus a late Level-1 copy (ship-reachable proxy), one custom held-out community level, and a 60-FPS cadence probe on the Level-1 copy. They measure acted frames survived rather than level percentage; cross-cadence comparisons use wall-clock seconds. Results remain level-specific: difficulty increases across the sequence, Level 3 introduces timed mid-air yellow-orb inputs, and the custom level is reported as within-mechanic transfer only. The 60-FPS probe supports practical cadence transfer, not broad frame-rate adaptation as a core method claim.
 
 ## Compute To Finish
 
