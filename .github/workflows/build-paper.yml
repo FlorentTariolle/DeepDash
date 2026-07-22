@@ -16,6 +16,7 @@ on:
       - 'scripts/render_counterfactual_spike_figure.py'
       - 'analysis/2026-07-21_counterfactual_spike/**'
       - 'docs/pipeline.tex'
+      - 'docs/continuation.tex'
       - '.github/workflows/build-paper.yml'
   pull_request:
     paths:
@@ -31,6 +32,7 @@ on:
       - 'scripts/render_counterfactual_spike_figure.py'
       - 'analysis/2026-07-21_counterfactual_spike/**'
       - 'docs/pipeline.tex'
+      - 'docs/continuation.tex'
       - '.github/workflows/build-paper.yml'
   workflow_dispatch:
 
@@ -51,6 +53,15 @@ jobs:
 
       - name: Copy pipeline figure into paper
         run: cp docs/pipeline.pdf paper/figures/pipeline.pdf
+
+      - name: Compile continuation figure
+        uses: xu-cheng/latex-action@v3
+        with:
+          working_directory: docs
+          root_file: continuation.tex
+
+      - name: Copy continuation figure into paper
+        run: cp docs/continuation.pdf paper/figures/continuation.pdf
 
       - name: Compile public preprint
         uses: xu-cheng/latex-action@v3

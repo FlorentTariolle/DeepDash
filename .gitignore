@@ -40,6 +40,7 @@ paper/figures/
 paper/figures/*
 !paper/figures/continuation.png
 docs/pipeline.pdf
+docs/continuation.pdf
 Formatting_Instructions_For_NeurIPS_2026/
 outputs/
 plots/
