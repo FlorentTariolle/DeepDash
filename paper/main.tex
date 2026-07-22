@@ -401,7 +401,6 @@ The 16.3-ms result covers this hardware and 64-pixel edge observations; RGB inpu
 DashVMC shows that a compact discrete world model can support both imagined policy improvement and live reactive control in a timing-sensitive game.
 Its frozen PPO controller improves substantially over BC on the first two tested levels, while the capture-to-action path remains below the 30-FPS frame budget on a consumer GPU.
 Matched continuations confirm that the model's visual futures respond to action interventions, and interactive rollouts show that those dynamics can produce open-ended, often plausible level continuations, albeit without indefinite coherence guarantees.
-The evidence is intentionally scoped: this is a deployed systems case study, not a general world-model benchmark or an isolated validation of structured smoothing.
 
 \ifdashvmcsubmission\else
   \section*{Acknowledgments}
