@@ -1,8 +1,6 @@
 # DashVMC
 ### Real-Time Discrete World Model Control in Geometry Dash
 
-[Florent Tariolle](https://tariolle.github.io/)
-
 https://github.com/user-attachments/assets/1de92e9c-cc41-48cc-8305-c0d4491b676b
 
 DashVMC is a real-time discrete Vision-Model-Controller system for Geometry Dash. It combines an FSQ tokenizer, an action-conditioned transformer world model, and a lightweight actor-critic trained from behavioural cloning plus PPO in latent rollouts.
@@ -71,8 +69,6 @@ of a rollout closes the active recording automatically.
 ```bash
 python scripts/deploy.py
 ```
-
-Cluster launches (SLURM, A100): `sbatch slurm/train_fsq.sl`, `sbatch slurm/train_transformer.sl`, `sbatch slurm/train_controller.sl`.
 
 ## Contact
 
