@@ -51,6 +51,9 @@
   \node[anchor=east, note] at (7.35,-0.35)
     {recorded seed $\rightarrow$ fully imagined rollout};
 
+  % Center the complete imagined-control pipeline within its panel. The small
+  % downward shift balances the upper context route against the footer note.
+  \begin{scope}[xshift=0.25cm,yshift=-0.18cm]
   \node[visionbox, text width=2.05cm] (seed) at (-6.45,-1.90)
     {{\scriptsize\bfseries\color{vision}FROZEN $V$}\\[-1pt]
      \textbf{Seed builder}\\[-1pt]
@@ -72,11 +75,11 @@
     {\textbf{PPO / GAE}\\[-1pt]
      \scriptsize update};
 
-  \node[updatebox, text width=2.60cm] (roll) at (1.10,-3.72)
+  \node[updatebox, text width=2.60cm] (roll) at (0.75,-4.12)
     {\textbf{Roll forward}\\[-1pt]
      \scriptsize append $(\hat{\mathbf z}_{\rm next},a_{\rm new})$\\[-1pt]
      \scriptsize drop oldest pair};
-  \node[box, draw=ink!35, text width=2.30cm] (gate) at (4.55,-3.72)
+  \node[box, draw=ink!35, text width=2.85cm] (gate) at (4.55,-4.12)
     {\textbf{Transition gate}\\[-1pt]
      \scriptsize steps 1--4: discard\\[-1pt]
      \scriptsize step $\geq5$: retain};
@@ -94,10 +97,10 @@
   \draw[imagined] (wm.south) --
     node[edgelabel, pos=0.50, left=3.5pt, align=right]
       {$\hat{\mathbf z}_{\mathrm{next}}$\\[-1pt]$p_{\mathrm{death}}$}
-    (roll.north west);
+    (roll);
   \draw[policyflow] (ctrl.south) --
     node[edgelabel, pos=0.50, right=3.5pt] {$a_{\mathrm{new}}$}
-    (roll.north east);
+    (roll);
 
   \coordinate (rollturn) at (ctx.south |- roll.west);
   \draw[imagined] (roll.west) --
@@ -107,10 +110,12 @@
   \coordinate (gateturn) at (ppo.south |- gate.east);
   \draw[flow] (gate.east) -- (gateturn) -- (ppo.south);
   \draw[gradient] (ppo.west) --
-    node[edgelabel, above=3pt, text=policy!70!black] {updates $C$ only}
+    node[edgelabel, above=3pt, text=policy!70!black] {updates}
+    node[edgelabel, below=3pt, text=policy!70!black] {$C$ only}
     (ctrl.east);
+  \end{scope}
 
-  \node[note, anchor=west] at (-7.35,-5.18)
+  \node[note, anchor=west] at (-7.35,-5.28)
     {Four imagined burn-in steps replace every recorded pair before PPO retains transitions.};
 
   % (b) Live reactive deployment.
@@ -118,21 +123,24 @@
   \node[anchor=west, font=\small\bfseries, text=ink] at (-6.96,-6.50)
     {Live reactive deployment};
   \node[anchor=east, note] at (7.35,-6.50)
-    {all weights frozen; no decoder};
+    {all weights frozen};
 
+  % Account for the unequal widths of the Game and Keyboard edge modules so
+  % the rendered deployment pipeline, rather than just their centers, is centered.
+  \begin{scope}[xshift=-0.11cm]
   \node[box, text width=1.25cm] (game) at (-6.75,-8.10)
     {\textbf{Game}\\[-1pt]\scriptsize live window};
-  \node[visionbox, text width=1.50cm] (enc) at (-4.15,-8.10)
-    {\textbf{Encoder $V$}\\[-1pt]\scriptsize Sobel + FSQ};
-  \node[contextbox, text width=1.70cm] (livectx) at (-1.40,-8.10)
+  \node[visionbox, text width=1.50cm] (enc) at (-4.45,-8.10)
+    {\textbf{Encoder $V$}\\[-1pt]\scriptsize FSQ};
+  \node[contextbox, text width=1.70cm] (livectx) at (-1.90,-8.10)
     {\textbf{Context $\mathcal S_t$}\\[-1pt]\scriptsize append captured $\mathbf z_t$};
-  \node[modelbox, text width=1.80cm] (prefill) at (1.43,-8.10)
+  \node[modelbox, text width=1.80cm] (prefill) at (1.20,-8.10)
     {\textbf{World model $M$}\\[-1pt]
      \scriptsize context prefill only\\[-1pt]
      \scriptsize\color{model!85!black} no $\hat{\mathbf z}_{\mathrm{next}}$};
-  \node[policybox, text width=1.70cm] (livectrl) at (4.00,-8.10)
+  \node[policybox, text width=1.70cm] (livectrl) at (3.95,-8.10)
     {\textbf{Controller $C$}\\[-1pt]\scriptsize jump / idle};
-  \node[box, text width=1.70cm] (keys) at (6.70,-8.10)
+  \node[box, text width=1.70cm] (keys) at (6.75,-8.10)
     {\textbf{Keyboard}\\[-1pt]\scriptsize dispatch};
 
   \draw[flow] (game) -- node[edgelabel, above=2.5pt] {$\mathbf x_t$} (enc);
@@ -152,6 +160,7 @@
   \draw[policyflow] (keys.south) -- (actionrouteR)
     -- node[edgelabel, below=2.5pt] {apply action} (actionrouteL)
     -- (game.south);
+  \end{scope}
 
 \end{tikzpicture}
 \end{document}
