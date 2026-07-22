@@ -1,3 +1,12 @@
-% Anonymous workshop-submission version. Keep this PDF off the public website.
-\def\DashVMCAnonymousSubmission{1}
+% Anonymous NeurIPS workshop submission. Keep this PDF off the public website.
+\documentclass{article}
+
+\newif\ifdashvmcsubmission
+\dashvmcsubmissiontrue
+
+\PassOptionsToPackage{numbers,compress}{natbib}
+\usepackage[dblblindworkshop]{neurips_2026}
+\workshoptitle{Efficient and On-Device AI Agents}
+\newcommand{\dashvmcbibliographystyle}{unsrtnat}
+
 \input{main.tex}

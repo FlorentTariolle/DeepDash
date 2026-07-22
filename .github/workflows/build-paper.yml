@@ -7,6 +7,7 @@ on:
       - 'paper/main.tex'
       - 'paper/dashvmc-preprint.tex'
       - 'paper/dashvmc-submission.tex'
+      - 'paper/fairpreprint.cls'
       - 'paper/references.bib'
       - 'paper/checklist.tex'
       - 'paper/neurips_2026.sty'
@@ -23,6 +24,7 @@ on:
       - 'paper/main.tex'
       - 'paper/dashvmc-preprint.tex'
       - 'paper/dashvmc-submission.tex'
+      - 'paper/fairpreprint.cls'
       - 'paper/references.bib'
       - 'paper/checklist.tex'
       - 'paper/neurips_2026.sty'
@@ -68,6 +70,7 @@ jobs:
         with:
           working_directory: paper
           root_file: dashvmc-preprint.tex
+          latexmk_use_xelatex: true
 
       - name: Compile anonymous submission
         uses: xu-cheng/latex-action@v3

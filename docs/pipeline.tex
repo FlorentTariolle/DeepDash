@@ -6,7 +6,6 @@
 
 \definecolor{ink}{HTML}{243142}
 \definecolor{muted}{HTML}{667085}
-\definecolor{panel}{HTML}{F7F8FA}
 \definecolor{vision}{HTML}{2E86AB}
 \definecolor{model}{HTML}{E8871E}
 \definecolor{policy}{HTML}{7FB069}
@@ -39,20 +38,12 @@
   note/.style={font=\scriptsize, text=muted, align=center},
   tag/.style={rounded corners=2pt, inner xsep=4pt, inner ysep=1.5pt, font=\scriptsize\bfseries, text=white, fill=ink!78},
 ]
-  \filldraw[rounded corners=6pt, draw=ink!18, fill=panel, line width=0.7pt]
-    (-7.85,0.15) rectangle (7.85,-5.60);
-  \filldraw[rounded corners=6pt, draw=ink!18, fill=panel, line width=0.7pt]
-    (-7.85,-6.00) rectangle (7.85,-10.80);
-
   % (a) Offline policy improvement in imagination.
   \node[tag] at (-7.30,-0.35) {(a)};
   \node[anchor=west, font=\small\bfseries, text=ink] at (-6.96,-0.35)
     {PPO policy improvement in imagination};
-  \node[anchor=east, note] at (7.35,-0.35)
-    {recorded seed $\rightarrow$ fully imagined rollout};
 
-  % Center the complete imagined-control pipeline within its panel. The small
-  % downward shift balances the upper context route against the footer note.
+  % Center the complete imagined-control pipeline beneath its heading.
   \begin{scope}[xshift=0.25cm,yshift=-0.18cm]
   \node[visionbox, text width=2.05cm] (seed) at (-6.45,-1.90)
     {{\scriptsize\bfseries\color{vision}FROZEN $V$}\\[-1pt]
@@ -115,15 +106,10 @@
     (ctrl.east);
   \end{scope}
 
-  \node[note, anchor=west] at (-7.35,-5.28)
-    {Four imagined burn-in steps replace every recorded pair before PPO retains transitions.};
-
   % (b) Live reactive deployment.
   \node[tag] at (-7.30,-6.50) {(b)};
   \node[anchor=west, font=\small\bfseries, text=ink] at (-6.96,-6.50)
     {Live reactive deployment};
-  \node[anchor=east, note] at (7.35,-6.50)
-    {all weights frozen};
 
   % Account for the unequal widths of the Game and Keyboard edge modules so
   % the rendered deployment pipeline, rather than just their centers, is centered.

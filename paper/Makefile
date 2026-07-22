@@ -1,4 +1,5 @@
 TEX = pdflatex -interaction=nonstopmode -halt-on-error
+PUBLIC_TEX = xelatex -interaction=nonstopmode -halt-on-error
 BIB = bibtex
 PREPRINT = dashvmc-preprint
 SUBMISSION = dashvmc-submission
@@ -32,11 +33,11 @@ figures/continuation.pdf: ../docs/continuation.tex $(CONTINUATION_FRAMES)
 	cd ../docs && $(TEX) continuation.tex
 	$(PY) -c "import shutil; shutil.copy('../docs/continuation.pdf', 'figures/continuation.pdf')"
 
-$(PREPRINT).pdf: $(PREPRINT).tex main.tex references.bib neurips_2026.sty figures/pipeline.pdf figures/continuation.pdf
-	$(TEX) $(PREPRINT)
+$(PREPRINT).pdf: $(PREPRINT).tex main.tex references.bib fairpreprint.cls figures/pipeline.pdf figures/continuation.pdf
+	$(PUBLIC_TEX) $(PREPRINT)
 	$(BIB) $(PREPRINT)
-	$(TEX) $(PREPRINT)
-	$(TEX) $(PREPRINT)
+	$(PUBLIC_TEX) $(PREPRINT)
+	$(PUBLIC_TEX) $(PREPRINT)
 
 $(SUBMISSION).pdf: $(SUBMISSION).tex main.tex references.bib checklist.tex neurips_2026.sty figures/pipeline.pdf figures/continuation.pdf
 	$(TEX) $(SUBMISSION)

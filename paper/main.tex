@@ -1,26 +1,9 @@
-\documentclass{article}
-
-% Shared manuscript source. The public preprint is the safe default;
-% dashvmc-submission.tex defines this flag for the anonymous workshop build.
-\newif\ifdashvmcsubmission
-\ifdefined\DashVMCAnonymousSubmission
-  \dashvmcsubmissiontrue
-\else
-  \dashvmcsubmissionfalse
-\fi
-
-% Numeric, compressed citations; neurips_2026.sty loads natbib.
-\PassOptionsToPackage{numbers,compress}{natbib}
-
+% Shared manuscript semantics. The document class and publication-specific
+% presentation are selected by dashvmc-preprint.tex or dashvmc-submission.tex.
 \ifdashvmcsubmission
-  \usepackage[dblblindworkshop]{neurips_2026}
-  \workshoptitle{Efficient and On-Device AI Agents}
-\else
-  \usepackage[preprint]{neurips_2026}
+  \usepackage[utf8]{inputenc}
+  \usepackage[T1]{fontenc}
 \fi
-
-\usepackage[utf8]{inputenc}
-\usepackage[T1]{fontenc}
 \usepackage{hyperref}
 \usepackage{url}
 \usepackage{booktabs}
@@ -30,18 +13,21 @@
 \usepackage{xcolor}
 \usepackage{graphicx}
 
-\definecolor{citeblue}{HTML}{4A90E2}
-\hypersetup{
-  colorlinks=true,
-  citecolor=citeblue,
-  linkcolor=citeblue,
-  urlcolor=citeblue,
-  pdftitle={DashVMC: Real-Time Discrete World Model Control in Geometry Dash},
-}
 \ifdashvmcsubmission
-  \hypersetup{pdfauthor={}}
+  \definecolor{citeblue}{HTML}{4A90E2}
+  \hypersetup{
+    colorlinks=true,
+    citecolor=citeblue,
+    linkcolor=citeblue,
+    urlcolor=citeblue,
+    pdftitle={DashVMC: Real-Time Discrete World Model Control in Geometry Dash},
+    pdfauthor={}
+  }
 \else
-  \hypersetup{pdfauthor={Florent Tariolle}}
+  \hypersetup{
+    pdftitle={DashVMC: Real-Time Discrete World Model Control in Geometry Dash},
+    pdfauthor={Florent Tariolle}
+  }
 \fi
 
 % Architectural constants.
@@ -56,25 +42,7 @@
 \newcommand{\imgsize}{64 \times 64}
 \newcommand{\ctrlparams}{\sim\!45\text{K}}
 
-\title{DashVMC: Real-Time Discrete World Model Control\\in Geometry Dash}
-\ifdashvmcsubmission
-  \author{Anonymous Author(s)}
-\else
-  \author{%
-    Florent Tariolle \\
-    INSA Rouen Normandy \\
-    \texttt{florent.tariolle@insa-rouen.fr} \\
-    \href{https://tariolle.github.io/dash-vmc/}{Project page}
-    \quad
-    \href{https://github.com/Tariolle/dash-vmc}{Code}
-  }
-\fi
-
-\begin{document}
-
-\maketitle
-
-\begin{abstract}
+\newcommand{\dashvmcabstract}{%
 World-model agents are usually evaluated in simulators that can wait for the policy; live games impose the opposite constraint, requiring capture, prediction, and action before the next frame.
 We present \emph{DashVMC}, a discrete Vision--Model--Controller system that plays Geometry Dash from screen pixels.
 An FSQ tokenizer maps \(\imgsize\) Sobel frames to \(\gridsize\) token grids, a block-causal transformer predicts action-conditioned transitions, and a lightweight actor--critic is initialized by behavioural cloning (BC) and improved with PPO in latent rollouts.
@@ -82,8 +50,34 @@ Training uses approximately 2 hours of captured gameplay, including only 20 minu
 The frozen policy more than doubles BC mean survival on each of the first two official levels in controlled live evaluation, with a smaller gain on the harder third level.
 The optimized capture-to-action loop averages 16.3\,ms over 5,000 frames on an RTX 2060, below the 33.3\,ms budget of the 30-FPS data cadence.
 Beyond control, the same recurrent dynamics support interactive, open-ended visual level continuations that often remain plausible for extended stretches before autoregressive errors accumulate.
-Together, these results show that a compact discrete world-model controller can support imagined policy improvement, generative rollouts, and live reactive control within a consumer-GPU frame budget.
-\end{abstract}
+Together, these results show that a compact discrete world-model controller can support imagined policy improvement, generative rollouts, and live reactive control within a consumer-GPU frame budget.%
+}
+
+\ifdashvmcsubmission
+  \title{DashVMC: Real-Time Discrete World Model Control\\in Geometry Dash}
+  \author{Anonymous Author(s)}
+\else
+  \title{%
+    DashVMC\\[0.1em]
+    {\large\color{black!70}Real-Time Discrete World Model Control in Geometry Dash}%
+  }
+  \author{Florent Tariolle}
+  \affiliation{INSA Rouen Normandy}
+  \abstract{\dashvmcabstract}
+  \metadata[Project page]{\href{https://tariolle.github.io/dash-vmc/}{tariolle.github.io/dash-vmc}}
+  \metadata[Code]{\href{https://github.com/Tariolle/dash-vmc}{github.com/Tariolle/dash-vmc}}
+  \correspondence{\email{florent.tariolle@insa-rouen.fr}}
+\fi
+
+\begin{document}
+
+\maketitle
+
+\ifdashvmcsubmission
+  \begin{abstract}
+    \dashvmcabstract
+  \end{abstract}
+\fi
 
 \section{Introduction}
 \label{sec:intro}
@@ -148,7 +142,7 @@ Figure~\ref{fig:pipeline} separates the imagined PPO path from the live reactive
 \begin{figure}[ht!]
   \centering
   \includegraphics[width=\textwidth]{figures/pipeline.pdf}
-  \caption{DashVMC policy improvement and deployment. \textbf{(a)} PPO rollouts start from a recorded \(K=4\) token--action context. The frozen world model predicts \(\hat{\mathbf z}_{\mathrm{next}}\) and \(p_{\mathrm{death}}\) while returning context feature \(\mathbf h\); the predicted grid and controller-selected action are appended to the rolling context. Four imagined burn-in steps replace the recorded seed before transitions are retained, and PPO updates only \(C\). \textbf{(b)} During live control, \(V\) encodes captured frames and \(M\) performs context prefill only to produce \(\mathbf h_t\). The controller receives the current grid \(\mathbf z_t\) directly together with \(\mathbf h_t\) and dispatches the keyboard action; neither next-grid prediction nor decoding is run.}
+  \caption{DashVMC policy improvement and deployment. \textbf{(a)} PPO rollouts start from a recorded \(K=4\) token--action context. The frozen world model predicts \(\hat{\mathbf z}_{\mathrm{next}}\) and \(p_{\mathrm{death}}\) while returning context feature \(\mathbf h\); the predicted grid and controller-selected action are appended to the rolling context. Four imagined burn-in steps replace the recorded seed before transitions are retained, and PPO updates only \(C\). \textbf{(b)} During live control, all weights are frozen. \(V\) encodes captured frames and \(M\) performs context prefill only to produce \(\mathbf h_t\). The controller receives the current grid \(\mathbf z_t\) directly together with \(\mathbf h_t\) and dispatches the keyboard action; neither next-grid prediction nor decoding is run.}
   \label{fig:pipeline}
 \end{figure}
 
@@ -410,14 +404,14 @@ Matched continuations confirm that the model's visual futures respond to action 
 The evidence is intentionally scoped: this is a deployed systems case study, not a general world-model benchmark or an isolated validation of structured smoothing.
 
 \ifdashvmcsubmission\else
-  \begin{ack}
-    We thank Ma{\"e}l Planchot for contributing gameplay data.
-    The NVIDIA A100 GPU used for primary training was provided by MesoNet (CRIANN, Rouen) through the Representation Learning course at INSA Rouen Normandy.
-    Geometry Dash is developed by RobTop Games.
-  \end{ack}
+  \section*{Acknowledgments}
+  We thank Ma{\"e}l Planchot for contributing gameplay data.
+  We thank Florian Yger for valuable discussions and careful feedback on earlier versions of this manuscript.
+  The NVIDIA A100 GPU used for primary training was provided by MesoNet (CRIANN, Rouen) through the Representation Learning course at INSA Rouen Normandy.
+  Geometry Dash is developed by RobTop Games.
 \fi
 
-\bibliographystyle{unsrtnat}
+\bibliographystyle{\dashvmcbibliographystyle}
 \bibliography{references}
 
 \ifdashvmcsubmission
