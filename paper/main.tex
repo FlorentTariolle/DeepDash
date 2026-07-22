@@ -78,6 +78,7 @@
 World-model agents are usually evaluated in simulators that can wait for the policy; live games impose the opposite constraint, requiring capture, prediction, and action before the next frame.
 We present \emph{DashVMC}, a discrete Vision--Model--Controller system that plays Geometry Dash from screen pixels.
 An FSQ tokenizer maps \(\imgsize\) Sobel frames to \(\gridsize\) token grids, a block-causal transformer predicts action-conditioned transitions, and a lightweight actor--critic is initialized by behavioural cloning (BC) and improved with PPO in latent rollouts.
+Training uses approximately 2 hours of captured gameplay, including only 20 minutes of expert segments; PPO requires no additional environment interaction.
 The frozen policy more than doubles BC mean survival on each of the first two official levels in controlled live evaluation, with a smaller gain on the harder third level.
 The optimized capture-to-action loop averages 16.3\,ms over 5,000 frames on an RTX 2060, below the 33.3\,ms budget of the 30-FPS data cadence.
 Beyond control, the same recurrent dynamics support interactive, open-ended visual level continuations that often remain plausible for extended stretches before autoregressive errors accumulate.
@@ -224,7 +225,8 @@ This is deliberately reactive rather than an inference-time planning system: onl
 \label{sec:setup}
 
 \paragraph{Data and training.}
-The corpus contains 4,264 base gameplay episodes (about 250K frames), including deliberate failures and 36 expert trajectories or segments.
+The unaugmented corpus contains 4,264 base gameplay episodes and 251,963 source frames, equivalent to approximately 2.33 hours at the nominal 30-FPS capture cadence.
+It includes deliberate failures and 36 expert trajectories or segments.
 The base episodes span primarily official Levels 1--7 and multiple community-created levels.
 Episodes containing mechanics outside the selected model's scope, including gravity inversion, were excluded to keep the learned dynamics tractable at this scale.
 The expert subset comprises 33,153 frames (18.95 minutes).
@@ -391,6 +393,10 @@ The Geometry-Dash evidence for Equation~\ref{eq:sls} is a single-run, same-archi
 In a matched IRIS/Pong diagnostic with five seeds per condition, annealed SLS underperformed CE in final return (\(12.14\pm10.82\) versus \(15.68\pm4.96\)) and doubled the tail-failure rate (40\% versus 20\%), despite lower drawdown and return volatility and a transient advantage during epochs 250--420.
 We therefore treat any benefit as specific to the structured FSQ geometry and Geometry-Dash setting rather than claim a general discrete-world-model improvement.
 The open-ended decoded continuations are qualitative: coherence is not scored, and autoregressive drift can yield repetitions, empty stretches, or impossible states; they are neither editor-valid nor guaranteed playable.
+
+Successive development-time dataset doublings produced visibly more coherent, higher-quality rollouts without an observed plateau, suggesting that the present model remains data-limited; these runs were not controlled end-to-end scaling experiments.
+Although the system is learned from a small offline corpus, we do not report a data-scaling curve or matched larger-data baseline.
+The results therefore demonstrate viability under a constrained data budget, not general sample efficiency.
 
 Finally, deployment is local but training is not resource-light: the modules were trained sequentially on an A100, then optimized for an RTX 2060.
 The 16.3-ms result covers this hardware and 64-pixel edge observations; RGB input, stochastic environments, larger action spaces, or weaker devices require new accuracy--latency measurements.
