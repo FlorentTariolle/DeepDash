@@ -7,7 +7,7 @@ DashVMC is a real-time discrete Vision-Model-Controller system for Geometry Dash
 The deployed controller runs at the same 30 FPS cadence as the captured training data. Over 5,000 optimized-path frames on an RTX 2060, wall-clock latency from capture through the keyboard action update averaged 16.3 ms (median 16.3 ms, p95 18.7 ms), corresponding to roughly 61 FPS of mean compute headroom.
 
 <p align="center">
-   <b>[ <a href="https://tariolle.github.io/dash-vmc/static/pdfs/dashvmc.pdf">Preprint</a> | <a href="https://tariolle.github.io/dash-vmc/">Website</a> | <a href="https://github.com/Tariolle/dash-vmc">Code</a> ]</b>
+   <b>[ <a href="https://tariolle.github.io/dash-vmc/static/pdfs/dashvmc.pdf">Preprint</a> | <a href="https://tariolle.github.io/dash-vmc/">Website</a> ]</b>
 </p>
 
 <p align="center">
@@ -33,12 +33,12 @@ The deployed controller runs at the same 30 FPS cadence as the captured training
 conda run -n <env> python -m pip install -r requirements.txt
 ```
 
-**Train the FSQ-VAE:**
+**Train the FSQ:**
 ```bash
 python scripts/train_fsq.py
 ```
 
-**Train the transformer world model on frozen FSQ tokens:**
+**Train the transformer on frozen FSQ tokens:**
 ```bash
 python scripts/train_transformer.py
 ```
@@ -49,20 +49,16 @@ python scripts/train_controller_bc.py
 python scripts/train_controller_ppo.py --pretrained checkpoints/controller_bc_best.pt
 ```
 
-**Evaluate the live game:**
+**Evaluate the end-to-end pipeline on the real game (live):**
 ```bash
 python scripts/eval_real_game.py --config configs/deepdash/v7-phase0.yaml --vae-checkpoint checkpoints_v7/fsq_best.pt --transformer-checkpoint checkpoints_v7/transformer_best.pt --controller-checkpoint checkpoints_v7/controller_ppo_best.pt --n-runs 100 --level-name "Level 1" --output analysis/2026-07-20_v7_deploy/eval_100.json
 ```
 
-To play interactively inside the model rollouts:
+**To play interactively inside the model rollouts:**
 
 ```bash
-python scripts/play_dream.py --config configs/deepdash/v7-phase0.yaml --vae-checkpoint checkpoints_v7/fsq_best.pt --transformer-checkpoint checkpoints_v7/transformer_best.pt --controller-checkpoint checkpoints_v7/controller_ppo_best.pt --fps 30 --scale 6
+python scripts/play_dream.py --config configs/deepdash/v7-phase0.yaml --vae-checkpoint checkpoints_v7/fsq_best.pt --transformer-checkpoint checkpoints_v7/transformer_best.pt --controller-checkpoint checkpoints_v7/controller_ppo_best.pt --fps 30 --scale 12 --max-dream-steps 500
 ```
-
-Press `P` to start or stop recording the displayed rollout. Frames are written
-as a timestamped PNG sequence under `analysis/dream_rollouts/`; reaching the end
-of a rollout closes the active recording automatically.
 
 **Deploy to the live game at the training cadence:**
 ```bash
