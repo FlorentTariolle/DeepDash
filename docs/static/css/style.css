@@ -161,6 +161,12 @@ a:hover {
   font-size: 0.85em;
 }
 
+.publication-status {
+  margin: 0.65rem 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
 .publication-links {
   margin-top: 1.2rem;
   display: flex;
