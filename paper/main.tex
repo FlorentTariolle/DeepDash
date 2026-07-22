@@ -257,13 +257,13 @@ Live actions are deterministic: jump is selected exactly when the controller out
 We retain 99 scored PPO attempts, 100 BC attempts, and 10 no-op attempts on each of the first three official levels.
 The deterministic no-op diagnostic is repeated ten times because it always reaches the first obstacle; the repeats quantify capture and action-timing jitter, with a standard deviation of 0.7 frames on every level.
 Each invocation's manually resumed synchronization episode is excluded; game memory is used only to delimit alive/dead episodes, never as policy input.
-The endpoint is acted frames survived, and reported PPO intervals are 95\% percentile-bootstrap confidence intervals for the policy mean using 50,000 resamples.
+The endpoint is frames survived, and reported PPO intervals are 95\% percentile-bootstrap confidence intervals for the policy mean using 50,000 resamples.
 The original selected BC file was not archived, so the live control uses an epoch-9 rerun whose validation accuracy is close, but not bit-identical, to the archived trace (79.85\% versus 79.76\%).
 
 \paragraph{Latency and continuation protocols.}
 Latency is measured on 5,000 consecutive frames of the optimized deployment path, from capture through action update, with CUDA synchronization only at the end-to-end boundary.
-For the qualitative intervention, a human-controlled rollout supplies a real four-frame context before a spike.
-Greedy futures start from identical reconstructed tokens and differ only in the first action; all subsequent actions are idle.
+For the qualitative intervention, the world model is initialized from a fixed encoded four-frame prefix immediately before a spike.
+Greedy continuations differ only in the first conditioned action, jump or idle; all subsequent actions are idle.
 The display-only HUD is removed before re-encoding the context.
 
 \section{Results}
@@ -393,7 +393,6 @@ Successive development-time dataset doublings produced visibly more coherent, hi
 Although the system is learned from a small offline corpus, we do not report a data-scaling curve or matched larger-data baseline.
 The results therefore demonstrate viability under a constrained data budget, not general sample efficiency.
 
-Finally, deployment is local but training is not resource-light: the modules were trained sequentially on an A100, then optimized for an RTX 2060.
 The 16.3-ms result covers this hardware and 64-pixel edge observations; RGB input, stochastic environments, larger action spaces, or weaker devices require new accuracy--latency measurements.
 
 \section{Conclusion}
@@ -406,8 +405,8 @@ The evidence is intentionally scoped: this is a deployed systems case study, not
 
 \ifdashvmcsubmission\else
   \section*{Acknowledgments}
-  We thank Ma{\"e}l Planchot for contributing gameplay data.
   We thank Florian Yger for valuable discussions and careful feedback on earlier versions of this manuscript.
+  We thank Ma{\"e}l Planchot for contributing gameplay data.
   The NVIDIA A100 GPU used for primary training was provided by MesoNet (CRIANN, Rouen) through the Representation Learning course at INSA Rouen Normandy.
   Geometry Dash is developed by RobTop Games.
 \fi
