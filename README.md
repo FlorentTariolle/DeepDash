@@ -1,5 +1,4 @@
-# DashVMC
-### Real-Time Discrete World Model Control in Geometry Dash
+## DashVMC: Real-Time Discrete World Model Control in Geometry Dash
 
 https://github.com/user-attachments/assets/1de92e9c-cc41-48cc-8305-c0d4491b676b
 
