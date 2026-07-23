@@ -42,7 +42,7 @@ Frozen V7 logs support these current system numbers:
 | Aux live | Stereo Madness Copy PPO mean [CI] | 525.6 [503.9, 548.4] frames / 17.79 s recorded wall time | `analysis/2026-07-22_ship_segment_eval/` |
 | Aux live | Stereo Madness Copy @ 60 FPS | 17.03 s recorded wall time | `analysis/2026-07-23_fps60_stereo_madness_copy/` |
 | Aux live | Stereo INSANE Nerfed PPO mean [CI] | 215.7 [184.1, 249.9] | `analysis/2026-07-22_heldout_stereo_insane_nerfed/` |
-| Machine | Live GPU | RTX 2060 SUPER / PyTorch 2.11.0+cu126 | `analysis/2026-07-22_experiment_machine/MACHINE_FACTS.md` |
+| Machine | Live GPU | RTX 2060 / PyTorch 2.11.0+cu126 | `analysis/2026-07-22_experiment_machine/MACHINE_FACTS.md` |
 
 The controlled V7 evaluator runs are complete for the first three official levels, plus a late Level-1 copy (ship-reachable proxy), one custom held-out community level, and a 60-FPS cadence probe on the Level-1 copy. They measure frames survived rather than level percentage; cross-cadence comparisons use recorded episode wall time. Results remain level-specific: difficulty increases across the sequence, Level 3 introduces timed mid-air yellow-orb inputs, and the custom level is reported as within-mechanic transfer only. The 60-FPS probe supports practical cadence transfer, not broad frame-rate adaptation as a core method claim.
 

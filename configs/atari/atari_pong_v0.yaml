@@ -37,7 +37,7 @@ fsq:
   augment_shift: false
   val_interval: 5
   seed: 42
-  # Local RTX 2060 SUPER: native float16 + GradScaler.
+  # Local RTX 2060: native float16 + GradScaler.
   # Supercomputer configs should explicitly override this to bfloat16.
   amp_dtype: float16
   compile_mode: reduce-overhead
@@ -59,7 +59,7 @@ predictor:
   fsq_kernel: gaussian
   fsq_sigma: 0.9
   focal_gamma: 0.0
-  # Local RTX 2060 SUPER: native float16 + GradScaler.
+  # Local RTX 2060: native float16 + GradScaler.
   # Supercomputer configs should explicitly override this to bfloat16.
   amp_dtype: float16
   compile_mode: reduce-overhead

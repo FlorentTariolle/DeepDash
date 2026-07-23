@@ -10,12 +10,12 @@ Verified on the live experiment PC on 2026-07-22.
 | RAM | 16 GB (17129512960 bytes) |
 | Motherboard | Micro-Star International MS-7C02 |
 | OS | Microsoft Windows 11 Professionnel, build 10.0.26200, 64-bit |
-| GPU | NVIDIA GeForce RTX 2060 SUPER |
+| GPU | NVIDIA GeForce RTX 2060 |
 | VRAM | 8192 MiB |
 | NVIDIA driver | 596.49 |
 | Display | 1920?1080 @ 144 Hz (primary) |
 
-The archived latency artifact and live-eval JSONs already report **RTX 2060 SUPER**; older README/paper shorthand ?RTX 2060? should be read as that SUPER SKU.
+The archived latency artifact and live-eval JSONs use the driver-reported device name; the paper and public materials use the generation-level shorthand **RTX 2060**.
 
 ## Software stack (verified)
 

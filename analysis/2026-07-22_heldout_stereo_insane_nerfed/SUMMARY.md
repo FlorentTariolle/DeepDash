@@ -38,7 +38,7 @@ Raw JSON:
 - `bc_stereo_insane_nerfed_20.json`
 - `ppo_stereo_insane_nerfed_20.json`
 
-Hardware recorded in artifacts: NVIDIA GeForce RTX 2060 SUPER.
+Hardware recorded in artifacts: NVIDIA GeForce RTX 2060.
 
 ## Read
 

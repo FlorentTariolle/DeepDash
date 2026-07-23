@@ -48,7 +48,7 @@ We present \emph{DashVMC}, a discrete Vision--Model--Controller system that play
 An FSQ tokenizer maps \(\imgsize\) Sobel frames to \(\gridsize\) token grids, a block-causal transformer predicts action-conditioned transitions, and a lightweight actor--critic is initialized by behavioural cloning (BC) and subsequently optimized with PPO in latent rollouts.
 Training uses approximately 2 hours of gameplay captured at a nominal 30-FPS cadence, including only 20 minutes of expert segments; PPO requires no additional environment interaction.
 The selected PPO policy more than doubles the mean survival of an epoch-9 reconstructed BC comparator on each of the first two official levels, with a smaller gain on the harder third level; its PPO \(>\) reconstructed BC \(>\) no-op ordering also holds on a late Level-1 community copy and a held-out community layout within the supported mechanics.
-During a configured 60-FPS live probe on an RTX 2060 SUPER, the optimized capture-to-action loop averages 14.4\,ms (p95 16.1\,ms; maximum 17.0\,ms); a separate 5,000-frame profile averages 16.3\,ms.
+During a configured 60-FPS live probe on an RTX 2060, the optimized capture-to-action loop averages 14.4\,ms (p95 16.1\,ms; maximum 17.0\,ms); a separate 5,000-frame profile averages 16.3\,ms.
 On the late Level-1 copy, the 60-FPS probe yields similar observed wall-clock survival to a 30-FPS diagnostic-path baseline.
 Beyond control, the same recurrent dynamics support interactive, open-ended visual level continuations that can remain plausible in recorded examples before autoregressive errors accumulate.
 Together, these results show that a compact discrete world-model controller can support generative rollouts and live 60-FPS reactive control on a consumer GPU, with the live policy ordering consistent with imagined PPO optimization transferring to deployment.%
@@ -229,7 +229,7 @@ The expert subset comprises 33,153 frames; at the nominal 30-FPS capture cadence
 Capture metadata do not identify every segment's in-level start state or completion status, so expert segments are not treated as verified full-level clears.
 Episodes are split once, 90/10, by base identifier and source with seed 42; vertical shifts of \(\pm2\) and \(\pm4\) pixels inherit the base assignment and expand the tokenized corpus to 21,320 episodes.
 The frozen encoder retokenizes the corpus before dynamics training.
-All stages use seed 42; primary training is sequential in BF16 on one A100, while live inference is measured on an RTX 2060 SUPER.
+All stages use seed 42; primary training is sequential in BF16 on one A100, while live inference is measured on an RTX 2060.
 Table~\ref{tab:training} records the optimization and selection details that materially determine the frozen system.
 
 \begin{table}[ht!]
@@ -342,7 +342,7 @@ Only 4/300 measurements exceed the 16.667\,ms frame period, and even the slowest
 \begin{table}[ht!]
   \centering
   \small
-  \caption{Separate 5,000-frame optimized-path profile on an RTX 2060 SUPER, collected against the 33.3\,ms (30-FPS) reference cadence. Component values are means in milliseconds; end-to-end is measured independently and includes dispatch overhead.}
+  \caption{Separate 5,000-frame optimized-path profile on an RTX 2060, collected against the 33.3\,ms (30-FPS) reference cadence. Component values are means in milliseconds; end-to-end is measured independently and includes dispatch overhead.}
   \label{tab:latency}
   \begin{tabular}{lrlr}
     \toprule

@@ -381,7 +381,7 @@ def main():
                              "while spending much less compute on val.")
     parser.add_argument("--amp-dtype", choices=["bfloat16", "float16", "none"],
                         default=None,
-                        help="Use float16 locally on RTX 2060 SUPER; bfloat16 on BF16-capable supercomputer GPUs.")
+                        help="Use float16 locally on RTX 2060; bfloat16 on BF16-capable supercomputer GPUs.")
     parser.add_argument("--compile-mode",
                         choices=["reduce-overhead", "default", "none"],
                         default=None, help="torch.compile mode. Default reduce-overhead.")

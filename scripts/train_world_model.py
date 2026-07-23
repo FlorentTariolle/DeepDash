@@ -1148,7 +1148,7 @@ def main():
     parser.add_argument("--death-oversample", type=int, default=None)
     parser.add_argument("--seed", type=int, default=42)
     # Mixed precision + compile (mirrors train_fsq.py conventions).
-    # A100 defaults: bfloat16 + reduce-overhead. RTX 2060 SUPER (Turing) has
+    # A100 defaults: bfloat16 + reduce-overhead. RTX 2060 (Turing) has
     # no native bf16 - it emulates at ~12x slower. Use float16 + default
     # compile mode on Turing; see configs/*-local.yaml.
     parser.add_argument("--amp-dtype", choices=["bfloat16", "float16"],
@@ -1452,7 +1452,7 @@ def main():
               f"(active after epoch {grad_skip_warmup_epochs})")
 
     # Resolve AMP dtype and compile mode with A100 defaults; local configs
-    # (RTX 2060 SUPER / Turing) override via --amp-dtype float16 and
+    # (RTX 2060 / Turing) override via --amp-dtype float16 and
     # --compile-mode default, since Turing emulates bf16 at ~12x slower
     # and reduce-overhead's CUDA graphs have extra pitfalls on smaller SMs.
     amp_dtype_name = getattr(args, "amp_dtype", None) or "bfloat16"
