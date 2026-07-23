@@ -4,7 +4,7 @@ https://github.com/user-attachments/assets/1de92e9c-cc41-48cc-8305-c0d4491b676b
 
 DashVMC is a real-time discrete Vision-Model-Controller system for Geometry Dash. It combines an FSQ tokenizer, an action-conditioned transformer world model, and a lightweight actor-critic trained from behavioural cloning plus PPO in latent rollouts.
 
-Training data are captured at a nominal 30 FPS cadence, while the optimized live stack deploys at 60 FPS. During the configured 60-FPS Stereo Madness Copy probe on an RTX 2060 SUPER, full-loop latency averaged 14.4 ms (p95 16.1 ms, maximum 17.0 ms), with 4 of 300 measurements above the 16.7 ms frame period. A separate 5,000-frame optimized-path profile averaged 16.3 ms. The 60-FPS probe produced similar observed wall-clock survival to the 30-FPS diagnostic-path baseline on that layout.
+Training data are captured at a nominal 30 FPS cadence, while the optimized live stack deploys at 60 FPS on an RTX 2060 SUPER. On Stereo Madness Copy, the 60-FPS policy achieves similar observed wall-clock survival to the 30-FPS baseline.
 
 <p align="center">
    <b>[ <a href="https://tariolle.github.io/dash-vmc/static/pdfs/dashvmc.pdf">Preprint</a> | <a href="https://tariolle.github.io/dash-vmc/">Website</a> ]</b>

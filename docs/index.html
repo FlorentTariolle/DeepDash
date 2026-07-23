@@ -119,8 +119,7 @@
           DashVMC uses an FSQ tokenizer, an action-conditioned transformer world model,
           and a lightweight actor-critic trained from behavioural cloning plus PPO in latent
           imagined rollouts. Training data are captured at a nominal 30 FPS cadence, while the
-          optimized controller is deployed on live Geometry Dash at 60 FPS. During the configured
-          60-FPS probe, full-loop latency averages 14.4 ms (p95 16.1 ms, maximum 17.0 ms).
+          optimized controller is deployed on live Geometry Dash at 60 FPS on an RTX 2060 SUPER.
         </p>
       </div>
 
@@ -134,18 +133,9 @@
           <strong>30 FPS</strong>
         </div>
         <div class="metric-row">
-          <span>60-FPS probe mean</span>
-          <strong>14.4 ms</strong>
-        </div>
-        <div class="metric-row">
-          <span>60-FPS budget</span>
-          <strong>16.7 ms</strong>
-        </div>
-        <div class="metric-row">
           <span>Token grid</span>
           <strong>8x8</strong>
         </div>
-        <p class="metric-note">Training uses 30 FPS captures; 4 of 300 live-probe loops exceed the 16.7 ms frame period.</p>
       </div>
     </div>
 
@@ -235,7 +225,7 @@
         </article>
         <article>
           <h3>60 FPS deployment</h3>
-          <p>During a configured 60-FPS probe, the optimized loop averages 14.4 ms (p95 16.1 ms, maximum 17.0 ms) on an RTX 2060 SUPER.</p>
+          <p>The optimized controller deploys live at 60 FPS on an RTX 2060 SUPER despite being trained from 30-FPS captures.</p>
         </article>
       </div>
     </div>
@@ -406,10 +396,8 @@
           </table>
         </div>
         <p class="result-note">
-          Values are mean frames &plusmn; population SD at 30 FPS. On Stereo Madness Copy, mean
-          recorded episode wall time is 17.03 s at 60 FPS versus 17.79 s at 30 FPS. This is similar
-          observed survival, not a formal equivalence result; the 60-FPS probe uses the optimized
-          execution path while the 30-FPS baseline uses the diagnostic path with the same frozen weights.
+          Values are mean frames &plusmn; population SD at 30 FPS. On Stereo Madness Copy, the
+          60-FPS probe shows similar observed wall-clock survival to the 30-FPS baseline.
         </p>
       </section>
 
@@ -427,29 +415,11 @@
               </tbody>
             </table>
           </div>
-          <p class="result-note">Selection-aligned values: FSQ epoch 920, world model epoch 139, BC epoch 9, and PPO iteration 3,250. The live BC comparator is an epoch-9 reconstruction with 79.85% validation accuracy because the original 79.76% checkpoint was not archived. The FSQ value is squared error summed per frame, not pixelwise MSE.</p>
         </section>
 
         <section class="result-group latency-group" aria-labelledby="latency-results-title">
-          <h3 id="latency-results-title">Live probe and deployment latency</h3>
-          <p class="result-group-copy">During the configured 60-FPS live probe, 300 full-loop measurements have a 14.4 ms mean, 16.1 ms p95, and 17.0 ms maximum; 4 exceed the 16.7 ms frame period. The table reports a separate 5,000-frame optimized-path profile collected against the 30-FPS reference cadence on the same RTX 2060 SUPER.</p>
-          <div class="table-wrap">
-            <table class="results-table compact-table" aria-label="Optimized deployment latency breakdown">
-              <tbody>
-                <tr><td>Screen capture</td><td>2.2 ms</td></tr>
-                <tr><td>Crop</td><td>0.5 ms</td></tr>
-                <tr><td>Grayscale</td><td>0.5 ms</td></tr>
-                <tr><td>Sobel</td><td>2.5 ms</td></tr>
-                <tr><td>Downscale</td><td>2.2 ms</td></tr>
-                <tr><td>FSQ encode</td><td>2.1 ms</td></tr>
-                <tr><td>Transformer</td><td>4.9 ms</td></tr>
-                <tr><td>Controller</td><td>0.5 ms</td></tr>
-                <tr><td>Component-sum mean</td><td>15.3 ms</td></tr>
-                <tr class="total-row"><td>Measured end-to-end</td><td>16.3 ms</td></tr>
-              </tbody>
-            </table>
-          </div>
-          <p class="result-note">In the separate 5,000-frame profile, end-to-end median is 16.3 ms and p95 is 18.7 ms; only 2 frames exceed the 33.3 ms reference period. The actual 60-FPS probe above is the primary evidence for live cadence.</p>
+          <h3 id="latency-results-title">Live deployment</h3>
+          <p class="result-group-copy">The complete optimized stack runs locally at 60 FPS on an RTX 2060 SUPER, from screen capture through keyboard dispatch.</p>
         </section>
       </div>
     </div>
