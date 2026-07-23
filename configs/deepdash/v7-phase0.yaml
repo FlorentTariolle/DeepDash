@@ -108,7 +108,7 @@ controller_ppo:
   death_threshold: 0.5
   token_embed_dim: 16
   policy_class: v3_cnn
-  mtp_coeff: 0.1     # V3 default. BCE on next 8 actions from MTP head.
+  mtp_coeff: 0.1     # V3 default. BCE on current + next 7 actions from MTP head.
   mtp_steps: 8
   controller_dropout: 0.0
   n_eval_episodes: 512

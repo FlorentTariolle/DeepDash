@@ -7,7 +7,7 @@ Date: 2026-07-22
 Issue #31 requested held-out community levels absent from the offline corpus, restricted to mechanics supported by the training distribution (no gravity inversion, etc.).
 
 Selected:
-1. **Stereo INSANE Nerfed** by XXcapta1n ? single custom community level used for held-out transfer within supported mechanics.
+1. **Stereo INSANE Nerfed** by XXcapta1n - single custom community level used for held-out transfer within supported mechanics.
 2. Separately, **Stereo Madness Copy** by KRUTOYARBUS was run as a late Level-1 copy / ship-segment proxy and is **not** counted as held-out (see `analysis/2026-07-22_ship_segment_eval/`).
 
 Rejected / not run:
@@ -15,8 +15,8 @@ Rejected / not run:
 
 Corpus check:
 - Offline episode metadata stores only numeric `level` IDs, not community titles.
-- This level was chosen because it is a community layout absent from the official Level 1--3 evaluation set and was not used as a named live evaluation target during V7 development.
-- Report as **unseen-level transfer within the supported mechanic distribution**, not novel-mechanic or broad OOD generalization.
+- The level was opened for the first time on 2026-07-22, after the training corpus and checkpoints were frozen, so it is absent from the dataset.
+- Report as **held-out transfer within the supported mechanic distribution**, not novel-mechanic or broad OOD generalization.
 
 ## Protocol
 

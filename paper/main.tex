@@ -45,13 +45,13 @@
 \newcommand{\dashvmcabstract}{%
 World-model agents are usually evaluated in simulators that can wait for the policy; live games impose the opposite constraint, requiring capture, prediction, and action before the next frame.
 We present \emph{DashVMC}, a discrete Vision--Model--Controller system that plays Geometry Dash from screen pixels.
-An FSQ tokenizer maps \(\imgsize\) Sobel frames to \(\gridsize\) token grids, a block-causal transformer predicts action-conditioned transitions, and a lightweight actor--critic is initialized by behavioural cloning (BC) and improved with PPO in latent rollouts.
+An FSQ tokenizer maps \(\imgsize\) Sobel frames to \(\gridsize\) token grids, a block-causal transformer predicts action-conditioned transitions, and a lightweight actor--critic is initialized by behavioural cloning (BC) and subsequently optimized with PPO in latent rollouts.
 Training uses approximately 2 hours of gameplay captured at a nominal 30-FPS cadence, including only 20 minutes of expert segments; PPO requires no additional environment interaction.
-The frozen policy more than doubles BC mean survival on each of the first two official levels in controlled live evaluation, with a smaller gain on the harder third level.
-The optimized capture-to-action loop averages 16.3\,ms over 5,000 frames on an RTX 2060 SUPER, supporting a 60-FPS live deployment cadence despite 30-FPS training data.
-On a late Level-1 community copy, 60-FPS deployment yields wall-clock survival comparable to 30-FPS deployment.
-Beyond control, the same recurrent dynamics support interactive, open-ended visual level continuations that often remain plausible for extended stretches before autoregressive errors accumulate.
-Together, these results show that a compact discrete world-model controller can support imagined policy improvement, generative rollouts, and live 60-FPS reactive control on a consumer GPU.%
+The selected PPO policy more than doubles the mean survival of an epoch-9 reconstructed BC comparator on each of the first two official levels, with a smaller gain on the harder third level; its PPO \(>\) reconstructed BC \(>\) no-op ordering also holds on a late Level-1 community copy and a held-out community layout within the supported mechanics.
+During a configured 60-FPS live probe on an RTX 2060 SUPER, the optimized capture-to-action loop averages 14.4\,ms (p95 16.1\,ms; maximum 17.0\,ms); a separate 5,000-frame profile averages 16.3\,ms.
+On the late Level-1 copy, the 60-FPS probe yields similar observed wall-clock survival to a 30-FPS diagnostic-path baseline.
+Beyond control, the same recurrent dynamics support interactive, open-ended visual level continuations that can remain plausible in recorded examples before autoregressive errors accumulate.
+Together, these results show that a compact discrete world-model controller can support generative rollouts and live 60-FPS reactive control on a consumer GPU, with the live policy ordering consistent with imagined PPO optimization transferring to deployment.%
 }
 
 \ifdashvmcsubmission
@@ -103,7 +103,7 @@ This is a systems co-design contribution rather than a new generic world-model p
 The compact tokenizer and parallel next-frame predictor bound inference cost; explicit action conditioning permits counterfactual rollouts; BC avoids an expensive random-policy transient; and GPU-resident state plus captured execution remove avoidable synchronization from the live path.
 Our contributions are:
 \begin{enumerate}
-  \item an end-to-end discrete world-model controller for a non-paused game, with visual dynamics learned from captured trajectories and a BC-initialized policy improved in imagined rollouts seeded from recorded contexts, then deployed from live screen pixels;
+  \item an end-to-end discrete world-model controller for a non-paused game, with visual dynamics learned from captured trajectories and a BC-initialized policy optimized in imagined rollouts seeded from recorded contexts, then deployed from live screen pixels;
   \item controlled live comparisons of the frozen PPO policy against BC and no-op controls across the first three official levels; and
   \item an end-to-end latency profile on consumer hardware, matched action interventions, and qualitative interactive rollouts demonstrating open-ended visual level continuation together with its recurrent failure modes.
 \end{enumerate}
@@ -166,9 +166,9 @@ Given \(K=\nctx\) observed frame--action pairs, a final masked block requests th
 The resulting sequence has \(K(65+1)+65=329\) positions; every target-frame position receives a learned \texttt{[MASK]} embedding, so no target token is exposed during training.
 Attention is bidirectional within a frame and causal across frame/action blocks, so all next-frame positions are predicted in one forward pass without seeing their targets.
 Factored 3D rotary embeddings encode row, column, and time, with spatial and temporal bases 10 and 10,000; status and action tokens use the grid centre coordinates~\citep{su2024rope}.
-The status logit supplies the rollout termination probability, and the final context state \(\mathbf h_t\in\mathbb R^{\hdim}\) summarizes recent dynamics for the controller.
+The status logits supply the rollout termination score, and the final context state \(\mathbf h_t\in\mathbb R^{\hdim}\) summarizes recent dynamics for the controller.
 In the reported interleaved sequence, this state is taken from the most recent action-token position.
-Because death frames are oversampled during training, the sigmoid output is used operationally as a termination score rather than interpreted as a calibrated environment probability.
+Because death frames are oversampled during training, the \textsc{death} score from a two-class softmax over \textsc{alive}/\textsc{death} is used operationally rather than interpreted as a calibrated environment probability.
 
 We add TWISTER's action-conditional contrastive predictive-coding loss with weight 0.1~\citep{burchi2025twister}: for each future offset \(k\leq K\), an MLP predicts \(\mathbf h_{t+k}\) from \(\mathbf h_t\) and the intervening actions and is scored with in-batch InfoNCE.
 We also independently replace 5\% of context tokens uniformly and 5\% with adjacent FSQ codes.
@@ -194,7 +194,7 @@ This single-run development comparison supports the local choice; a later matche
 \subsection{Controller and latent policy improvement}
 \label{sec:controller}
 
-The \(\ctrlparams\)-parameter actor--critic embeds the current \(\gridsize\) token grid, processes it with two convolutions and max pooling, concatenates the resulting 256-dimensional feature with \(\mathbf h_t\), and uses zero-initialized heads to predict jump probability, value, and the next eight actions.
+The \(\ctrlparams\)-parameter actor--critic embeds the current \(\gridsize\) token grid, processes it with two convolutions and max pooling, concatenates the resulting 256-dimensional feature with \(\mathbf h_t\), and uses zero-initialized heads to predict jump probability, value, and an eight-action auxiliary output covering the current and next seven actions.
 The controller is first fit to expert actions by BC, then optimized with PPO in autoregressive rollouts from the frozen world model.
 
 Each PPO iteration starts from recorded four-frame contexts and generates 512 imagined episodes of at most 45 steps.
@@ -202,7 +202,7 @@ The first four imagined transitions refresh the rolling context and are excluded
 The 45-step horizon roughly covers obstacles visible in the recorded seed.
 Beyond it, they have usually left the crop, so the model often enters a physically valid but uninformative empty segment; later obstacles must also be generated rather than seed-observed, progressively shifting controller inputs away from encoded real frames.
 We stop at this boundary to learn consequences of observed obstacles without relying on invented challenges.
-Rollouts terminate when predicted death probability exceeds 0.5.
+Rollouts terminate when the predicted death score exceeds 0.5.
 Reward is \(+1\) per survived step and \(-0.25\) per jump, preventing an always-jump local optimum.
 We use GAE with \(\gamma=0.995\), \(\lambda=0.95\), PPO clip 0.2, and auxiliary-action loss weight 0.1.
 
@@ -244,7 +244,7 @@ Table~\ref{tab:training} records the optimization and selection details that mat
     Tokenizer & Adam; 1,000 epochs; batch 2,048; cosine LR from \(10^{-3}\) to \(10^{-5}\); slowness 0.1; uniformity 0.01; validation every 10 epochs. & Min. loss (epoch 920). \\
     Dynamics & AdamW; 200 epochs \(\times\) 500 steps; batch 512; LR \(2\!\times\!10^{-3}\!\to\!5\!\times\!10^{-5}\) after 5-epoch warm-up; weight decay 0.01; dropout 0.1; max grad. norm 1.0; death frames oversampled \(5\times\). & Max. death F1 (epoch 139). \\
     BC & AdamW; 50 epochs; batch 512; LR \(10^{-3}\); weight decay \(10^{-4}\); positive jump weight 1.5. & Min. loss (epoch 9). \\
-    PPO & Adam; 15,000 iterations; 512 rollouts; four update epochs; minibatch 512; LR \(10^{-4}\); entropy/critic weights 0.01/0.5; ratio clip 0.2; max grad. norm 0.5. & Max. development survival (iteration 3,250). \\
+    PPO & Adam; 512 rollouts/iteration; four update epochs; minibatch 512; LR \(10^{-4}\); entropy/critic weights 0.01/0.5; ratio clip 0.2; max grad. norm 0.5. & Max. development survival (iteration 3,250). \\
     \bottomrule
   \end{tabular}
 \end{table}
@@ -259,12 +259,13 @@ We retain 99 scored PPO attempts, 100 BC attempts, and 10 no-op attempts on each
 Two auxiliary live evaluations reuse the same Auto-Retry protocol with smaller sample sizes: 20 PPO, 20 BC, and 10 no-op scored attempts at the 30-FPS evaluation cadence.
 The first uses \emph{Stereo Madness Copy} (KRUTOYARBUS), a community copy of a later Level-1 segment, as a late-stage/ship-reachable proxy because official Level 1--3 attempts die before ship.
 The second uses one custom community level, \emph{Stereo INSANE Nerfed} (XXcapta1n), as a single held-out layout within the supported mechanic distribution (no gravity inversion or other out-of-scope mechanics).
+This level was first accessed for this evaluation after the corpus and checkpoints were frozen and is therefore absent from the training data.
 In addition, a cadence-transfer probe reruns the frozen PPO controller for 20 scored attempts on Stereo Madness Copy at 60 FPS on the optimized deploy-equivalent inference path (FSQ \texttt{torch.compile}, transformer CUDA graph, GPU-resident context, no per-stage CUDA synchronization).
 The deterministic no-op diagnostic is repeated ten times because it always reaches the first obstacle; the repeats quantify capture and action-timing jitter, with a standard deviation of 0.7 frames on every official level and 0.8 frames on the held-out custom level.
 Each invocation's manually resumed synchronization episode is excluded; game memory is used only to delimit alive/dead episodes, never as policy input.
-The primary endpoint is frames survived; when comparing 30-FPS and 60-FPS deployments we report wall-clock survival (acted frames divided by the requested cadence, cross-checked against episode wall time), because frame counts are not comparable across cadences.
+The primary endpoint is frames survived; when comparing 30-FPS and 60-FPS deployments, we use the recorded episode wall time from evaluation start to detected death because frame counts are not comparable across cadences.
 Reported intervals are 95\% percentile-bootstrap confidence intervals for the policy mean using 50,000 resamples.
-The original selected BC file was not archived, so the live control uses an epoch-9 rerun whose validation accuracy is close, but not bit-identical, to the archived trace (79.85\% versus 79.76\%).
+The original selected BC checkpoint used to initialize PPO was not archived, so the live comparator uses an epoch-9 reconstruction whose validation accuracy is close, but not bit-identical, to the archived trace (79.85\% versus 79.76\%).
 Deployment measurements use Desktop Duplication via \texttt{dxcam} over a $1920\times1080$ region, crop $(x,y,s)=(660,48,1032)$, Sobel preprocessing to $64\times64$, and \texttt{keyboard} space dispatch on PyTorch 2.11.0+cu126.
 
 \paragraph{Latency and continuation protocols.}
@@ -281,13 +282,13 @@ The display-only HUD is removed before re-encoding the context.
 
 All component metrics below are reported at their checkpoint-selection points rather than as independent maxima.
 The selected tokenizer reaches \(3.894\times10^{-4}\) per-pixel validation MSE (34.10\,dB PSNR), obtained by dividing its per-frame reconstruction SSE of 1.595 by \(64^2\).
-The transformer reaches 29.74\% token accuracy and death precision/recall/F1 of 0.7337/0.8654/0.7941; low exact-token accuracy can coexist with useful local predictions in a 1,000-class grid, but it also bounds dream reliability.
-Selected BC accuracy is 79.76\%, and the selected PPO checkpoint survives 29.71 of 45 steps on the fixed latent development contexts.
+Under the training-time full-vocabulary argmax metric, the transformer reaches 29.74\% token accuracy and death precision/recall/F1 of 0.7337/0.8654/0.7941; low exact-token accuracy can coexist with useful local predictions in a 1,000-class grid, but it also bounds dream reliability.
+Archived selected-BC accuracy is 79.76\% (79.85\% for the reconstructed live comparator), and the selected PPO checkpoint survives 29.71 of 45 steps on the fixed latent development contexts.
 
 \begin{table}[ht!]
   \centering
   \small
-  \caption{Live acted-frame survival (mean \(\pm\) standard deviation). Attempts are independent restarts of one frozen policy; \(n\) is per level. BC uses the epoch-9 rerun described in the protocol.}
+  \caption{Live frame survival (mean \(\pm\) population standard deviation). Attempts are repeated restarts of one frozen policy; \(n\) is per level.}
   \label{tab:live-controls}
   \begin{tabular}{lrrrr}
     \toprule
@@ -300,24 +301,25 @@ Selected BC accuracy is 79.76\%, and the selected PPO checkpoint survives 29.71 
   \end{tabular}
 \end{table}
 
-Table~\ref{tab:live-controls} shows that PPO adds 149.0 and 143.2 mean frames over BC on Levels 1 and 2, more than doubling survival; the PPO mean's 95\% bootstrap intervals are \([270.2,289.0]\) and \([239.4,287.2]\).
+Table~\ref{tab:live-controls} shows that the selected PPO policy adds 149.0 and 143.2 mean frames over the reconstructed BC comparator on Levels 1 and 2, more than doubling survival; the PPO mean's 95\% bootstrap intervals are \([270.2,289.0]\) and \([239.4,287.2]\).
+This establishes a practical policy-level difference, but not an exact before/after causal estimate against PPO's unavailable parent checkpoint.
 At the fixed 30-FPS cadence, PPO's three means correspond to 9.31, 8.76, and 2.13 seconds of survival.
 The Level-3 gain is only 18.6 frames (PPO mean 95\% interval \([58.8,69.5]\)).
 Level 3 is harder and introduces yellow orbs requiring a second timed input while airborne, so these per-level results are not a controlled test of generalization.
-All three official live-evaluation levels occur in the offline corpus, but the controller receives no live-game interaction during PPO; those results therefore measure deployment transfer from offline data and imagined policy optimization, not held-out-level generalization.
+All three official live-evaluation levels occur in the offline corpus, but the controller receives no live-game interaction during PPO; the live ordering is therefore consistent with imagined policy optimization transferring to deployment, not evidence of held-out-level generalization.
 Table~\ref{tab:aux-controls} reports the two auxiliary live evaluations under the same frozen checkpoints.
-On the Level-1 copy, no-op dies deterministically at 135 frames, BC reaches $271.2\pm107.0$, and PPO reaches $525.6\pm51.6$ (PPO mean 95\% interval $[503.9,548.4]$), preserving a clear PPO $\gg$ BC $\gg$ no-op ranking on a later/ship-reachable segment that official Level 1--3 evals never enter.
-On the single custom held-out level, the same ordering transfers at lower absolute survival: no-op $46.1\pm0.8$, BC $113.7\pm69.6$, and PPO $215.7\pm75.7$ (PPO mean 95\% interval $[184.1,249.9]$).
-We report the custom-level result as unseen-level transfer within the supported mechanic distribution, not as novel-mechanic or broad out-of-distribution generalization; the Level-1 copy is not counted as held-out content.
-The 60-FPS cadence probe on Stereo Madness Copy yields comparable real-time survival: mean wall-clock survival is 16.64\,s at 60 FPS versus 17.52\,s at 30 FPS (mean episode wall times 17.03\,s versus 17.79\,s), with both conditions dying in the same recurring 15--21\,s band.
-Frame counts roughly double under the higher cadence, as expected, so we compare seconds rather than frames.
+On the Level-1 copy, no-op dies deterministically at 135 frames, reconstructed BC reaches $271.2\pm107.0$, and PPO reaches $525.6\pm51.6$ (PPO mean 95\% interval $[503.9,548.4]$), preserving a clear PPO $>$ reconstructed BC $>$ no-op ranking on a later/ship-reachable segment that official Level 1--3 evals never enter.
+On the single custom held-out level, the same ordering transfers at lower absolute survival: no-op $46.1\pm0.8$, reconstructed BC $113.7\pm69.6$, and PPO $215.7\pm75.7$ (PPO mean 95\% interval $[184.1,249.9]$).
+We report the custom-level result as held-out transfer within the supported mechanic distribution, not as novel-mechanic or broad out-of-distribution generalization; the Level-1 copy is not counted as held-out content.
+The 60-FPS cadence probe on Stereo Madness Copy yields similar observed real-time survival: mean recorded episode wall time is 17.03\,s at 60 FPS versus 17.79\,s at 30 FPS, with a 95\% bootstrap interval of $[-1.80,0.31]$\,s for the mean difference (60 FPS minus 30 FPS).
+Both conditions die in the same recurring 15--21\,s band; frame counts roughly double under the higher cadence, as expected, so the cross-cadence comparison uses recorded time rather than frames.
 This supports practical 60-FPS deployment from 30-FPS training data on this layout, without claiming broad frame-rate adaptation as a separate contribution.
 Separate intervention runs suggest that skipping a few recurring blocking obstacles lets the policy reach later sections, but those assisted runs are not part of the controlled statistics.
 
 \begin{table}[ht!]
   \centering
   \small
-  \caption{Auxiliary live acted-frame survival (mean $\pm$ standard deviation). Stereo Madness Copy is a late Level-1 community copy used as a ship-reachable segment proxy; Stereo INSANE Nerfed is one custom held-out community level. Sample sizes are 10 no-op / 20 BC / 20 PPO scored attempts.}
+  \caption{Auxiliary live frame survival (mean $\pm$ population standard deviation). Stereo Madness Copy is a late Level-1 community copy used as a ship-reachable segment proxy; Stereo INSANE Nerfed is one custom held-out community level. Sample sizes are 10 no-op / 20 BC / 20 PPO scored attempts.}
   \label{tab:aux-controls}
   \begin{tabular}{lrrrr}
     \toprule
@@ -333,14 +335,14 @@ Separate intervention runs suggest that skipping a few recurring blocking obstac
 \subsection{Capture-to-action latency}
 \label{sec:deployment-results}
 
-End-to-end latency averages 16.289\,ms (median 16.308\,ms, p95 18.722\,ms), and only 2 of 5,000 frames exceed the 33.3\,ms (30-FPS) budget; the same mean remains below the 16.7\,ms (60-FPS) budget.
-The reciprocal mean is about 61 FPS of compute-equivalent throughput, so the optimized stack is deployed at 60 FPS even though the training captures are 30 FPS.
-On the optimized Stereo Madness Copy probe, mean full-loop latency is 14.4\,ms, confirming that the survival evaluation itself ran at the 60-FPS target.
+In a separate 5,000-frame optimized-path profile collected against the 30-FPS reference cadence, end-to-end latency averages 16.289\,ms (median 16.308\,ms, p95 18.722\,ms); only 2 frames exceed 33.3\,ms, and the reciprocal mean is about 61 FPS of compute-equivalent throughput.
+More directly, the configured 60-FPS Stereo Madness Copy probe records 300 full-loop measurements with mean 14.420\,ms, median 14.549\,ms, p95 16.121\,ms, and maximum 17.038\,ms.
+Only 4/300 measurements exceed the 16.667\,ms frame period, and even the slowest corresponds to 58.69 FPS of compute-equivalent throughput.
 
 \begin{table}[ht!]
   \centering
   \small
-  \caption{Optimized RTX 2060 SUPER deployment timing. Component values are means in milliseconds; end-to-end is measured independently and includes dispatch overhead. The 5,000-frame benchmark is reported against the 33.3\,ms (30-FPS) reference; the 16.3\,ms mean also fits a 16.7\,ms (60-FPS) budget.}
+  \caption{Separate 5,000-frame optimized-path profile on an RTX 2060 SUPER, collected against the 33.3\,ms (30-FPS) reference cadence. Component values are means in milliseconds; end-to-end is measured independently and includes dispatch overhead.}
   \label{tab:latency}
   \begin{tabular}{lrlr}
     \toprule
@@ -358,12 +360,13 @@ On the optimized Stereo Madness Copy probe, mean full-loop latency is 14.4\,ms, 
 
 These timings differ from diagnostic evaluator logs that move context through CPU/NumPy and synchronize after each GPU stage.
 Official-level and 30-FPS auxiliary survival use that diagnostic path; the 60-FPS cadence probe and deployment latency use the optimized path.
+Both paths apply the same preprocessing and frozen model/controller weights; the distinction is execution optimization rather than policy definition.
 
 \subsection{Action-conditioned continuations}
 \label{sec:continuations}
 
 World-model generation is not capped by the 45-step PPO horizon: each predicted grid and human-selected action can be fed back into the rolling context, so the interactive loop can continue for an arbitrary number of steps unless predicted death or an optional user limit stops it.
-Recorded rollouts often remain visually and mechanically plausible for long stretches, including height transitions and avatar transformations, before drift produces repeated motifs, empty segments, or impossible geometry.
+Recorded examples can remain visually and mechanically plausible through substantial stretches, including height transitions and avatar transformations, before drift produces repeated motifs, empty segments, or impossible geometry.
 We therefore treat this as qualitative, open-ended level continuation rather than indefinitely coherent generation.
 \ifdashvmcsubmission\else
   Additional successes and failure cases are available on the \href{https://tariolle.github.io/dash-vmc/\#dreams}{project page}.
@@ -386,26 +389,29 @@ Decoding is used only for inspection, not controller training.
 \label{sec:ablations}
 
 Table~\ref{tab:diagnostics} condenses engineering variants explored before freezing the system.
-Except for the quantified BC timing comparison, these are local selection diagnostics rather than balanced statistical ablations; they explain the shipped design but do not establish general architectural rankings.
+These diagnostics span successive development stacks; except for the quantified BC timing comparison, they are local selection records rather than balanced, directly comparable statistical ablations.
+They explain design choices but do not establish general architectural rankings.
 In particular, the joint variant is an FSQ-token adaptation inspired by LeWorldModel, not a reproduction of its continuous-latent JEPA or SIGReg regularization~\citep{maes2026leworldmodel}.
 
 \begin{table}[ht!]
   \centering
   \footnotesize
-  \caption{Pre-freeze design diagnostics. ``Live'' denotes real-game progress in local evaluation.}
+  \caption{Pre-freeze design diagnostics from successive development stacks. ``Live'' denotes real-game progress in local evaluation.}
   \label{tab:diagnostics}
   \begin{tabular}{p{0.20\textwidth}p{0.48\textwidth}p{0.17\textwidth}}
     \toprule
     Variant & Observed outcome & Decision \\
     \midrule
-    PPO without BC & Same latent plateau, about 2,000 more iterations (\(\approx6\) A100 hours); BC takes about 5 minutes. & Keep BC. \\
+    PPO without BC (earlier stack) & Same latent plateau, about 2,000 more iterations (\(\approx6\) A100 hours); BC takes about 5 minutes. & Keep BC. \\
     Joint FSQ+transformer & Lower validation CE but worse live progress; removing the pixel anchor collapsed the encoder. & Freeze tokenizer. \\
     AdaLN action\newline conditioning~\citep{peebles2023dit} & Canonical zero-gate initialization stalled; bias-1 gates plus QK-normalization~\citep{esser2024sd3} trained stably and reached the best development CPC. The trial co-varied other components and did not establish a live advantage over action tokens. & Use action tokens. \\
     Transformer width 512 & Better CE/contrastive metrics, no live gain, slower training. & Use width 384. \\
-    MLP on \(\mathbf h_t\) only & PPO was 2--5\(\times\) faster with a smaller train--eval gap, but live progress was worse, suggesting lost grid detail. & Keep CNN. \\
+    MLP on \(\mathbf h_t\) only (later 512-width stack) & PPO was 2--5\(\times\) faster with a smaller train--eval gap, but local live progress was worse; an earlier stack showed the opposite ordering. & Keep grid input. \\
     \bottomrule
   \end{tabular}
 \end{table}
+
+Historical run records and code snapshots support these pre-freeze diagnostics; the exact final-system claims above use the frozen artifacts specified in the evaluation protocol.
 
 \section{Limitations}
 \label{sec:limitations}
@@ -414,8 +420,8 @@ DashVMC is a single-game study with binary actions, deterministic layouts, and o
 The hundreds of live attempts quantify deployment variability for one frozen policy, not uncertainty across training runs, and survival time is not level completion.
 The auxiliary custom-level evaluation uses a single held-out community layout and smaller sample sizes than the official-level suite; it supports within-mechanic transfer rather than broad generalization.
 The Level-1 copy evaluates later-stage survival but does not isolate ship mode with explicit mode labels.
-The 60-FPS cadence comparison is a single-level, single-policy probe with $n=20$ and is not a broad study of frame-rate adaptation.
-The BC control is an epoch-9 rerun close to the archived training trace, not the missing original checkpoint.
+The 60-FPS cadence comparison is a single-level, single-policy probe with $n=20$ and also changes from the diagnostic to the optimized execution path; it is an operational deployment probe, not an isolated or broad study of frame-rate adaptation.
+The BC control is an epoch-9 reconstruction close to the archived training trace, not the missing original checkpoint; consequently, PPO versus BC is not an exact comparison to PPO's parent policy.
 Because no other world-model agent is available under the same captured-pixel, non-paused Geometry-Dash protocol, the results are a controlled within-system comparison rather than a state-of-the-art benchmark.
 
 The Geometry-Dash evidence for Equation~\ref{eq:sls} is a single-run, same-architecture comparison against uniform smoothing, not a replicated hard-CE ablation; it supports the local choice but neither quantifies uncertainty nor isolates transfer to the final system.
@@ -427,14 +433,15 @@ Successive development-time dataset doublings produced visibly more coherent, hi
 Although the system is learned from a small offline corpus, we do not report a data-scaling curve or matched larger-data baseline.
 The results therefore demonstrate viability under a constrained data budget, not general sample efficiency.
 
-The 16.3-ms / 60-FPS result covers this hardware and 64-pixel edge observations; RGB input, stochastic environments, larger action spaces, or weaker devices require new accuracy--latency measurements.
+The reported 14.4-ms 60-FPS probe and separate 16.3-ms profile cover this hardware and 64-pixel edge observations; RGB input, stochastic environments, larger action spaces, or weaker devices require new accuracy--latency measurements.
 
 \section{Conclusion}
 \label{sec:conclusion}
 
 DashVMC shows that a compact discrete world model can support both imagined policy improvement and live reactive control in a timing-sensitive game.
-Its frozen PPO controller improves substantially over BC on the first two official levels and preserves that ranking on a late Level-1 copy and one custom held-out community level, while the optimized capture-to-action path sustains a 60-FPS live cadence on a consumer GPU despite 30-FPS training data.
-Matched continuations confirm that the model's visual futures respond to action interventions, and interactive rollouts show that those dynamics can produce open-ended, often plausible level continuations, albeit without indefinite coherence guarantees.
+Its selected PPO controller substantially outperforms a closely matched reconstructed BC comparator on the first two official levels and preserves that ranking on a late Level-1 copy and one custom held-out community level, while the optimized capture-to-action path sustains a 60-FPS live cadence on a consumer GPU despite 30-FPS training data.
+This policy ordering is consistent with imagined PPO optimization transferring to live deployment, while acknowledging that the original parent BC checkpoint is unavailable.
+A matched-prefix intervention shows that the model's visual future responds to the tested action change, and interactive examples show that those dynamics can produce open-ended, sometimes plausible level continuations, albeit without indefinite coherence guarantees.
 
 \ifdashvmcsubmission\else
   \section*{Acknowledgments}

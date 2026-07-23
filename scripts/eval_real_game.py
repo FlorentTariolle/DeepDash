@@ -582,7 +582,7 @@ def main():
              "compiled/CUDA-graph path without per-stage syncs.",
     )
     parser.add_argument("--latency-samples", type=int, default=300,
-                        help="Number of acted frames to include in stage timing.")
+                        help="Number of frames to include in stage timing.")
     parser.add_argument("--latency-bootstrap-resamples", type=int, default=10_000,
                         help="Bootstrap resamples for latency mean CIs.")
     parser.add_argument("--survival-bootstrap-resamples", type=int, default=50_000,

@@ -262,7 +262,8 @@ def ppo_update(controller, optimizer, rollout, advantages, returns,
 
     With ``mtp_coeff > 0`` and a controller that exposes a ``mtp_head``
     (V3CNNPolicy), adds the V3-style multi-token prediction auxiliary
-    loss (BCE on the next ``controller.mtp_steps`` actions).
+    loss (BCE on ``controller.mtp_steps`` actions, beginning with the
+    current action).
 
     Returns:
         mean_loss, mean_entropy, mean_value
@@ -286,8 +287,8 @@ def ppo_update(controller, optimizer, rollout, advantages, returns,
     returns_flat = returns.reshape(N)
     alive_flat = rollout['alive_masks'].reshape(N)
 
-    # MTP targets: for each transition (t, b), the next L actions
-    # (t+1..t+L-1, padded with 0 past the end). Built once per update.
+    # MTP targets: for each transition (t, b), L actions beginning at t
+    # (t..t+L-1, padded with 0 past the end). Built once per update.
     use_mtp = mtp_coeff > 0 and hasattr(controller, "mtp_head")
     mtp_targets_flat = None
     if use_mtp:
@@ -350,7 +351,7 @@ def ppo_update(controller, optimizer, rollout, advantages, returns,
 
                 loss = actor_loss + critic_coeff * critic_loss + entropy_loss
 
-                # MTP auxiliary loss (V3): BCE on next L action logits
+                # MTP auxiliary loss (V3): BCE on L action logits from t
                 # predicted from the same features as the actor. Use the
                 # _with_logits variant: F.binary_cross_entropy is unsafe
                 # under autocast (see torch warning).
@@ -483,8 +484,8 @@ def main():
                              "active when controller has an mtp_head "
                              "(V3CNNPolicy).")
     parser.add_argument("--mtp-steps", type=int, default=None,
-                        help="Number of future actions predicted by the MTP "
-                             "head. V3 default: 8.")
+                        help="Number of actions predicted by the MTP head, "
+                             "beginning with the current action. V3 default: 8.")
     parser.add_argument("--compile-mode", type=str, default=None,
                         choices=["reduce-overhead", "default", "none"],
                         help="torch.compile mode for both the world model "

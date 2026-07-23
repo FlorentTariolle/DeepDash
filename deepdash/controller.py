@@ -390,8 +390,8 @@ class V3CNNPolicy(nn.Module):
       - h_t is concatenated DIRECTLY (no LayerNorm, no projection, no
         compression). head_input = 256 + h_dim.
       - Heads zero-init (IRIS/DIAMOND), no orthogonal scaling.
-      - MTP head: predicts mtp_steps=8 future action probabilities for the
-        auxiliary loss in PPO.
+      - MTP head: predicts mtp_steps=8 action probabilities beginning with
+        the current action for the auxiliary loss in PPO.
     Use only with the V3-style training pipeline (frozen FSQ + transformer
     with embed_dim=h_dim=384, vocab_size=1000).
     """

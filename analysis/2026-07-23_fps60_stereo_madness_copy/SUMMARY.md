@@ -21,18 +21,18 @@ Training data remain 30-FPS captures. This is a **deployment cadence probe**, no
   - transformer CUDA graph
   - GPU-resident context
   - no per-stage CUDA syncs
-- Compare **seconds**, not frames (frame counts scale with cadence)
+- Compare recorded episode wall time, not frame counts (which scale with cadence)
 
 ## Results
 
-| Cadence | Path | Mean frames | Mean seconds (`frames/fps`) | Mean wall-clock | Median wall-clock |
+| Cadence | Path | Mean frames | Cadence-normalized seconds (`frames/fps`) | Recorded mean wall time [95% CI] | Median wall time |
 | --- | --- | ---: | ---: | ---: | ---: |
-| 30 FPS | diagnostic | 525.6 | **17.52** | 17.79 | 18.64 |
-| 60 FPS | optimized | 998.4 | **16.64** | 17.03 | 15.61 |
+| 30 FPS | diagnostic | 525.6 | 17.52 | **17.79 [17.06, 18.55]** | 18.64 |
+| 60 FPS | optimized | 998.4 | 16.64 | **17.03 [16.32, 17.79]** | 15.61 |
 
 60 FPS latency on this probe: mean full-loop **14.4 ms** (fits 16.7 ms budget).
 
-Both conditions die in the same recurring ~15?21 s band, indicating the same obstacle-driven failure modes rather than a different control regime.
+The recorded mean wall-time difference (60 FPS minus 30 FPS) is -0.75 s with a 95% bootstrap interval of [-1.80, 0.31] s. Both conditions die in the same recurring ~15--21 s band, indicating the same obstacle-driven failure modes rather than a different control regime.
 
 ## Claim supported
 
@@ -40,7 +40,7 @@ Practical **60 FPS live deployment from 30-FPS training data** with roughly comp
 
 ## Claim not supported
 
-General ?frame-rate adaptability? as a core scientific contribution. This is one level, one policy, n=20.
+General "frame-rate adaptability" as a core scientific contribution. This is one level, one policy, n=20.
 
 ## Artifacts
 
