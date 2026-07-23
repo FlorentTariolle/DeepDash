@@ -44,8 +44,8 @@
 
 \newcommand{\dashvmcabstract}{%
 World-model agents are usually evaluated in simulators that can wait for the policy; live games impose the opposite constraint, requiring capture, prediction, and action before the next frame.
-We present \emph{DashVMC}, a discrete Vision--Model--Controller system that plays Geometry Dash from screen pixels.
-An FSQ tokenizer compresses Sobel-filtered observations into discrete token grids, a block-causal transformer predicts action-conditioned transitions, and a lightweight actor--critic is initialized by behavioural cloning (BC) and subsequently optimized with PPO in latent rollouts.
+We present \emph{DashVMC}, a discrete world-model agent that plays Geometry Dash from screen pixels.
+A Finite Scalar Quantization (FSQ) tokenizer compresses Sobel-filtered observations into discrete token grids, a block-causal transformer predicts action-conditioned transitions, and a lightweight actor--critic is initialized by behavioural cloning (BC) and subsequently optimized with PPO in latent rollouts.
 Training uses approximately 2 hours of gameplay captured at a nominal 30-FPS cadence, including only 20 minutes of expert segments; PPO requires no additional environment interaction.
 The selected PPO policy improves mean live survival over BC on all three official levels, more than doubling it on the first two.
 Deployed locally, the complete capture-to-action pipeline supports reactive control at 60 FPS on a consumer GPU.
@@ -92,10 +92,10 @@ The avatar moves continuously, the action space is binary, and a mistimed jump c
 Levels are deterministic, but the agent observes only captured pixels and acts through keyboard events; it does not receive emulator state during control.
 This combination isolates two practical questions: can a compact visual world model support policy learning, and can the resulting perception-to-action path run within a consumer-GPU frame budget?
 
-DashVMC follows the Vision--Memory--Controller decomposition~\citep{ha2018world}.
-The vision model is a reconstruction-anchored Finite Scalar Quantization (FSQ) tokenizer~\citep{mentzer2024fsq} over Sobel edge maps.
-The memory is a transformer that interleaves actions with frame blocks and predicts the next token grid in parallel.
-The controller combines the current token grid with the transformer's temporal state, receives a short BC warm start, and is then optimized by PPO~\citep{schulman2017ppo} entirely in frozen-model rollouts.
+DashVMC adopts the broad perception--dynamics--control organization introduced by World Models~\citep{ha2018world}.
+A reconstruction-anchored FSQ tokenizer~\citep{mentzer2024fsq} encodes Sobel edge maps.
+An action-conditioned transformer world model interleaves actions with frame blocks, predicts the next token grid in parallel, and supplies temporal state to the controller.
+The controller combines the current token grid with the world model's temporal state, receives a short BC warm start, and is then optimized by PPO~\citep{schulman2017ppo} entirely in frozen-model rollouts.
 At deployment, the decoder is absent and the system executes one reactive pass per frame; expensive policy optimization has already happened offline.
 
 This is a systems co-design contribution rather than a new generic world-model primitive.
@@ -111,7 +111,7 @@ We evaluate these contributions through controlled live comparisons with BC and 
 \label{sec:related}
 
 \paragraph{World models and imagination.}
-The original Vision--Model--Controller pipeline compressed observations with a VAE, modeled latent dynamics with an MDN--RNN, and demonstrated in VizDoom that a compact controller could be optimized entirely in learned dreams and transferred to the real environment~\citep{ha2018world}.
+The original Vision--Memory--Controller pipeline compressed observations with a VAE, modeled latent dynamics with an MDN--RNN, and demonstrated in VizDoom that a compact controller could be optimized entirely in learned dreams and transferred to the real environment~\citep{ha2018world}.
 IRIS retains this imagination-only policy-learning paradigm while replacing recurrent continuous-latent dynamics with a discrete autoencoder and autoregressive transformer, scaling it to data-efficient learning on Atari 100k~\citep{micheli2023iris}.
 \(\Delta\)-IRIS reduces the sequence cost of this template by separating stochastic changes into discrete tokens from continuous context tokens~\citep{micheli2024deltairis}.
 DIAMOND removes discrete compression from the dynamics model and uses diffusion to preserve control-relevant visual details~\citep{alonso2024diamond}, while DreamerV3 demonstrates broad control with categorical recurrent state-space latents~\citep{hafner2025dreamerv3}.

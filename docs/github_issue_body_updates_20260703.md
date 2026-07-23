@@ -27,7 +27,7 @@ The paper is now a Geometry Dash application/system paper, not a positive SLS be
 
 ## Main claim
 
-DashVMC is a real-time discrete Vision-Model-Controller system for Geometry Dash:
+DashVMC is a real-time discrete world-model agent for Geometry Dash:
 
 - FSQ tokenizer over 64x64 Sobel frames;
 - action-conditioned transformer world model;

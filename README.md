@@ -2,7 +2,7 @@
 
 https://github.com/user-attachments/assets/1de92e9c-cc41-48cc-8305-c0d4491b676b
 
-DashVMC is a real-time discrete Vision-Model-Controller system for Geometry Dash. It combines an FSQ tokenizer, an action-conditioned transformer world model, and a lightweight actor-critic trained from behavioural cloning plus PPO in latent rollouts.
+DashVMC is a real-time discrete world-model agent for Geometry Dash. It combines an FSQ tokenizer, an action-conditioned transformer world model, and a lightweight actor-critic trained from behavioural cloning plus PPO in latent rollouts.
 
 Training data are captured at a nominal 30 FPS cadence, while the controller is deployed at 60 FPS on an RTX 2060.
 

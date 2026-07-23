@@ -11,7 +11,7 @@
   <link rel="canonical" href="https://tariolle.github.io/dash-vmc/" />
 
   <meta property="og:title" content="DashVMC: Real-Time Discrete World Model Control in Geometry Dash" />
-  <meta property="og:description" content="A real-time Geometry Dash Vision-Model-Controller system using FSQ tokens, action-conditioned dynamics, latent-rollout PPO control, and visual level continuations." />
+  <meta property="og:description" content="A real-time Geometry Dash world-model agent using FSQ tokens, action-conditioned dynamics, latent-rollout PPO control, and visual level continuations." />
   <meta property="og:image" content="https://tariolle.github.io/dash-vmc/static/images/pipeline.png" />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://tariolle.github.io/dash-vmc/" />
@@ -158,7 +158,7 @@
   <section id="contributions" class="section-block">
     <div class="container-narrow">
       <p class="eyebrow">Core components</p>
-      <h2 class="section-title">A compact Vision-Model-Controller stack</h2>
+      <h2 class="section-title">A compact world-model agent</h2>
       <div class="contribution-grid">
         <article class="contribution-item">
           <h3>Discrete visual state</h3>
@@ -202,9 +202,9 @@
   <section id="system" class="section-block">
     <div class="container-narrow">
       <p class="eyebrow">Application system</p>
-      <h2 class="section-title">Real-time Vision-Model-Controller</h2>
+      <h2 class="section-title">Real-time agent deployment</h2>
       <figure class="centered pipeline-figure">
-        <img src="static/images/pipeline.svg" alt="Vision-Model-Controller pipeline overview" />
+        <img src="static/images/pipeline.svg" alt="World-model agent pipeline overview" />
         <figcaption>
           FSQ-VAE tokenizes Sobel edge maps; a causal transformer models next-frame tokens with action tokens interleaved; during live control, a CNN controller selects jump/idle actions from the current grid and transformer hidden state.
         </figcaption>
