@@ -319,11 +319,8 @@
       <p class="eyebrow">Results</p>
       <h2 class="section-title">Controlled live evaluation</h2>
       <p class="results-lead">
-        The frozen PPO policy and two controls were evaluated on the first three official
-        levels at the 30 FPS evaluation cadence with Auto-Retry enabled; the optimized live
-        stack is otherwise deployed at 60 FPS. Each invocation begins with an unscored
-        synchronization episode. Confidence intervals are percentile-bootstrap intervals
-        for the mean over scored attempts.
+        Frozen policies evaluated at 30 FPS; entries report frames survived as mean
+        &plusmn; population SD, with 95% bootstrap CIs in the official-level table.
       </p>
 
       <div class="table-wrap">
@@ -362,24 +359,13 @@
           </tbody>
         </table>
       </div>
-      <p class="result-note">
-        Values are mean frames &plusmn; population SD with 95% percentile-bootstrap intervals for the
-        mean. The evaluator measures frames survived rather than level percentage. The selected PPO
-        policy substantially outperforms the reconstructed BC comparator on Levels 1 and 2. Because
-        the original parent BC checkpoint was not archived, this is a policy-level comparison rather
-        than an exact before/after causal estimate. Polargeist remains difficult for both learned
-        policies because its yellow-orb mechanic requires an additional timed jump while airborne.
-      </p>
-
       <section class="result-group auxiliary-results" aria-labelledby="auxiliary-results-title">
-        <h3 id="auxiliary-results-title">Transfer and cadence probes</h3>
+        <h3 id="auxiliary-results-title">Transfer probes</h3>
         <p class="result-group-copy">
-          The same frozen policies were evaluated on a late Level-1 community copy and on
-          Stereo INSANE Nerfed, a supported-mechanics community level first accessed only after
-          the training corpus and checkpoints were frozen.
+          The same frozen policies evaluated on two community layouts.
         </p>
         <div class="table-wrap">
-          <table class="results-table compact-table" aria-label="Auxiliary live Geometry Dash evaluation">
+          <table class="results-table" aria-label="Auxiliary live Geometry Dash evaluation">
             <thead>
               <tr>
                 <th>Policy</th>
@@ -395,33 +381,7 @@
             </tbody>
           </table>
         </div>
-        <p class="result-note">
-          Values are mean frames &plusmn; population SD at 30 FPS. On Stereo Madness Copy, the
-          60-FPS probe shows similar observed wall-clock survival to the 30-FPS baseline.
-        </p>
       </section>
-
-      <div class="results-columns">
-        <section class="result-group" aria-labelledby="model-results-title">
-          <h3 id="model-results-title">Model snapshot</h3>
-          <div class="table-wrap">
-            <table class="results-table compact-table" aria-label="Frozen model metrics">
-              <tbody>
-                <tr><td>FSQ validation SSE / frame</td><td>1.595</td></tr>
-                <tr><td>Token accuracy</td><td>29.74%</td></tr>
-                <tr><td>Death F1</td><td>0.7941</td></tr>
-                <tr><td>Archived BC validation accuracy</td><td>79.76%</td></tr>
-                <tr><td>PPO latent survival</td><td>29.71 / 45</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        <section class="result-group latency-group" aria-labelledby="latency-results-title">
-          <h3 id="latency-results-title">Live deployment</h3>
-          <p class="result-group-copy">The complete optimized stack runs locally at 60 FPS on an RTX 2060, from screen capture through keyboard dispatch.</p>
-        </section>
-      </div>
     </div>
   </section>
 
