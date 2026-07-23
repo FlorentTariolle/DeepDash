@@ -84,7 +84,7 @@ These results demonstrate that a compact and specialized world model can jointly
 
 World models learn the consequences of actions and can move policy improvement from costly environment interaction into imagination~\citep{ha2018world}.
 Discrete approaches such as IRIS encode images into tokens and model their evolution with an autoregressive transformer~\citep{micheli2023iris}; DIAMOND instead shows that preserving fine visual detail with a diffusion model can improve control~\citep{alonso2024diamond}.
-Most evaluations, however, run inside an emulator or a learned simulator whose clock effectively waits for inference.
+Most evaluations, however, use synchronous, step-based environments whose simulation advances only when the agent submits an action.
 An agent controlling a live, non-paused application must also satisfy a wall-clock contract: screen capture, preprocessing, state estimation, policy inference, and action dispatch must finish before the action becomes stale.
 
 Geometry Dash is a small but unforgiving test of this contract.
@@ -96,13 +96,13 @@ DashVMC adopts the broad perception--dynamics--control organization introduced b
 A reconstruction-anchored FSQ tokenizer~\citep{mentzer2024fsq} encodes Sobel edge maps.
 An action-conditioned transformer world model interleaves actions with frame blocks, predicts the next token grid in parallel, and supplies temporal state to the controller.
 The controller combines the current token grid with the world model's temporal state, receives a short BC warm start, and is then optimized by PPO~\citep{schulman2017ppo} entirely in frozen-model rollouts.
-At deployment, the decoder is absent and the system executes one reactive pass per frame; expensive policy optimization has already happened offline.
+At deployment, neither decoding nor next-frame prediction is executed: the encoder, transformer context pass, and controller run once per frame, while policy optimization has already happened offline.
 
 This is a systems co-design contribution rather than a new generic world-model primitive.
-The compact tokenizer and parallel next-frame predictor bound inference cost; explicit action conditioning permits counterfactual rollouts; BC avoids an expensive random-policy transient; and GPU-resident state plus captured execution remove avoidable synchronization from the live path.
+The compact tokenizer bounds live perception and context-encoding cost, while the parallel next-frame predictor bounds the cost of imagined rollouts; explicit action conditioning permits counterfactual rollouts; BC avoids an expensive random-policy transient; and GPU-resident state plus captured execution remove avoidable synchronization from the live path.
 Our contributions are:
 \begin{enumerate}
-  \item a latency-oriented discrete world-model co-design for non-paused screen-to-keyboard control, trained from captured gameplay trajectories and combining compact tokenization, action-conditioned parallel prediction, and decoder-free deployment to sustain 60 FPS on a consumer GPU; and
+  \item a latency-oriented discrete world-model system for pixel-based control of a non-paused game, trained from captured gameplay trajectories and combining compact tokenization, action-conditioned parallel prediction, and decoder-free deployment to sustain 60 FPS on a consumer GPU; and
   \item an end-to-end Geometry Dash system in which the same learned dynamics supports both policy optimization in imagination and interactive, open-ended visual level continuation from real gameplay prefixes.
 \end{enumerate}
 We evaluate these contributions through controlled live comparisons with BC and no-op policies, matched action interventions, end-to-end latency profiling, and qualitative rollout and failure analysis.
