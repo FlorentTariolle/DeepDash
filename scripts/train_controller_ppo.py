@@ -707,9 +707,10 @@ def main():
         rng = np.random.default_rng()
         rng.bit_generator.state = ckpt["rng_state"]
         if "torch_rng_state" in ckpt:
-            torch.set_rng_state(ckpt["torch_rng_state"])
+            torch.set_rng_state(ckpt["torch_rng_state"].cpu())
         if "torch_cuda_rng_state_all" in ckpt and torch.cuda.is_available():
-            torch.cuda.set_rng_state_all(ckpt["torch_cuda_rng_state_all"])
+            torch.cuda.set_rng_state_all(
+                [state.cpu() for state in ckpt["torch_cuda_rng_state_all"]])
         # Restore EMA controller and percentile normalizer
         if "ema_controller" in ckpt:
             ema_controller.load_state_dict(ckpt["ema_controller"])
