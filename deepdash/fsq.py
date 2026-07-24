@@ -220,6 +220,11 @@ class FSQVAE(nn.Module):
         return self.fsq.codebook_size
 
     def forward(self, x):
+        if self.decoder is None:
+            raise RuntimeError(
+                "FSQVAE was prepared for encoder-only deployment; "
+                "reconstruction is unavailable."
+            )
         z_e = self.encoder(x)       # (B, D, G, G)
         z_q, indices = self.fsq(z_e)  # z_q: (B, D, G, G), indices: (B, G, G)
         recon = self.decoder(z_q)    # (B, C, 64, 64)
@@ -233,8 +238,18 @@ class FSQVAE(nn.Module):
 
     def decode_indices(self, indices):
         """Decode flat indices back to images."""
+        if self.decoder is None:
+            raise RuntimeError(
+                "FSQVAE was prepared for encoder-only deployment; "
+                "decoding is unavailable."
+            )
         z_q = self.fsq.indices_to_codes(indices)
         return self.decoder(z_q)
+
+    def prepare_for_encoder_only(self):
+        """Discard the visualization-only decoder for live deployment."""
+        self.decoder = None
+        return self
 
 
 def fsqvae_loss(recon_x, x, loss_type='mse', reduction='sum'):

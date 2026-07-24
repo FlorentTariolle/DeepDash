@@ -645,6 +645,8 @@ def main():
         state = {k.removeprefix("_orig_mod."): v for k, v in state.items()}
         vae.load_state_dict(state)
         vae.eval()
+        vae.prepare_for_encoder_only()
+        del state
 
         wm = WorldModel(
             vocab_size=args.vocab_size, embed_dim=args.embed_dim,
@@ -652,13 +654,16 @@ def main():
             context_frames=args.context_frames, dropout=args.dropout,
             tokens_per_frame=args.tokens_per_frame,
             adaln=getattr(args, 'adaln', False),
-            fsq_dim=len(args.levels) if getattr(args, 'levels', None) else None,
+            fsq_dim=None,
+            use_cpc=False,
         ).to(device)
         state = torch.load(args.transformer_checkpoint, map_location=device,
                            weights_only=True)
         state = {k.removeprefix("_orig_mod."): v for k, v in state.items()}
         wm.load_state_dict(state, strict=False)
         wm.eval()
+        wm.prepare_for_context_only()
+        del state
 
         grid_size = int(args.tokens_per_frame ** 0.5)
         policy_class = (getattr(args, "policy_class", None) or "mlp").lower()
@@ -686,7 +691,15 @@ def main():
             state = state["controller"]
         controller.load_state_dict(state)
         controller.eval()
-        print(f"All models loaded. Controller: {policy_class}")
+        del state
+        retained_params = sum(
+            p.numel() for module in (vae, wm, controller)
+            for p in module.parameters()
+        )
+        print(
+            f"All models loaded. Controller: {policy_class}; "
+            f"retained parameters: {retained_params:,}"
+        )
 
         if use_optimized:
             print("Enabling optimized inference path (deploy-equivalent)...")

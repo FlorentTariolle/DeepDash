@@ -204,6 +204,21 @@ class WorldModel(nn.Module):
                 nn.init.constant_(linear.bias[2*D:3*D], 1.0)  # gate1
                 nn.init.constant_(linear.bias[5*D:6*D], 1.0)  # gate2
 
+    def prepare_for_context_only(self):
+        """Discard modules used only for training or next-grid prediction.
+
+        The vocabulary projection is weight-tied to ``token_embed``. Removing
+        the ``head`` module therefore removes only its alias, not the shared
+        embedding parameter required by context encoding.
+        """
+        self.head = None
+        self.mask_embed = None
+        self.fsq_grad_proj = None
+        self.cpc_target_proj = None
+        self.cpc_predictors = None
+        self.use_cpc = False
+        return self
+
     def _backbone_forward(self, x, cond=None):
         """Run transformer blocks + final layernorm (compile-friendly hot path)."""
         for block in self.blocks:
@@ -429,6 +444,11 @@ class WorldModel(nn.Module):
                 the NEXT frame's tokens (block i -> frame i+1). None in
                 non-AdaLN mode.
         """
+        if self.head is None or self.mask_embed is None:
+            raise RuntimeError(
+                "WorldModel was prepared for context-only deployment; "
+                "next-grid prediction is unavailable."
+            )
         B = frame_tokens.size(0)
         K = self.context_frames
         use_ste = z_q_ste_context is not None
@@ -625,6 +645,11 @@ class WorldModel(nn.Module):
             death_prob: (B,) float -- probability of death.
             h_t: (B, embed_dim) float -- only if return_hidden=True.
         """
+        if self.head is None or self.mask_embed is None:
+            raise RuntimeError(
+                "WorldModel was prepared for context-only deployment; "
+                "next-grid prediction is unavailable."
+            )
         B = frame_tokens.size(0)
         TPF = self.tokens_per_frame
         K = self.context_frames
