@@ -27,7 +27,9 @@ RUN_DIR=${2:-checkpoints_v7_controller_seed${SEED}}
 CONFIG=configs/deepdash/v7-phase0.yaml
 FSQ_CHECKPOINT=checkpoints_v7/fsq_best.pt
 TRANSFORMER_CHECKPOINT=checkpoints_v7/transformer_best.pt
-PPO_ITERATIONS=4997
+# Safety ceiling only. Inspect the fixed-development survival curve after at
+# least 5,000 iterations and stop at its elbow before this limit if warranted.
+PPO_ITERATIONS=15000
 
 if [[ ! "$SEED" =~ ^[0-9]+$ ]]; then
     echo "Seed must be a non-negative integer, got: $SEED" >&2
@@ -64,7 +66,9 @@ if [[ ! -f "$MANIFEST" ]]; then
         echo "eval_seed=42"
         echo "precision=bfloat16"
         echo "config=$CONFIG"
-        echo "ppo_iterations=$PPO_ITERATIONS"
+        echo "ppo_iteration_ceiling=$PPO_ITERATIONS"
+        echo "ppo_minimum_iterations=5000"
+        echo "ppo_stopping_rule=fixed-development survival elbow"
         echo "code_commit=${DASHVMC_CODE_COMMIT:-unknown}"
         echo "fsq_checkpoint=$FSQ_CHECKPOINT"
         echo "fsq_sha256=$(sha256sum "$FSQ_CHECKPOINT" | awk '{print $1}')"
@@ -72,6 +76,15 @@ if [[ ! -f "$MANIFEST" ]]; then
         echo "transformer_sha256=$(sha256sum "$TRANSFORMER_CHECKPOINT" | awk '{print $1}')"
         echo "started_at=$(date --iso-8601=seconds)"
     } > "$MANIFEST"
+fi
+
+if ! grep -q "^ppo_iteration_ceiling=$PPO_ITERATIONS$" "$MANIFEST"; then
+    {
+        echo "protocol_updated_at=$(date --iso-8601=seconds)"
+        echo "ppo_iteration_ceiling=$PPO_ITERATIONS"
+        echo "ppo_minimum_iterations=5000"
+        echo "ppo_stopping_rule=fixed-development survival elbow"
+    } >> "$MANIFEST"
 fi
 
 printf "%s\t%s\t%s\t%s\n" \
