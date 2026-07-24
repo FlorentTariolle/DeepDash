@@ -45,8 +45,9 @@ mkdir -p "$RUN_DIR"
 export PATH="/soft/AIDL/conda_envs/pytorch210/bin:$HOME/.local/bin:$PATH"
 export PYTHONPATH="$HOME/.python3-3.12-torch210/site-packages/lib/python3.12/site-packages:${PYTHONPATH:-}"
 export PYTHONUNBUFFERED=1
-export WANDB_MODE=offline
-export WANDB_PROJECT=dashvmc-controller-replications
+export WANDB_MODE=online
+export WANDB_ENTITY=florent-tariolle-insa-rouen-normandie
+export WANDB_PROJECT=deepdash
 
 RUN_START_FILE="$RUN_DIR/run_started_epoch.txt"
 MANIFEST="$RUN_DIR/provenance.txt"
