@@ -682,7 +682,11 @@ def main():
     resume_ckpt = ckpt_dir / "controller_ppo_latest.pt"
     if args.resume and resume_ckpt.exists():
         ckpt = torch.load(resume_ckpt, map_location=device, weights_only=False)
-        controller.load_state_dict(ckpt["controller"])
+        # Checkpoints deliberately strip torch.compile's ``_orig_mod.``
+        # prefix for portability. When resuming after compilation, load the
+        # clean state into the wrapped original module.
+        resume_controller = getattr(controller, "_orig_mod", controller)
+        resume_controller.load_state_dict(ckpt["controller"])
         optimizer.load_state_dict(ckpt["optimizer"])
         start_iteration = ckpt["iteration"] + 1
         if scheduler is not None:
