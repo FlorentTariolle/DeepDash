@@ -1,6 +1,7 @@
 #!/bin/bash
 # Rebuild pipeline figure from docs/pipeline.tex.
-# Outputs: static/images/pipeline.svg (used by site), architecture_pipeline.png (og:image fallback).
+# Outputs: static/images/pipeline.svg and static/images/pipeline.png (site/README),
+# plus architecture_pipeline.png for backward compatibility.
 # Requires: pdflatex, pdftocairo, pdftoppm, Python with Pillow.
 set -e
 cd "$(dirname "$0")"
@@ -21,8 +22,9 @@ mask = Image.new('L', (w, h), 0)
 draw = ImageDraw.Draw(mask)
 draw.rounded_rectangle([(0, 0), (w, h)], radius=30, fill=255)
 img.putalpha(mask)
+img.save('static/images/pipeline.png')
 img.save('architecture_pipeline.png')
 "
 
 rm -f pipeline_tmp-1.png pipeline.pdf pipeline.aux pipeline.log
-echo "Done: static/images/pipeline.svg, architecture_pipeline.png"
+echo "Done: static/images/pipeline.svg, static/images/pipeline.png, architecture_pipeline.png"

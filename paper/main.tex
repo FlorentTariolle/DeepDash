@@ -410,7 +410,7 @@ They explain design choices but do not establish general architectural rankings.
     PPO without BC (earlier stack) & Same latent plateau, about 2,000 more iterations (\(\approx6\) A100 hours); BC takes about 5 minutes. & Keep BC. \\
     AdaLN action\newline conditioning~\citep{peebles2023dit} & Canonical zero-gate initialization stalled; bias-1 gates plus QK-normalization~\citep{esser2024sd3} trained stably and reached the best development CPC. The trial co-varied other components and did not establish a live advantage over action tokens. & Use action tokens. \\
     Transformer width 512 & Better CE/contrastive metrics, no live gain, slower training. & Use width 384. \\
-    MLP on \(\mathbf h_t\) only (later 512-width stack) & PPO was 2--5\(\times\) faster with a smaller train--eval gap, but local live progress was worse; an earlier stack showed the opposite ordering. & Keep grid input. \\
+    MLP on \(\mathbf h_t\) only & PPO was 2--5\(\times\) faster with a smaller train--eval gap, but local live progress was worse. & Keep grid input. \\
     \bottomrule
   \end{tabular}
 \end{table}

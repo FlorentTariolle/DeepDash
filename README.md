@@ -2,9 +2,11 @@
 
 https://github.com/user-attachments/assets/1de92e9c-cc41-48cc-8305-c0d4491b676b
 
-DashVMC is a real-time discrete world-model agent for Geometry Dash. It combines an FSQ tokenizer, an action-conditioned transformer world model, and a lightweight actor-critic trained from behavioural cloning plus PPO in latent rollouts.
+DashVMC is an end-to-end discrete world-model agent that controls the original, non-paused Geometry Dash game from captured screen pixels. It combines an FSQ tokenizer, an action-conditioned transformer world model, and a lightweight actor-critic initialized by behavioural cloning and optimized with PPO entirely in autoregressive latent rollouts.
 
-Training data are captured at a nominal 30 FPS cadence, while the controller is deployed at 60 FPS on an RTX 2060.
+Training uses approximately two hours of gameplay captured at a nominal 30 FPS cadence, including less than 20 minutes of expert segments; PPO requires no additional game interaction. The decoder-free capture-to-action path sustains live control at 60 FPS on an RTX 2060.
+
+The packaged live path contains 15,569,486 parameters: the encoder, transformer context path, and controller. It excludes the decoder, CPC training heads, and mask embedding, and runs neither next-grid prediction nor decoding during live control.
 
 <p align="center">
    <b>[ <a href="https://tariolle.github.io/dash-vmc/static/pdfs/dashvmc.pdf">Preprint</a> | <a href="https://tariolle.github.io/dash-vmc/">Website</a> ]</b>

@@ -5,7 +5,7 @@ PREPRINT = dashvmc-preprint
 SUBMISSION = dashvmc-submission
 PY = python
 
-all: preprint
+all: preprint submission
 
 preprint: $(PREPRINT).pdf
 

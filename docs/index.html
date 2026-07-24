@@ -6,18 +6,18 @@
   <meta name="color-scheme" content="light only" />
   <title>DashVMC | Real-Time Discrete World Model Control in Geometry Dash</title>
 
-  <meta name="description" content="DashVMC is a real-time discrete world model control system for Geometry Dash, with FSQ tokenization, action-conditioned dynamics, latent-rollout PPO control, and live 60 FPS deployment from 30 FPS training data." />
+  <meta name="description" content="DashVMC is a discrete world-model agent trained from captured gameplay and deployed for pixel-based, non-paused Geometry Dash control at 60 FPS on a consumer GPU." />
   <meta name="author" content="Florent Tariolle" />
   <link rel="canonical" href="https://tariolle.github.io/dash-vmc/" />
 
   <meta property="og:title" content="DashVMC: Real-Time Discrete World Model Control in Geometry Dash" />
-  <meta property="og:description" content="A real-time Geometry Dash world-model agent using FSQ tokens, action-conditioned dynamics, latent-rollout PPO control, and visual level continuations." />
+  <meta property="og:description" content="A real-time Geometry Dash world-model agent with offline imagined PPO, a decoder-free live path, and interactive visual continuations." />
   <meta property="og:image" content="https://tariolle.github.io/dash-vmc/static/images/pipeline.png" />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://tariolle.github.io/dash-vmc/" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="DashVMC: Real-Time Discrete World Model Control in Geometry Dash" />
-  <meta name="twitter:description" content="FSQ tokens, action-conditioned dynamics, latent-rollout PPO control, and 60 FPS Geometry Dash deployment from 30 FPS training data." />
+  <meta name="twitter:description" content="Offline imagined PPO and a decoder-free capture-to-action path for 60 FPS Geometry Dash control on a consumer GPU." />
   <meta name="twitter:image" content="https://tariolle.github.io/dash-vmc/static/images/pipeline.png" />
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -51,7 +51,7 @@
       <div class="hero-copy">
         <div class="status-row">
           <span class="status-pill">Preliminary research page</span>
-          <span class="status-date">Updated 2026-07-23</span>
+          <span class="status-date">Updated 2026-07-24</span>
         </div>
 
         <h1 class="publication-title">
@@ -117,9 +117,11 @@
         <h2 class="section-title">Latent world model control at game speed</h2>
         <p>
           DashVMC uses an FSQ tokenizer, an action-conditioned transformer world model,
-          and a lightweight actor-critic trained from behavioural cloning plus PPO in latent
-          imagined rollouts. Training data are captured at a nominal 30 FPS cadence, while the
-          optimized controller is deployed on live Geometry Dash at 60 FPS on an RTX 2060.
+          and a lightweight actor-critic initialized by behavioural cloning and optimized with PPO
+          entirely in autoregressive latent rollouts. Training uses approximately two hours of
+          captured gameplay, including less than 20 minutes of expert segments, and PPO requires
+          no additional game interaction. The optimized agent controls live Geometry Dash at
+          60 FPS on an RTX 2060.
         </p>
       </div>
 
@@ -133,6 +135,18 @@
           <strong>30 FPS</strong>
         </div>
         <div class="metric-row">
+          <span>Captured gameplay</span>
+          <strong>~2 hours</strong>
+        </div>
+        <div class="metric-row">
+          <span>Expert segments</span>
+          <strong>&lt;20 min</strong>
+        </div>
+        <div class="metric-row">
+          <span>Live parameters</span>
+          <strong>15.57M</strong>
+        </div>
+        <div class="metric-row">
           <span>Token grid</span>
           <strong>8x8</strong>
         </div>
@@ -142,7 +156,7 @@
     <div class="evidence-cards" aria-label="Interpretation of preliminary evidence">
       <article>
         <h3>Live control</h3>
-        <p>The controller runs from screen capture through preprocessing, tokenization, dynamics prediction, and action dispatch.</p>
+        <p>The capture-to-action path runs preprocessing, tokenization, transformer context prefill, controller inference, and keyboard dispatch; neither next-grid prediction nor decoding is executed.</p>
       </article>
       <article>
         <h3>Latent training</h3>
@@ -158,7 +172,7 @@
   <section id="contributions" class="section-block">
     <div class="container-narrow">
       <p class="eyebrow">Core components</p>
-      <h2 class="section-title">A compact world-model agent</h2>
+      <h2 class="section-title">A lightweight world-model agent</h2>
       <div class="contribution-grid">
         <article class="contribution-item">
           <h3>Discrete visual state</h3>
@@ -189,7 +203,8 @@
       <p>
         The tokenizer and dynamics model define the latent environment used by the controller.
         After behavioural cloning on demonstrations, PPO optimizes the actor-critic inside
-        autoregressive token rollouts generated by the action-conditioned world model.
+        autoregressive token rollouts generated by the frozen action-conditioned world model,
+        without additional game interaction.
       </p>
       <p>
         Pixel reconstruction is used to train and inspect the tokenizer, and decoded rollouts are
@@ -206,7 +221,7 @@
       <figure class="centered pipeline-figure">
         <img src="static/images/pipeline.svg" alt="World-model agent pipeline overview" />
         <figcaption>
-          FSQ-VAE tokenizes Sobel edge maps; a causal transformer models next-frame tokens with action tokens interleaved; during live control, a CNN controller selects jump/idle actions from the current grid and transformer hidden state.
+          Imagined PPO uses action-conditioned next-grid prediction. Live deployment runs the encoder, transformer context prefill, and controller only; neither masked next-grid prediction nor decoding is executed.
         </figcaption>
       </figure>
 
@@ -225,7 +240,7 @@
         </article>
         <article>
           <h3>60 FPS deployment</h3>
-          <p>The optimized controller deploys live at 60 FPS on an RTX 2060 despite being trained from 30-FPS captures.</p>
+          <p>The 15.57M-parameter decoder-free path deploys live at 60 FPS on an RTX 2060 despite being trained from 30-FPS captures.</p>
         </article>
       </div>
     </div>
