@@ -502,11 +502,16 @@ def main():
     parser.add_argument("--checkpoint-dir", default=None)
     parser.add_argument("--n-eval-episodes", type=int, default=None)
     parser.add_argument("--eval-interval", type=int, default=None)
+    parser.add_argument("--eval-seed", type=int, default=None,
+                        help="Seed used only to sample fixed development "
+                             "contexts. Defaults to the training seed.")
     parser.add_argument("--seed", type=int, default=None)
     args = parser.parse_args()
 
     from deepdash.config import apply_config
     apply_config(args, section="controller_ppo")
+    if args.eval_seed is None:
+        args.eval_seed = args.seed
     if args.no_pretrained:
         args.pretrained = None
 
@@ -719,14 +724,15 @@ def main():
     wandb_init(project="deepdash", name=run_name,
                config=vars(args), resume_id=wandb_resume_id)
 
-    # Fixed eval contexts (from val episodes only)
-    # Use a dedicated RNG so eval contexts are identical across resumes
-    eval_rng = np.random.default_rng(args.seed)
+    # Fixed eval contexts (from val episodes only). A dedicated seed keeps
+    # these identical across resumes and replication runs when requested.
+    eval_rng = np.random.default_rng(args.eval_seed)
     print(f"\nPre-sampling fixed eval contexts (val episodes)...")
     eval_source = val_episodes if val_episodes else episodes
     fixed_eval_tokens, fixed_eval_actions = sample_contexts(
         eval_source, args.n_eval_episodes, args.context_frames, eval_rng)
-    print(f"  Eval: {args.n_eval_episodes} fixed contexts from {len(eval_source)} val episodes")
+    print(f"  Eval: {args.n_eval_episodes} fixed contexts from "
+          f"{len(eval_source)} val episodes (seed={args.eval_seed})")
 
     log_path = ckpt_dir / "controller_ppo_log.csv"
     if args.resume and log_path.exists() and start_iteration > 1:
