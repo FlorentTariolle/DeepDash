@@ -4,7 +4,7 @@ https://github.com/user-attachments/assets/1de92e9c-cc41-48cc-8305-c0d4491b676b
 
 DashVMC is an end-to-end discrete world-model agent that controls the original, non-paused Geometry Dash game from captured screen pixels. It combines an FSQ tokenizer, an action-conditioned transformer world model, and a lightweight actor-critic initialized by behavioural cloning and optimized with PPO entirely in autoregressive latent rollouts.
 
-Training uses approximately two hours of gameplay captured at a nominal 30 FPS cadence, including less than 20 minutes of expert segments; PPO requires no additional game interaction. The decoder-free capture-to-action path sustains live control at 60 FPS on an RTX 2060.
+Training uses approximately two hours of gameplay captured at a nominal 30 FPS cadence, including less than 20 minutes of expert segments; all learning is offline, without any real-environment interaction by the agent. The decoder-free capture-to-action path sustains live control at 60 FPS on an RTX 2060.
 
 <p align="center">
    <b>[ <a href="https://tariolle.github.io/dash-vmc/static/pdfs/dashvmc.pdf">Preprint</a> | <a href="https://tariolle.github.io/dash-vmc/">Website</a> ]</b>
