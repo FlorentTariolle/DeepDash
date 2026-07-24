@@ -34,7 +34,7 @@ if [[ ! "$SEED" =~ ^[0-9]+$ ]]; then
     exit 2
 fi
 
-REPO_ROOT=$(git rev-parse --show-toplevel)
+REPO_ROOT=${SLURM_SUBMIT_DIR:?Submit this job from the DashVMC repository root}
 cd "$REPO_ROOT"
 SUBMIT_SCRIPT="$REPO_ROOT/slurm/train_v7_controller_replication.sl"
 
@@ -65,7 +65,7 @@ if [[ ! -f "$MANIFEST" ]]; then
         echo "precision=bfloat16"
         echo "config=$CONFIG"
         echo "ppo_iterations=$PPO_ITERATIONS"
-        echo "code_commit=$(git rev-parse HEAD)"
+        echo "code_commit=${DASHVMC_CODE_COMMIT:-unknown}"
         echo "fsq_checkpoint=$FSQ_CHECKPOINT"
         echo "fsq_sha256=$(sha256sum "$FSQ_CHECKPOINT" | awk '{print $1}')"
         echo "transformer_checkpoint=$TRANSFORMER_CHECKPOINT"
