@@ -186,7 +186,6 @@ if [[ ! -f "$PPO_DONE" ]]; then
         --n-iterations "$PPO_ITERATIONS" \
         --seed "$SEED" \
         --eval-seed 42 \
-        --amp-dtype bfloat16 \
         --wandb-name "v7-seed${SEED}-ppo" \
         "${PPO_ARGS[@]}"
 
