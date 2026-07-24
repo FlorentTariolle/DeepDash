@@ -6,8 +6,6 @@ DashVMC is an end-to-end discrete world-model agent that controls the original, 
 
 Training uses approximately two hours of gameplay captured at a nominal 30 FPS cadence, including less than 20 minutes of expert segments; PPO requires no additional game interaction. The decoder-free capture-to-action path sustains live control at 60 FPS on an RTX 2060.
 
-The packaged live path contains 15,569,486 parameters: the encoder, transformer context path, and controller. It excludes the decoder, CPC training heads, and mask embedding, and runs neither next-grid prediction nor decoding during live control.
-
 <p align="center">
    <b>[ <a href="https://tariolle.github.io/dash-vmc/static/pdfs/dashvmc.pdf">Preprint</a> | <a href="https://tariolle.github.io/dash-vmc/">Website</a> ]</b>
 </p>
