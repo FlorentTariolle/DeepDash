@@ -115,15 +115,10 @@ We evaluate these contributions through controlled live comparisons with reconst
 
 \paragraph{World models and imagination.}
 The original Vision--Memory--Controller pipeline compressed observations with a VAE, modeled latent dynamics with an MDN--RNN, and demonstrated in VizDoom that a compact controller could be optimized entirely in learned dreams and transferred to the real environment~\citep{ha2018world}.
-IRIS retains this imagination-only policy-learning paradigm while replacing recurrent continuous-latent dynamics with a discrete autoencoder and autoregressive transformer, scaling it to data-efficient learning on Atari 100k~\citep{micheli2023iris}.
-\(\Delta\)-IRIS reduces the sequence cost of this template by separating stochastic changes into discrete tokens from continuous context tokens~\citep{micheli2024deltairis}.
-DIAMOND removes discrete compression from the dynamics model and uses diffusion to preserve control-relevant visual details~\citep{alonso2024diamond}, while DreamerV3 demonstrates broad control with categorical recurrent state-space latents~\citep{hafner2025dreamerv3}.
-Contemporaneous MIRA scales interactive world modeling to tightly coupled multiplayer dynamics, generating real-time four-player Rocket League rollouts conditioned on each player's actions~\citep{hu2026mira}.
-MineWorld likewise interleaves discrete visual and action tokens and predicts each frame's spatial tokens in parallel, while Matrix-Game 2.0 uses few-step diffusion for streaming action-conditioned video~\citep{guo2025mineworld,he2025matrixgame}.
-These systems target interactive video generation.
-DashVMC instead uses a discrete world model to optimize a policy in imagination and closes the control loop through the original non-paused game on consumer hardware.
-Its transformer also uses the action-conditional contrastive auxiliary objective introduced by TWISTER~\citep{burchi2025twister}.
-Earlier screenshot-based Geometry Dash control used direct DQN and imitation learning under a DLL-fabricated timestep, and highlighted that narrow jump windows can make nearly identical frames require different actions~\citep{li2017geometrydash}.
+Subsequent imagination-based agents explore different representations and dynamics models: IRIS, the closest architectural reference for DashVMC, combines a discrete autoencoder with an autoregressive transformer for data-efficient Atari learning~\citep{micheli2023iris}; \(\Delta\)-IRIS separates stochastic changes into discrete tokens from continuous context tokens to reduce sequence cost~\citep{micheli2024deltairis}; and DIAMOND uses diffusion without discrete compression for imagination-trained control and also demonstrates an interactive Counter-Strike neural game engine~\citep{alonso2024diamond}.
+DreamerV3 demonstrates broad control with categorical recurrent state-space latents~\citep{hafner2025dreamerv3}, while TWISTER augments transformer world-model training with action-conditioned contrastive predictive coding to learn temporal representations over longer horizons~\citep{burchi2025twister}.
+At larger generative scales, related action-conditioned simulators include MIRA, which models tightly coupled four-player Rocket League dynamics with latent diffusion~\citep{hu2026mira}; MineWorld, which autoregressively models interleaved discrete visual and action tokens with parallel spatial decoding~\citep{guo2025mineworld}; and Matrix-Game 2.0, which uses few-step diffusion for streaming generation~\citep{he2025matrixgame}.
+Within Geometry Dash specifically, earlier screenshot-based control used direct DQN and imitation learning under a DLL-fabricated timestep, and highlighted that narrow jump windows can make nearly identical frames require different actions~\citep{li2017geometrydash}.
 Our protocol leaves the game clock running and supplies the controller with temporal context through the learned world model.
 
 \paragraph{FSQ tokenization and policy initialization.}
@@ -133,8 +128,9 @@ Here demonstrations only initialize the controller: the final policy is selected
 
 \paragraph{Representation anchors and alternatives.}
 Joint-embedding prediction can avoid spending capacity on high-magnitude input detail that is irrelevant or unpredictable from context~\citep{vanassel2025joint}, and LeWorldModel demonstrates stable end-to-end predictive learning from pixels with continuous latents~\citep{maes2026leworldmodel}.
-Our observation is instead a deterministic Sobel rendering with much nuisance detail already removed, making reconstruction a comparatively inexpensive anchor for a shared discrete token space.
-Likewise, Gaussian Quant reports stronger image rate--distortion results than FSQ on large image benchmarks~\citep{xu2025gq}; FSQ is used here for stability, explicit lattice structure, and measured deployment cost rather than claimed tokenizer optimality.
+DashVMC instead applies deterministic preprocessing that converts each cropped RGB capture to grayscale and then to a Sobel edge map, removing much appearance detail before learning and making reconstruction a comparatively inexpensive anchor for the shared discrete token space.
+Among discrete tokenizers, Gaussian Quant reports stronger rate--distortion performance than FSQ on large image benchmarks~\citep{xu2025gq}.
+Whether those gains transfer to low-resolution Sobel edge maps and downstream world-model control remains untested.
 
 \section{DashVMC}
 \label{sec:method}
@@ -440,6 +436,12 @@ The Level-1 copy evaluates later-stage survival but does not isolate ship mode w
 The 60-FPS cadence comparison is a single-level, single-policy probe with $n=20$ and also changes from the diagnostic to the optimized execution path; it is an operational deployment probe, not an isolated or broad study of frame-rate adaptation.
 The BC control is an epoch-9 reconstruction close to the archived training trace, not the missing original checkpoint; consequently, PPO versus BC is not an exact comparison to PPO's parent policy.
 Because no other world-model agent is available under the same captured-pixel, non-paused Geometry-Dash protocol, the results are a controlled within-system comparison rather than a state-of-the-art benchmark.
+
+The black-box agent interface should be distinguished from the experimental infrastructure.
+Restricting the agent to captured pixels and keyboard actions is central to the deployment setting, but requiring every interaction to occur through a visible, non-paused desktop application is not intrinsically necessary for studying pixel-based control.
+This coupling made data collection and repeated evaluation proceed at wall-clock speed, limited straightforward acceleration and parallelization, and complicated automated resets, debugging, and reproducible measurement.
+For research focused primarily on representation learning, world modeling, or control, we therefore recommend using a headless or step-controllable environment while deliberately withholding privileged state from the agent.
+Live interaction with the original application is most valuable as a final deployment test, or when satisfying the real-time capture-to-action contract is itself the research question.
 
 The Geometry-Dash evidence for Equation~\ref{eq:sls} is a single-run, same-architecture comparison against uniform smoothing, not a replicated hard-CE ablation; it supports the local choice but neither quantifies uncertainty nor isolates transfer to the final system.
 In a matched IRIS/Pong diagnostic with five seeds per condition, annealed SLS underperformed CE in final return (\(12.14\pm10.82\) versus \(15.68\pm4.96\)) and doubled the tail-failure rate (40\% versus 20\%), despite lower drawdown and return volatility and a transient advantage during epochs 250--420.
