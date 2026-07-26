@@ -86,9 +86,13 @@ These results demonstrate that a specialized world model can jointly support ima
 A world model learns an environment's transition dynamics, conventionally written \(p_\theta(s_{t+1}\mid s_t,a_t)\): given a state \(s_t\) and action \(a_t\), it predicts the state that follows~\citep{lecun2022path}.
 When privileged environment state is unavailable, as here, the model instead operates on a learned latent representation inferred from recent observations and actions.
 Rolling the model forward allows an agent to improve its policy in imagination rather than through additional interaction with the real environment~\citep{ha2018world}.
-Discrete approaches such as IRIS encode images into tokens and model their evolution with an autoregressive transformer~\citep{micheli2023iris}; DIAMOND instead shows that preserving fine visual detail with a diffusion model can improve control~\citep{alonso2024diamond}.
-Most evaluations, however, use synchronous, step-based environments whose simulation advances only when the agent submits an action.
-An agent controlling a live, non-paused application must also satisfy a wall-clock contract: screen capture, preprocessing, state estimation, policy inference, and action dispatch must finish before the action becomes stale.
+Discrete approaches such as IRIS encode images into tokens and model their evolution with an autoregressive transformer~\citep{micheli2023iris}, whereas DIAMOND uses diffusion to preserve fine visual detail~\citep{alonso2024diamond}.
+These designs do not inherently preclude real-time action inference because their policies need not generate a new world-model observation while acting in the real environment.
+DashVMC instead targets a joint systems requirement: inexpensive imagined transitions for policy optimization together with a decoder-free live path that reuses the dynamics model's temporal state.
+It follows IRIS's discrete autoregressive formulation across frames, but predicts each next token grid in parallel and is adapted to an approximately two-hour offline corpus and a live-control setting.
+
+Regardless of model class, most world-model agents are evaluated in synchronous, step-based environments whose simulation advances only when the agent submits an action.
+Controlling a live, non-paused application imposes an additional wall-clock constraint: screen capture, preprocessing, state estimation, policy inference, and action dispatch must finish before the action becomes stale.
 
 Geometry Dash is a small but unforgiving test of this contract.
 The avatar moves continuously, the action space is binary, and a mistimed jump causes immediate death.
@@ -105,7 +109,7 @@ This is a systems co-design contribution rather than a new generic world-model p
 The 64-token visual grid bounds live perception and context-encoding cost, while the parallel next-frame predictor bounds the cost of imagined rollouts; explicit action conditioning permits counterfactual rollouts; BC avoids an expensive random-policy transient; and GPU-resident state plus captured execution remove avoidable synchronization from the live path.
 Our contributions are:
 \begin{enumerate}
-  \item an end-to-end discrete world-model agent for pixel-based control of the original, non-paused Geometry Dash game, with a decoder-free capture-to-action path that sustains a 60-FPS live cadence on a consumer GPU; and
+  \item an end-to-end discrete world-model agent for pixel-based control of the original, non-paused Geometry Dash game, whose parallel imagined transition fits within a 30-FPS frame period and whose decoder-free capture-to-action path sustains a 60-FPS live cadence on a consumer GPU; and
   \item an offline training pipeline using approximately two hours of captured gameplay, including less than 20 minutes of expert segments, that initializes a lightweight controller with BC and optimizes it with PPO entirely in autoregressive rollouts of the frozen action-conditioned world model, without any real-environment interaction by the agent during learning.
 \end{enumerate}
 We evaluate these contributions through controlled live comparisons with reconstructed BC and no-op policies on three official and two auxiliary layouts, matched-action interventions, end-to-end latency profiling, and qualitative open-ended rollouts and failure analysis.
@@ -286,6 +290,12 @@ Latency is measured on 5,000 consecutive frames of the optimized deployment path
 For the qualitative intervention, the world model is initialized from a fixed encoded four-frame prefix immediately before a spike.
 Greedy continuations differ only in the first conditioned action, jump or idle; all subsequent actions are idle.
 
+\paragraph{External transition-latency protocol.}
+To characterize computational design rather than control quality, we benchmark the released Pong checkpoints of IRIS and DIAMOND alongside the selected DashVMC checkpoint on the same RTX 2060 SUPER.
+Each model runs in a fresh process at batch size one with FP32 eager execution; after 30 warm-up transitions, 100 transitions are timed individually with CUDA synchronization at each boundary, and the full procedure is repeated twice.
+The measured operation follows each native imagination interface: DashVMC predicts a 64-token latent grid in parallel together with its death score; IRIS autoregressively predicts 16 tokens, decodes the observation, and predicts reward and termination; and DIAMOND performs three-step pixel diffusion and predicts reward and termination.
+The differing output representations make this an operational latency comparison, not a matched generation-quality or control benchmark.
+
 \section{Results}
 \label{sec:results}
 
@@ -375,6 +385,30 @@ These timings differ from diagnostic evaluator logs that move context through CP
 Official-level and 30-FPS auxiliary survival use that diagnostic path; the 60-FPS cadence probe and deployment latency use the optimized path.
 Both paths apply the same preprocessing and frozen model/controller weights; the distinction is execution optimization rather than policy definition.
 
+\subsection{Batch-1 imagined-transition latency}
+\label{sec:transition-latency}
+
+Table~\ref{tab:transition-latency} reports the two independent run means.
+All three released models execute within the RTX 2060 SUPER's 8-GB memory budget at batch size one, so these measurements do not support a claim that IRIS or DIAMOND is undeployable on the target GPU.
+DashVMC's native imagined transition averages 11.05\,ms, compared with 49.30\,ms for DIAMOND and 177.83\,ms for IRIS, corresponding to 4.5$\times$ and 16.1$\times$ lower latency, respectively.
+Only the DashVMC transition itself falls within a 33.3-ms frame period on this hardware, although the external agents can still infer real-environment actions without executing these generative transitions.
+
+\begin{table}[ht!]
+  \centering
+  \small
+  \caption{Batch-1 native imagination-transition latency on an RTX 2060 SUPER. Values are synchronized run means in milliseconds. The models produce different representations and were not trained on a common dataset; this table compares operational cost, not quality or control.}
+  \label{tab:transition-latency}
+  \begin{tabular}{lrrr}
+    \toprule
+    Model & Run 1 & Run 2 & Mean \\
+    \midrule
+    DashVMC & 11.04 & 11.06 & \textbf{11.05} \\
+    DIAMOND & 50.13 & 48.46 & 49.30 \\
+    IRIS & 176.94 & 178.73 & 177.83 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
 \subsection{Action-conditioned continuations}
 \label{sec:continuations}
 
@@ -435,6 +469,8 @@ The Level-1 copy evaluates later-stage survival but does not isolate ship mode w
 The 60-FPS cadence comparison is a single-level, single-policy probe with $n=20$ and also changes from the diagnostic to the optimized execution path; it is an operational deployment probe, not an isolated or broad study of frame-rate adaptation.
 The BC control is an epoch-9 reconstruction close to the archived training trace, not the missing original checkpoint; consequently, PPO versus BC is not an exact comparison to PPO's parent policy.
 Because no other world-model agent is available under the same captured-pixel, non-paused Geometry-Dash protocol, the results are a controlled within-system comparison rather than a state-of-the-art benchmark.
+IRIS and DIAMOND were not retrained on the DashVMC corpus, and their released recurrent policies can infer real-environment actions without generating the transitions timed in Table~\ref{tab:transition-latency}.
+That comparison therefore motivates the computational design of DashVMC's imagination path but establishes neither that the alternatives could not control Geometry Dash at the required cadence nor that DashVMC would outperform them after matched training and tuning.
 
 The black-box agent interface should be distinguished from the experimental infrastructure.
 Restricting the agent to captured pixels and keyboard actions is central to the deployment setting, but requiring every interaction to occur through a visible, non-paused desktop application is not intrinsically necessary for studying pixel-based control.
@@ -452,13 +488,15 @@ We leave visibility-conditioned multi-step fidelity evaluation to future work; a
 Successive development-time dataset doublings produced visibly more coherent, higher-quality rollouts without an observed plateau, suggesting that the present model remains data-limited; these runs were not controlled end-to-end scaling experiments.
 Although the system is learned from a small offline corpus, we do not report a data-scaling curve or matched larger-data baseline.
 The results therefore demonstrate viability under a constrained data budget, not general sample efficiency.
+Under matched reconstruction constraints, controlled iFSQ image-generation experiments find that autoregressive models converge faster early in training, whereas diffusion models reach a higher generation-quality ceiling with sufficient compute~\citep{lin2026ifsq}.
+These findings motivate---but do not validate---our preference for faster early convergence under a small data budget; they do not establish that the trade-off transfers to Sobel-preprocessed temporal prediction or downstream control, nor that autoregression is universally preferable.
 
 The reported 14.4-ms 60-FPS probe and separate 16.3-ms profile cover this hardware and 64-pixel edge observations; RGB input, stochastic environments, larger action spaces, or weaker devices require new accuracy--latency measurements.
 
 \section{Conclusion}
 \label{sec:conclusion}
 
-DashVMC shows that a lightweight discrete world model can support both imagined policy improvement and live reactive control in a timing-sensitive game.
+DashVMC shows that a lightweight and specialized world model can support both low-latency imagined transitions and live reactive control in a timing-sensitive game.
 Its selected PPO controller substantially outperforms a closely matched reconstructed BC comparator on the first two official levels and preserves that ranking on a late Level-1 copy and one custom held-out community level, while the optimized capture-to-action path sustains a 60-FPS live cadence on a consumer GPU despite 30-FPS training data.
 This policy ordering is consistent with imagined PPO optimization transferring to live deployment, while acknowledging that the original parent BC checkpoint is unavailable.
 A matched-prefix intervention shows that the model's visual future responds to the tested action change, and interactive examples show that those dynamics can produce open-ended, sometimes plausible level continuations, albeit without indefinite coherence guarantees.
