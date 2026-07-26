@@ -138,7 +138,7 @@
   \coordinate (gridrouteL) at ($(livectx.south)+(0,-0.58)$);
   \coordinate (gridrouteR) at (livectrl.south |- gridrouteL);
   \draw[stateflow] (livectx.south) -- (gridrouteL)
-    -- node[edgelabel, pos=0.68, below=2.5pt] {current grid $\mathbf z_t$} (gridrouteR)
+    -- node[edgelabel, pos=0.50, below=2.5pt] {current grid $\mathbf z_t$} (gridrouteR)
     -- (livectrl.south);
 
   \coordinate (actionrouteR) at ($(keys.south)+(0,-1.30)$);
