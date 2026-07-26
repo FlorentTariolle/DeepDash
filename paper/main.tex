@@ -169,7 +169,7 @@ In the reported interleaved sequence, this state is taken from the most recent a
 Death frames are oversampled \(5\times\) during training to prevent the overwhelmingly common \textsc{alive} class from admitting a trivial always-alive solution.
 Consequently, the \textsc{death} score from a two-class softmax over \textsc{alive}/\textsc{death} is used operationally rather than interpreted as a calibrated environment probability.
 
-We add TWISTER's action-conditional contrastive predictive-coding loss with weight 0.1~\citep{burchi2025twister}: for each future offset \(k\leq K\), an MLP predicts \(\mathbf h_{t+k}\) from \(\mathbf h_t\) and the intervening actions and is scored with in-batch InfoNCE.
+We add TWISTER's action-conditional contrastive predictive-coding loss with weight 0.1~\citep{burchi2025twister}: for each future offset \(k\leq K\), an MLP predicts \(\mathbf h_{t+k}\) from \(\mathbf h_t\) and the intervening actions and is scored with in-batch InfoNCE~\citep{oord2018cpc}.
 We also independently replace 5\% of context tokens uniformly and 5\% with adjacent FSQ codes.
 The token loss uses focal modulation~\citep{lin2017focal} and structured label smoothing (SLS), implemented as a fixed local FSQ-coordinate target.
 For target code \(i\) with lattice coordinate \(\mathbf c_i\),
@@ -195,7 +195,6 @@ This single-run development comparison supports the local choice; a later matche
 
 The \(\ctrlparams\)-parameter actor--critic embeds the current \(\gridsize\) token grid, processes it with two convolutions and max pooling, concatenates the resulting 256-dimensional feature with \(\mathbf h_t\), and uses zero-initialized heads to predict jump probability, value, and an eight-action auxiliary output covering the current and next seven actions.
 The controller is first fit to expert actions by BC, then optimized with PPO in autoregressive rollouts from the frozen world model.
-Counting tied weights once, the encoder, decoder, complete training-time dynamics model, and controller contain \(16{,}652{,}911\) parameters in total.
 
 Each PPO iteration starts from recorded four-frame contexts and generates 512 imagined episodes of at most 45 steps.
 The controller acts from the first imagined step, but the first four transitions form a grace period that is excluded from PPO updates.
@@ -206,7 +205,7 @@ Beyond it, they have usually left the crop, so the model can enter a physically 
 We stop at this boundary to learn consequences of observed obstacles without relying on invented challenges.
 Rollouts use the fixed argmax boundary of the two status logits, equivalently terminating when the operational death score exceeds 0.5; this threshold is not interpreted as a calibrated 50\% environment probability.
 Reward is \(+1\) per survived step and \(-0.25\) per jump, preventing an always-jump local optimum.
-We use Generalized Advantage Estimation (GAE) with \(\gamma=0.995\), \(\lambda=0.95\), PPO clip 0.2, and auxiliary-action loss weight 0.1.
+We use Generalized Advantage Estimation (GAE)~\citep{schulman2015gae} with \(\gamma=0.995\), \(\lambda=0.95\), PPO clip 0.2, and auxiliary-action loss weight 0.1.
 
 \subsection{Reactive deployment path}
 \label{sec:deployment-method}
@@ -228,11 +227,12 @@ This is deliberately reactive rather than an inference-time planning system: onl
 \paragraph{Data and training.}
 The unaugmented corpus contains 4,264 base gameplay episodes and 251,963 source frames, equivalent to approximately 2.33 hours at the nominal 30-FPS capture cadence.
 Each recorded frame is paired with the binary keyboard action applied at that timestep (jump or idle), yielding action-labelled trajectories for dynamics learning and BC.
-It includes deliberate failures and 36 expert trajectories or segments.
+It includes deliberate failures and 36 expert trajectories or segments, with the expert subset totaling less than 20 minutes of gameplay.
 The base episodes span primarily official Levels 1--7 and multiple community-created levels.
 Episodes containing mechanics outside the selected model's scope, including gravity inversion, were excluded to keep the learned dynamics tractable at this scale.
-The expert subset contains less than 20 minutes of gameplay.
-Episodes are split once, 90/10, by base identifier and source with seed 42; vertical shifts of \(\pm2\) and \(\pm4\) pixels inherit the base assignment and expand the tokenized corpus to 21,320 episodes.
+Episodes are split once, 90/10, by base identifier and source with seed 42, and all derived samples inherit the base episode's assignment.
+During FSQ training, each adjacent-frame pair receives a shared two-dimensional translation whose horizontal and vertical integer offsets are sampled independently and uniformly from \([-4,4]\) pixels, with border padding.
+For dynamics training, each episode is tokenized at vertical offsets \(\{-4,-2,0,2,4\}\), expanding the corpus to 21,320 episodes.
 The frozen encoder retokenizes the corpus before dynamics training.
 All stages use seed 42; primary training is sequential in BF16 on one A100, while live inference is measured on an RTX 2060.
 Table~\ref{tab:training} records the optimization and selection details that materially determine the frozen system.
@@ -285,7 +285,6 @@ Deployment measurements use Desktop Duplication via \texttt{dxcam} over a $1920\
 Latency is measured on 5,000 consecutive frames of the optimized deployment path, from capture through action update, with CUDA synchronization only at the end-to-end boundary.
 For the qualitative intervention, the world model is initialized from a fixed encoded four-frame prefix immediately before a spike.
 Greedy continuations differ only in the first conditioned action, jump or idle; all subsequent actions are idle.
-The display-only HUD is removed before re-encoding the context.
 
 \section{Results}
 \label{sec:results}
