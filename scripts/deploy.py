@@ -218,6 +218,15 @@ def main():
     parser.add_argument("--controller-checkpoint",
                         default="checkpoints/controller_ppo_best.pt")
     parser.add_argument("--fps", type=int, default=30)
+    parser.add_argument(
+        "--preprocessor",
+        choices=("hybrid", "exact-cuda"),
+        default="hybrid",
+        help=(
+            "hybrid keeps CUDA Sobel + CPU INTER_AREA; exact-cuda uses the "
+            "bit-identity-gated Triton Sobel/area path and keeps output on GPU"
+        ),
+    )
     parser.add_argument("--jump-threshold", type=float, default=0.5,
                         help="Jump probability threshold (higher = less jumping)")
     parser.add_argument(
@@ -363,10 +372,25 @@ def main():
     print("All models loaded.\n")
 
     # --- Screen capture setup ---
-    region = (0, 0, 1920, 1080)
     crop_x, crop_y, crop_size = 660, 48, 1032
+    # Capture only the model crop. This preserves the exact RGB pixels while
+    # avoiding a full-screen host copy followed by a NumPy slice.
+    region = (crop_x, crop_y, crop_x + crop_size, crop_y + crop_size)
     cam = dxcam.create()
     frame_interval = 1.0 / args.fps
+
+    exact_preprocessor = None
+    if args.preprocessor == "exact-cuda":
+        if device.type != "cuda":
+            raise RuntimeError("--preprocessor exact-cuda requires CUDA")
+        from benchmark_exact_cuda_resize import ExactCudaCandidate
+        exact_preprocessor = ExactCudaCandidate(crop_size, 64, device)
+        # Compile Triton and warm all fixed-shape kernels before measurement.
+        dummy_gray = np.zeros((crop_size, crop_size), dtype=np.uint8)
+        for _ in range(3):
+            exact_preprocessor.preprocess_gray_float(dummy_gray)
+        torch.cuda.synchronize()
+        print("Exact CUDA preprocessing enabled")
 
     # --- State ---
     active = False
@@ -380,22 +404,34 @@ def main():
 
 
     # Pinned memory buffer for CPU->GPU frame transfer (skips implicit staging copy)
-    if device.type == "cuda":
+    if device.type == "cuda" and exact_preprocessor is None:
         pin_buf = torch.zeros(1, 1, 64, 64, dtype=torch.float32, pin_memory=True)
     else:
         pin_buf = None
 
-    bench = StageBench(
-        gpu_stages=["fsq", "transformer", "controller"],
-        cpu_stages=[
+    if exact_preprocessor is None:
+        gpu_stages = ["fsq", "transformer", "controller"]
+        cpu_stages = [
             "capture", "crop", "grayscale", "sobel", "downscale",
             "end_to_end",
-        ],
-        device=device,
-        aggregate_stages=[
+        ]
+        aggregate_stages = [
             "capture", "crop", "grayscale", "sobel", "downscale",
             "fsq", "transformer", "controller",
-        ],
+        ]
+    else:
+        gpu_stages = ["preprocess", "fsq", "transformer", "controller"]
+        cpu_stages = ["capture", "crop", "grayscale", "end_to_end"]
+        aggregate_stages = [
+            "capture", "crop", "grayscale", "preprocess",
+            "fsq", "transformer", "controller",
+        ]
+
+    bench = StageBench(
+        gpu_stages=gpu_stages,
+        cpu_stages=cpu_stages,
+        device=device,
+        aggregate_stages=aggregate_stages,
     )
 
     print("Controls:")
@@ -444,32 +480,37 @@ def main():
 
         # --- Preprocess (per-stage; sobel block has implicit sync via .cpu()) ---
         bench.cpu_start("crop")
-        cropped = img[crop_y:crop_y + crop_size, crop_x:crop_x + crop_size]
+        cropped = img
         bench.cpu_end("crop")
 
         bench.cpu_start("grayscale")
         gray = cv2.cvtColor(cropped, cv2.COLOR_RGB2GRAY)
         bench.cpu_end("grayscale")
 
-        bench.cpu_start("sobel")
-        if device.type == "cuda":
-            _init_sobel_kernels(device)
-            gray_t = torch.from_numpy(gray).float().unsqueeze(0).unsqueeze(0).to(device)
-            padded = torch.nn.functional.pad(gray_t, (1, 1, 1, 1), mode='reflect')
-            sx = torch.nn.functional.conv2d(padded, _SOBEL_X)
-            sy = torch.nn.functional.conv2d(padded, _SOBEL_Y)
-            mag = torch.sqrt(sx ** 2 + sy ** 2)
-            edges = torch.clamp(torch.round(mag), 0, 255).to(torch.uint8).squeeze().cpu().numpy()
+        if exact_preprocessor is not None:
+            bench.gpu_start("preprocess")
+            frame_t = exact_preprocessor.preprocess_gray_float(gray)
+            bench.gpu_end("preprocess")
         else:
-            sobel_x = cv2.Sobel(gray, cv2.CV_16S, 1, 0, ksize=3)
-            sobel_y = cv2.Sobel(gray, cv2.CV_16S, 0, 1, ksize=3)
-            edges = cv2.convertScaleAbs(cv2.magnitude(
-                sobel_x.astype(np.float32), sobel_y.astype(np.float32)))
-        bench.cpu_end("sobel")
+            bench.cpu_start("sobel")
+            if device.type == "cuda":
+                _init_sobel_kernels(device)
+                gray_t = torch.from_numpy(gray).float().unsqueeze(0).unsqueeze(0).to(device)
+                padded = torch.nn.functional.pad(gray_t, (1, 1, 1, 1), mode='reflect')
+                sx = torch.nn.functional.conv2d(padded, _SOBEL_X)
+                sy = torch.nn.functional.conv2d(padded, _SOBEL_Y)
+                mag = torch.sqrt(sx ** 2 + sy ** 2)
+                edges = torch.clamp(torch.round(mag), 0, 255).to(torch.uint8).squeeze().cpu().numpy()
+            else:
+                sobel_x = cv2.Sobel(gray, cv2.CV_16S, 1, 0, ksize=3)
+                sobel_y = cv2.Sobel(gray, cv2.CV_16S, 0, 1, ksize=3)
+                edges = cv2.convertScaleAbs(cv2.magnitude(
+                    sobel_x.astype(np.float32), sobel_y.astype(np.float32)))
+            bench.cpu_end("sobel")
 
-        bench.cpu_start("downscale")
-        edge_frame = cv2.resize(edges, (64, 64), interpolation=cv2.INTER_AREA)
-        bench.cpu_end("downscale")
+            bench.cpu_start("downscale")
+            edge_frame = cv2.resize(edges, (64, 64), interpolation=cv2.INTER_AREA)
+            bench.cpu_end("downscale")
 
         if not active:
             bench.discard()
@@ -481,12 +522,17 @@ def main():
         # --- FSQ encode (stays on GPU) ---
         bench.gpu_start("fsq")
         with torch.no_grad():
-            if pin_buf is not None:
-                pin_buf[0, 0] = torch.from_numpy(edge_frame.astype(np.float32) * (1.0 / 255.0))
-                frame_t = pin_buf.to(device, non_blocking=True)
-            else:
-                frame_t = torch.from_numpy(edge_frame.astype(np.float32) * (1.0 / 255.0))
-                frame_t = frame_t.unsqueeze(0).unsqueeze(0).to(device)
+            if exact_preprocessor is None:
+                if pin_buf is not None:
+                    pin_buf[0, 0] = torch.from_numpy(
+                        edge_frame.astype(np.float32) * (1.0 / 255.0)
+                    )
+                    frame_t = pin_buf.to(device, non_blocking=True)
+                else:
+                    frame_t = torch.from_numpy(
+                        edge_frame.astype(np.float32) * (1.0 / 255.0)
+                    )
+                    frame_t = frame_t.unsqueeze(0).unsqueeze(0).to(device)
             tokens = vae.encode(frame_t).reshape(64)  # (64,) on GPU
         bench.gpu_end("fsq")
 
@@ -611,6 +657,11 @@ def main():
                 "cuda_version": torch.version.cuda,
             },
             "optimizations": {
+                "preprocessor": args.preprocessor,
+                "direct_model_crop_capture": True,
+                "preprocessed_observation_stays_on_gpu": (
+                    exact_preprocessor is not None
+                ),
                 "fsq_torch_compile": use_compile,
                 "transformer_cuda_graph": use_cuda_graph,
                 "gpu_resident_context": True,

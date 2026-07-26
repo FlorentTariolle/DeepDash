@@ -707,8 +707,13 @@ def main():
     else:
         print("No-op policy: model loading and screen capture are disabled.")
 
-    region = (0, 0, 1920, 1080)
     crop_x, crop_y, crop_size = 660, 48, 1032
+    if use_optimized and uses_controller:
+        region = (crop_x, crop_y, crop_x + crop_size, crop_y + crop_size)
+        preprocess_crop_x, preprocess_crop_y = 0, 0
+    else:
+        region = (0, 0, 1920, 1080)
+        preprocess_crop_x, preprocess_crop_y = crop_x, crop_y
     cam = dxcam.create() if uses_controller else None
     frame_interval = 1.0 / args.fps
 
@@ -749,8 +754,8 @@ def main():
             policy_class=policy_class,
             uses_controller=uses_controller,
             region=region,
-            crop_x=crop_x,
-            crop_y=crop_y,
+            crop_x=preprocess_crop_x,
+            crop_y=preprocess_crop_y,
             crop_size=crop_size,
             frame_interval=frame_interval,
             jump_threshold=args.jump_threshold,
