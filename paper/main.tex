@@ -215,7 +215,9 @@ We use Generalized Advantage Estimation (GAE)~\citep{schulman2015gae} with \(\ga
 \label{sec:deployment-method}
 
 The training corpus is captured at a nominal 30-FPS cadence, but the optimized live stack is deployed at 60 FPS.
-Captured images enter pinned host memory and are transferred asynchronously; token context remains in a GPU-resident ring buffer.
+Desktop Duplication captures only the $1032\times1032$ model crop; after CPU grayscale conversion, CUDA Sobel filtering and an ordered area-resize kernel reproduce the recorded-data preprocessing while keeping the normalized $64\times64$ observation on the GPU.
+Across 128 synthetic crops and 100 fresh live captures, this path produced zero output-byte mismatches against the original CPU pipeline.
+Token context remains in a GPU-resident ring buffer.
 At each step, the transformer runs context prefill only to obtain \(\mathbf h_t\); its masked next-grid prediction phase is not executed.
 The packaged live path retains the \(941{,}924\)-parameter encoder, \(14{,}582{,}016\)-parameter transformer context path, and \(\ctrlparams\)-parameter controller, for \(15{,}569{,}486\) parameters in total.
 It discards the \(941{,}921\)-parameter decoder, \(141{,}120\) CPC-head parameters, and 384-parameter mask embedding.
@@ -274,7 +276,7 @@ The two auxiliary live evaluations use the same 25-attempt paired protocol at th
 The first uses \emph{Stereo Madness Copy} (KRUTOYARBUS), a community copy of a later Level-1 segment, as a late-stage/ship-reachable proxy because official Level 1--3 attempts die before ship.
 The second uses one custom community level, \emph{Stereo INSANE Nerfed} (XXcapta1n), as a single held-out layout within the supported mechanic distribution (no gravity inversion or other out-of-scope mechanics).
 This level was first accessed for this evaluation after the corpus and checkpoints were frozen and is therefore absent from the training data.
-In addition, a separate cadence-transfer probe reruns the historical frozen V7 PPO controller for 20 scored attempts on Stereo Madness Copy at 60 FPS on the optimized deploy-equivalent inference path (FSQ \texttt{torch.compile}, transformer CUDA graph, GPU-resident context, no per-stage CUDA synchronization).
+In addition, a separate cadence-transfer probe reruns the historical frozen V7 PPO controller for 25 scored attempts on Stereo Madness Copy at 60 FPS on the optimized deploy-equivalent inference path (direct crop capture, exact CUDA preprocessing, FSQ \texttt{torch.compile}, transformer CUDA graph, GPU-resident context, no per-stage CUDA synchronization).
 Every paired evaluation first waits until the evaluator observes an in-level, alive state, then excludes one synchronization episode and retains the next 25 valid attempts.
 The exclusion prevents manual game resume or startup waiting time from inflating apparent survival.
 Game memory is used only to delimit alive/dead episodes, never as policy input.
@@ -285,10 +287,10 @@ These intervals quantify deployment variability from capture and action timing, 
 Replication evidence is instead the three paired seed-level differences; attempts are never pooled across seeds and presented as independent training runs.
 All three controller pairs share one frozen tokenizer and world-model seed, so this is controller-seed replication rather than end-to-end training uncertainty.
 The earlier comparison against a separately reconstructed BC checkpoint is superseded and excluded from the reported control results.
-Deployment measurements use Desktop Duplication via \texttt{dxcam} over a $1920\times1080$ region, crop $(x,y,s)=(660,48,1032)$, Sobel preprocessing to $64\times64$, and \texttt{keyboard} space dispatch on PyTorch 2.11.0+cu126.
+Deployment measurements use Desktop Duplication via \texttt{dxcam} directly over region $(x,y,s)=(660,48,1032)$, exact Sobel preprocessing to $64\times64$, and \texttt{keyboard} space dispatch on PyTorch 2.11.0+cu126.
 
 \paragraph{Latency and continuation protocols.}
-Latency is measured on 5,000 consecutive frames of the optimized deployment path, from capture through action update, with CUDA synchronization only at the end-to-end boundary.
+Latency is measured on 5,000 consecutive frames of the final 60-FPS optimized deployment path, from capture through action update, with CUDA synchronization only at the end-to-end boundary.
 For the qualitative intervention, the world model is initialized from a fixed encoded four-frame prefix immediately before a spike.
 Greedy continuations differ only in the first conditioned action, jump or idle; all subsequent actions are idle.
 
@@ -345,7 +347,7 @@ All six auxiliary seed differences are positive.
 On Stereo Madness Copy, seed 43's attempt-level interval includes zero while seeds 44 and 45 exclude it; the mean paired improvement across seeds is $175.4\pm94.2$ frames.
 On Stereo INSANE Nerfed, all three intervals exclude zero and the mean paired improvement is $198.3\pm37.6$ frames.
 We report the custom-level result as held-out transfer within the supported mechanic distribution, not as novel-mechanic or broad out-of-distribution generalization; the Level-1 copy is not counted as held-out content.
-The 60-FPS cadence probe on Stereo Madness Copy yields similar observed real-time survival: mean recorded episode wall time is 17.03\,s at 60 FPS versus 17.79\,s at 30 FPS, with a 95\% bootstrap interval of $[-1.80,0.31]$\,s for the mean difference (60 FPS minus 30 FPS).
+The 60-FPS cadence probe on Stereo Madness Copy yields similar observed real-time survival: mean recorded episode wall time is 17.72\,s at 60 FPS versus 17.79\,s at 30 FPS, with a 95\% bootstrap interval of $[-1.04,0.89]$\,s for the mean difference (60 FPS minus 30 FPS).
 Both conditions die in the same recurring 15--21\,s band; frame counts roughly double under the higher cadence, as expected, so the cross-cadence comparison uses recorded time rather than frames.
 This supports practical 60-FPS deployment from 30-FPS training data on this layout, without claiming broad frame-rate adaptation as a separate contribution.
 Separate intervention runs suggest that skipping a few recurring blocking obstacles lets the policy reach later sections, but those assisted runs are not part of the controlled statistics.
@@ -377,32 +379,33 @@ Separate intervention runs suggest that skipping a few recurring blocking obstac
 \subsection{Capture-to-action latency}
 \label{sec:deployment-results}
 
-In a separate 5,000-frame optimized-path profile collected against the 30-FPS reference cadence, end-to-end latency averages 16.289\,ms (median 16.308\,ms, p95 18.722\,ms); only 2 frames exceed 33.3\,ms, and the reciprocal mean is about 61 FPS of compute-equivalent throughput.
-More directly, the configured 60-FPS Stereo Madness Copy probe records 300 full-loop measurements with mean 14.420\,ms, median 14.549\,ms, p95 16.121\,ms, and maximum 17.038\,ms.
-Only 4/300 measurements exceed the 16.667\,ms frame period, and even the slowest corresponds to 58.69 FPS of compute-equivalent throughput.
+On 5,000 consecutive frames of the final 60-FPS optimized path, end-to-end capture-to-action latency averages 12.018\,ms (95\% bootstrap interval for the mean $[11.982,12.056]$\,ms), with median 12.083\,ms, p95 14.069\,ms, and maximum 24.059\,ms.
+Only 11/5,000 measurements exceed the 16.667-ms frame period.
+The reciprocal mean is 83.2 FPS of compute-equivalent throughput, while the p95 latency corresponds to 71.1 FPS; these are throughput summaries rather than claims of evaluated control at those cadences.
+A matched 300-frame before/after profile isolates the preprocessing change: replacing the hybrid CUDA-Sobel/CPU-resize path with the exact CUDA path reduces mean full-loop latency from 14.395 to 11.907\,ms (17.3\%) and p95 from 16.424 to 14.043\,ms (14.5\%).
 
 \begin{table}[ht!]
   \centering
   \small
-  \caption{Separate 5,000-frame optimized-path profile on an RTX 2060, collected against the 33.3\,ms (30-FPS) reference cadence. Component values are means in milliseconds; end-to-end is measured independently and includes dispatch overhead.}
+  \caption{End-to-end latency for 5,000 consecutive frames of the final optimized path on an RTX 2060 at the 60-FPS deployment cadence. Deliberate cadence sleep is excluded.}
   \label{tab:latency}
-  \begin{tabular}{lrlr}
+  \begin{tabular}{lr}
     \toprule
-    Component & ms & Component & ms \\
+    Statistic & Value \\
     \midrule
-    Screen capture & 2.2 & Crop & 0.5 \\
-    Grayscale & 0.5 & Sobel & 2.5 \\
-    Downscale & 2.2 & FSQ encoder & 2.1 \\
-    Transformer & 4.9 & Controller & 0.5 \\
-    Component sum & 15.3 & \textbf{End-to-end mean} & \textbf{16.3} \\
-    p95 & 18.7 & Frames over 33.3\,ms & 2/5,000 \\
+    Mean [95\% bootstrap CI] & \textbf{12.018 [11.982, 12.056] ms} \\
+    Median & 12.083 ms \\
+    p95 & 14.069 ms \\
+    Maximum & 24.059 ms \\
+    Frames over 16.667 ms & 11/5,000 \\
+    Reciprocal-mean throughput & 83.2 FPS \\
     \bottomrule
   \end{tabular}
 \end{table}
 
 These timings differ from diagnostic evaluator logs that move context through CPU/NumPy and synchronize after each GPU stage.
 Official-level and 30-FPS auxiliary survival use that diagnostic path; the 60-FPS cadence probe and deployment latency use the optimized path.
-Both paths apply the same preprocessing and frozen model/controller weights; the distinction is execution optimization rather than policy definition.
+The two preprocessing implementations produced the same observation bytes in the identity gate and use the same frozen model/controller weights; the distinction is execution optimization rather than policy definition.
 
 \subsection{Batch-1 imagined-transition latency}
 \label{sec:transition-latency}
@@ -487,7 +490,7 @@ Three controller seeds establish repeatability of the observed direction within 
 Attempt-level bootstrap intervals quantify deployment variability for each frozen pair, not uncertainty over controller seeds or end-to-end systems.
 The auxiliary custom-level evaluation uses a single held-out community layout; it supports within-mechanic transfer rather than broad generalization.
 The Level-1 copy evaluates later-stage survival but does not isolate ship mode with explicit mode labels.
-The 60-FPS cadence comparison is a single-level, single-policy probe with $n=20$ and also changes from the diagnostic to the optimized execution path; it is an operational deployment probe, not an isolated or broad study of frame-rate adaptation.
+The 60-FPS cadence comparison is a single-level, single-policy probe with $n=25$ and also changes from the diagnostic to the optimized execution path; it is an operational deployment probe, not an isolated or broad study of frame-rate adaptation.
 Each reported PPO controller is compared with the exact retained BC checkpoint that initialized it, but the live suite has only 25 valid attempts per frozen policy-level.
 Because no other world-model agent is available under the same captured-pixel, non-paused Geometry-Dash protocol, the results are a controlled within-system comparison rather than a state-of-the-art benchmark.
 IRIS and DIAMOND were not retrained on the DashVMC corpus, and their released recurrent policies can infer real-environment actions without generating the transitions timed in Table~\ref{tab:transition-latency}.
@@ -512,7 +515,7 @@ The results therefore demonstrate viability under a constrained data budget, not
 Under matched reconstruction constraints, controlled iFSQ image-generation experiments find that autoregressive models converge faster early in training, whereas diffusion models reach a higher generation-quality ceiling with sufficient compute~\citep{lin2026ifsq}.
 These findings motivate---but do not validate---our preference for faster early convergence under a small data budget; they do not establish that the trade-off transfers to Sobel-preprocessed temporal prediction or downstream control, nor that autoregression is universally preferable.
 
-The reported 14.4-ms 60-FPS probe and separate 16.3-ms profile cover this hardware and 64-pixel edge observations; RGB input, stochastic environments, larger action spaces, or weaker devices require new accuracy--latency measurements.
+The reported 12.0-ms profile covers this hardware and 64-pixel edge observations; RGB input, stochastic environments, larger action spaces, or weaker devices require new accuracy--latency measurements.
 
 \section{Conclusion}
 \label{sec:conclusion}

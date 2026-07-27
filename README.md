@@ -55,7 +55,7 @@ python scripts/train_controller_ppo.py --config configs/deepdash/v7-phase0.yaml 
 
 **Evaluate the end-to-end pipeline on the real game (live):**
 
-Official-level comparisons use the diagnostic path at 30 FPS (default). For 60 FPS optimized deployment-equivalent eval, pass `--inference-path optimized --fps 60`.
+Official-level comparisons use the diagnostic path at 30 FPS (default). For the reported 60 FPS optimized deployment-equivalent eval, pass `--inference-path optimized --preprocessor exact-cuda --fps 60`.
 
 ```bash
 python scripts/eval_real_game.py --config configs/deepdash/v7-phase0.yaml --vae-checkpoint checkpoints_v7/fsq_best.pt --transformer-checkpoint checkpoints_v7/transformer_best.pt --controller-checkpoint checkpoints_v7/controller_ppo_best.pt --n-runs 100 --level-name "Level 1" --output analysis/2026-07-20_v7_deploy/eval_100.json
@@ -69,7 +69,7 @@ python scripts/play_dream.py --config configs/deepdash/v7-phase0.yaml --vae-chec
 
 **Deploy to the live game (60 FPS optimized path):**
 ```bash
-python scripts/deploy.py --config configs/deepdash/v7-phase0.yaml --vae-checkpoint checkpoints_v7/fsq_best.pt --transformer-checkpoint checkpoints_v7/transformer_best.pt --controller-checkpoint checkpoints_v7/controller_ppo_best.pt --fps 60
+python scripts/deploy.py --config configs/deepdash/v7-phase0.yaml --vae-checkpoint checkpoints_v7/fsq_best.pt --transformer-checkpoint checkpoints_v7/transformer_best.pt --controller-checkpoint checkpoints_v7/controller_ppo_best.pt --preprocessor exact-cuda --fps 60
 ```
 ## Contact
 
