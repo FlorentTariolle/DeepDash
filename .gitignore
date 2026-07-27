@@ -8,6 +8,8 @@
 !analysis/2026-07-23_fps60_stereo_madness_copy/*.json
 !analysis/2026-07-25_v7_seed43_live25/*.json
 !analysis/2026-07-26_v7_seed44_live25/*.json
+!analysis/2026-07-27_v7_seed45_live25/*.json
+!analysis/2026-07-27_v7_controller_replication/*.json
 !analysis/2026-07-21_bc_reconstruction/controller_bc_args.json
 __pycache__/
 .venv/
