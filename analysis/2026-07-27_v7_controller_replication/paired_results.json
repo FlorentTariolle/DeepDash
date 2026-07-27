@@ -1,0 +1,384 @@
+{
+  "experiment": "v7_controller_replication",
+  "issue": 32,
+  "controller_seeds": [
+    43,
+    44,
+    45
+  ],
+  "n_valid_attempts_per_policy_level": 25,
+  "total_scored_attempts": 750,
+  "bootstrap_resamples": 50000,
+  "bootstrap_base_seed": 20260727,
+  "bootstrap_interpretation": "Attempt-level deployment variability for each frozen PPO/parent-BC pair; not uncertainty across controller-training seeds.",
+  "fsq_sha256": "8a4c488e0310855bcf411787894f0206f3381387bcd9fc179d6a6610ef32e5f7",
+  "transformer_sha256": "62db7d8f0dca5cb75684548c2e93a74c4f6dda830250f171e38fe97161dcd770",
+  "training": [
+    {
+      "seed": 43,
+      "code_commit": "f5c4d4ea5fcf8d44ef14d09b620e5e9d5f4db616",
+      "bc_selected_epoch": 10,
+      "bc_val_loss": 0.558784,
+      "bc_val_accuracy": 0.7897,
+      "bc_sha256": "c72c9f240054418187e1b6a3431357f19a83e0f2b627d465cc6f7e09e69adf9e",
+      "ppo_selected_iteration": 12420,
+      "ppo_eval_survival": 30.13,
+      "ppo_iterations_executed": 15000,
+      "ppo_sha256": "f276cabfe37216906316bbc7037876cf1264f01edded2ba6c89be304b4c6f15b",
+      "total_controller_training_wall_seconds": 62678
+    },
+    {
+      "seed": 44,
+      "code_commit": "64508c82938f7add5974914104c4b02db9a8b731",
+      "bc_selected_epoch": 10,
+      "bc_val_loss": 0.560073,
+      "bc_val_accuracy": 0.7915,
+      "bc_sha256": "d817044a9ae8e4652f02e45fe33ade9670bd6e204c477760e6bb9ecc5903ec4d",
+      "ppo_selected_iteration": 5090,
+      "ppo_eval_survival": 29.95,
+      "ppo_iterations_executed": 15000,
+      "ppo_sha256": "dd109321c3500bdb28f142dc5056af14cd41eeba4459813f74d1d686da1cb011",
+      "total_controller_training_wall_seconds": 61418
+    },
+    {
+      "seed": 45,
+      "code_commit": "64508c82938f7add5974914104c4b02db9a8b731",
+      "bc_selected_epoch": 11,
+      "bc_val_loss": 0.56736,
+      "bc_val_accuracy": 0.7915,
+      "bc_sha256": "7fedbabe31e812d47ddad04ac24dd05e068126a80f4c84bcc80a11d077ceafbf",
+      "ppo_selected_iteration": 12280,
+      "ppo_eval_survival": 29.96,
+      "ppo_iterations_executed": 15000,
+      "ppo_sha256": "442243fc3fc9c78b594f0fc4c4205aa691b082027895a3a8ed68d02f7000ddb2",
+      "total_controller_training_wall_seconds": 61435
+    }
+  ],
+  "total_ppo_iterations_executed": 45000,
+  "total_controller_training_wall_seconds": 185531,
+  "total_controller_training_wall_hours": 51.53638888888889,
+  "paired_live_results": [
+    {
+      "seed": 43,
+      "level": "Stereo Madness",
+      "level_slug": "stereo_madness",
+      "group": "official",
+      "n_per_policy": 25,
+      "bc_mean_frames": 120.16,
+      "bc_sample_sd_frames": 91.78492977244866,
+      "ppo_mean_frames": 280.08,
+      "ppo_sample_sd_frames": 23.34152237251604,
+      "ppo_minus_bc_mean_frames": 159.92,
+      "ppo_minus_bc_ci95_frames": [
+        122.67899999999999,
+        195.44
+      ],
+      "bootstrap_seed": 20261157
+    },
+    {
+      "seed": 43,
+      "level": "Back on Track",
+      "level_slug": "back_on_track",
+      "group": "official",
+      "n_per_policy": 25,
+      "bc_mean_frames": 123.48,
+      "bc_sample_sd_frames": 81.47193790911486,
+      "ppo_mean_frames": 260.0,
+      "ppo_sample_sd_frames": 55.46921067883816,
+      "ppo_minus_bc_mean_frames": 136.51999999999998,
+      "ppo_minus_bc_ci95_frames": [
+        98.80000000000001,
+        174.39999999999998
+      ],
+      "bootstrap_seed": 20261158
+    },
+    {
+      "seed": 43,
+      "level": "Polargeist",
+      "level_slug": "polargeist",
+      "group": "official",
+      "n_per_policy": 25,
+      "bc_mean_frames": 52.44,
+      "bc_sample_sd_frames": 16.671032761449823,
+      "ppo_mean_frames": 65.24,
+      "ppo_sample_sd_frames": 33.36949704945121,
+      "ppo_minus_bc_mean_frames": 12.799999999999997,
+      "ppo_minus_bc_ci95_frames": [
+        -0.1600000000000037,
+        28.560000000000002
+      ],
+      "bootstrap_seed": 20261159
+    },
+    {
+      "seed": 43,
+      "level": "Stereo Madness Copy",
+      "level_slug": "stereo_madness_copy",
+      "group": "auxiliary",
+      "n_per_policy": 25,
+      "bc_mean_frames": 366.84,
+      "bc_sample_sd_frames": 172.83823843891335,
+      "ppo_mean_frames": 435.64,
+      "ppo_sample_sd_frames": 196.1306707274515,
+      "ppo_minus_bc_mean_frames": 68.80000000000001,
+      "ppo_minus_bc_ci95_frames": [
+        -33.28099999999997,
+        166.12100000000007
+      ],
+      "bootstrap_seed": 20261160
+    },
+    {
+      "seed": 43,
+      "level": "Stereo INSANE Nerfed",
+      "level_slug": "stereo_insane_nerfed",
+      "group": "auxiliary",
+      "n_per_policy": 25,
+      "bc_mean_frames": 104.84,
+      "bc_sample_sd_frames": 72.07442912249346,
+      "ppo_mean_frames": 290.36,
+      "ppo_sample_sd_frames": 48.62859241228354,
+      "ppo_minus_bc_mean_frames": 185.52,
+      "ppo_minus_bc_ci95_frames": [
+        151.07999999999998,
+        217.64
+      ],
+      "bootstrap_seed": 20261161
+    },
+    {
+      "seed": 44,
+      "level": "Stereo Madness",
+      "level_slug": "stereo_madness",
+      "group": "official",
+      "n_per_policy": 25,
+      "bc_mean_frames": 130.56,
+      "bc_sample_sd_frames": 76.04334290389922,
+      "ppo_mean_frames": 280.4,
+      "ppo_sample_sd_frames": 33.544746235439014,
+      "ppo_minus_bc_mean_frames": 149.83999999999997,
+      "ppo_minus_bc_ci95_frames": [
+        116.75999999999999,
+        180.60000000000002
+      ],
+      "bootstrap_seed": 20261167
+    },
+    {
+      "seed": 44,
+      "level": "Back on Track",
+      "level_slug": "back_on_track",
+      "group": "official",
+      "n_per_policy": 25,
+      "bc_mean_frames": 111.08,
+      "bc_sample_sd_frames": 60.262564388405075,
+      "ppo_mean_frames": 195.92,
+      "ppo_sample_sd_frames": 126.54443224944087,
+      "ppo_minus_bc_mean_frames": 84.83999999999999,
+      "ppo_minus_bc_ci95_frames": [
+        31.920000000000016,
+        139.59999999999997
+      ],
+      "bootstrap_seed": 20261168
+    },
+    {
+      "seed": 44,
+      "level": "Polargeist",
+      "level_slug": "polargeist",
+      "group": "official",
+      "n_per_policy": 25,
+      "bc_mean_frames": 48.96,
+      "bc_sample_sd_frames": 16.468353489850365,
+      "ppo_mean_frames": 68.32,
+      "ppo_sample_sd_frames": 44.06124525400222,
+      "ppo_minus_bc_mean_frames": 19.359999999999992,
+      "ppo_minus_bc_ci95_frames": [
+        2.960000000000001,
+        39.00000000000001
+      ],
+      "bootstrap_seed": 20261169
+    },
+    {
+      "seed": 44,
+      "level": "Stereo Madness Copy",
+      "level_slug": "stereo_madness_copy",
+      "group": "auxiliary",
+      "n_per_policy": 25,
+      "bc_mean_frames": 285.68,
+      "bc_sample_sd_frames": 153.4621886111798,
+      "ppo_mean_frames": 495.8,
+      "ppo_sample_sd_frames": 137.45453793891272,
+      "ppo_minus_bc_mean_frames": 210.12,
+      "ppo_minus_bc_ci95_frames": [
+        127.88,
+        285.52
+      ],
+      "bootstrap_seed": 20261170
+    },
+    {
+      "seed": 44,
+      "level": "Stereo INSANE Nerfed",
+      "level_slug": "stereo_insane_nerfed",
+      "group": "auxiliary",
+      "n_per_policy": 25,
+      "bc_mean_frames": 102.12,
+      "bc_sample_sd_frames": 63.96113403205627,
+      "ppo_mean_frames": 342.76,
+      "ppo_sample_sd_frames": 80.80649726352455,
+      "ppo_minus_bc_mean_frames": 240.64,
+      "ppo_minus_bc_ci95_frames": [
+        200.76000000000002,
+        280.15999999999997
+      ],
+      "bootstrap_seed": 20261171
+    },
+    {
+      "seed": 45,
+      "level": "Stereo Madness",
+      "level_slug": "stereo_madness",
+      "group": "official",
+      "n_per_policy": 25,
+      "bc_mean_frames": 156.04,
+      "bc_sample_sd_frames": 100.16339983580164,
+      "ppo_mean_frames": 308.84,
+      "ppo_sample_sd_frames": 68.55392038388469,
+      "ppo_minus_bc_mean_frames": 152.79999999999998,
+      "ppo_minus_bc_ci95_frames": [
+        106.72,
+        199.80100000000007
+      ],
+      "bootstrap_seed": 20261177
+    },
+    {
+      "seed": 45,
+      "level": "Back on Track",
+      "level_slug": "back_on_track",
+      "group": "official",
+      "n_per_policy": 25,
+      "bc_mean_frames": 120.24,
+      "bc_sample_sd_frames": 69.62714987704149,
+      "ppo_mean_frames": 209.4,
+      "ppo_sample_sd_frames": 129.95512045830796,
+      "ppo_minus_bc_mean_frames": 89.16000000000001,
+      "ppo_minus_bc_ci95_frames": [
+        34.56,
+        147.20100000000005
+      ],
+      "bootstrap_seed": 20261178
+    },
+    {
+      "seed": 45,
+      "level": "Polargeist",
+      "level_slug": "polargeist",
+      "group": "official",
+      "n_per_policy": 25,
+      "bc_mean_frames": 46.24,
+      "bc_sample_sd_frames": 9.170968687476076,
+      "ppo_mean_frames": 63.08,
+      "ppo_sample_sd_frames": 32.85691200747062,
+      "ppo_minus_bc_mean_frames": 16.839999999999996,
+      "ppo_minus_bc_ci95_frames": [
+        5.719999999999999,
+        31.52100000000006
+      ],
+      "bootstrap_seed": 20261179
+    },
+    {
+      "seed": 45,
+      "level": "Stereo Madness Copy",
+      "level_slug": "stereo_madness_copy",
+      "group": "auxiliary",
+      "n_per_policy": 25,
+      "bc_mean_frames": 299.44,
+      "bc_sample_sd_frames": 175.21488711484156,
+      "ppo_mean_frames": 546.8,
+      "ppo_sample_sd_frames": 94.0744386111339,
+      "ppo_minus_bc_mean_frames": 247.35999999999996,
+      "ppo_minus_bc_ci95_frames": [
+        167.64000000000004,
+        320.7199999999999
+      ],
+      "bootstrap_seed": 20261180
+    },
+    {
+      "seed": 45,
+      "level": "Stereo INSANE Nerfed",
+      "level_slug": "stereo_insane_nerfed",
+      "group": "auxiliary",
+      "n_per_policy": 25,
+      "bc_mean_frames": 97.84,
+      "bc_sample_sd_frames": 57.85447260151975,
+      "ppo_mean_frames": 266.68,
+      "ppo_sample_sd_frames": 128.8919832004044,
+      "ppo_minus_bc_mean_frames": 168.84,
+      "ppo_minus_bc_ci95_frames": [
+        115.399,
+        223.88
+      ],
+      "bootstrap_seed": 20261181
+    }
+  ],
+  "replication_summary": [
+    {
+      "level": "Stereo Madness",
+      "group": "official",
+      "seed_differences_frames": [
+        159.92,
+        149.83999999999997,
+        152.79999999999998
+      ],
+      "mean_seed_difference_frames": 154.18666666666664,
+      "sample_sd_seed_difference_frames": 5.1810938356039635,
+      "positive_seeds": 3,
+      "n_seeds": 3
+    },
+    {
+      "level": "Back on Track",
+      "group": "official",
+      "seed_differences_frames": [
+        136.51999999999998,
+        84.83999999999999,
+        89.16000000000001
+      ],
+      "mean_seed_difference_frames": 103.50666666666666,
+      "sample_sd_seed_difference_frames": 28.67186309491123,
+      "positive_seeds": 3,
+      "n_seeds": 3
+    },
+    {
+      "level": "Polargeist",
+      "group": "official",
+      "seed_differences_frames": [
+        12.799999999999997,
+        19.359999999999992,
+        16.839999999999996
+      ],
+      "mean_seed_difference_frames": 16.33333333333333,
+      "sample_sd_seed_difference_frames": 3.3092194447230785,
+      "positive_seeds": 3,
+      "n_seeds": 3
+    },
+    {
+      "level": "Stereo Madness Copy",
+      "group": "auxiliary",
+      "seed_differences_frames": [
+        68.80000000000001,
+        210.12,
+        247.35999999999996
+      ],
+      "mean_seed_difference_frames": 175.42666666666665,
+      "sample_sd_seed_difference_frames": 94.19999433828714,
+      "positive_seeds": 3,
+      "n_seeds": 3
+    },
+    {
+      "level": "Stereo INSANE Nerfed",
+      "group": "auxiliary",
+      "seed_differences_frames": [
+        185.52,
+        240.64,
+        168.84
+      ],
+      "mean_seed_difference_frames": 198.33333333333334,
+      "sample_sd_seed_difference_frames": 37.5758716909313,
+      "positive_seeds": 3,
+      "n_seeds": 3
+    }
+  ]
+}

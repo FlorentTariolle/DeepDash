@@ -8,7 +8,7 @@
 
 \item {\bf Limitations}
     \item[] Answer: \answerYes{}
-    \item[] Justification: Section~\ref{sec:limitations} discusses the auxiliary IRIS/Pong SLS diagnostic, Geometry Dash's single-environment and binary-action scope, the single training seed, the BC-checkpoint reconstruction, and hardware transfer.
+    \item[] Justification: Section~\ref{sec:limitations} discusses the auxiliary IRIS/Pong SLS diagnostic, Geometry Dash's single-environment and binary-action scope, the single frozen tokenizer/world-model seed, the three conditional controller seeds, finite live-attempt counts, and hardware transfer.
 
 \item {\bf Theory assumptions and proofs}
     \item[] Answer: \answerNA{}
@@ -16,23 +16,23 @@
 
 \item {\bf Experimental result reproducibility}
     \item[] Answer: \answerYes{}
-    \item[] Justification: Section~\ref{sec:setup} provides the data split, training details, and controller hyperparameters. Code, checkpoints, an immutable reported-code snapshot, and a sequential reproduction recipe are publicly available; the identifying repository URL is omitted from this double-blind manuscript.
+    \item[] Justification: Section~\ref{sec:setup} provides the data split, training details, controller hyperparameters, seeds, checkpoint-selection rules, and live protocol. Code, frozen tokenizer/world-model checkpoints, raw per-attempt results, per-seed controller hashes and provenance, an immutable reported-code snapshot, and a sequential reproduction recipe are available; the identifying repository URL is omitted from this double-blind manuscript.
 
 \item {\bf Open access to data and code}
     \item[] Answer: \answerYes{}
-    \item[] Justification: Code and the dataset are publicly available, and the collection procedure is described in Section~\ref{sec:setup}. The identifying repository URL is withheld during double-blind review and will be restored in the camera-ready version.
+    \item[] Justification: Code, the dataset, frozen base-model checkpoints, raw live results, and derived paired tables are publicly available, and the collection procedure is described in Section~\ref{sec:setup}. The identifying repository URL is withheld during double-blind review and will be restored in the camera-ready version.
 
 \item {\bf Experimental setting/details}
     \item[] Answer: \answerYes{}
-    \item[] Justification: Section~\ref{sec:setup} specifies the material model and optimization hyperparameters, schedules, the 4,997-iteration PPO budget and selected iteration 3,250, logged stage times, and data augmentation.
+    \item[] Justification: Section~\ref{sec:setup} specifies the material model and optimization hyperparameters, schedules, three 15,000-iteration PPO budgets and selected iterations, logged stage times, controller seeds, and data augmentation.
 
 \item {\bf Experiment statistical significance}
     \item[] Answer: \answerNo{}
-    \item[] Justification: The draft reports 99 scored PPO attempts, 100 BC attempts from the documented checkpoint reconstruction, and 10 no-op attempts per official live level with policy-mean and PPO-minus-BC bootstrap confidence intervals, plus smaller auxiliary live suites (20/20/10) on a late Level-1 copy and one custom held-out community level, and an auxiliary five-seed IRIS/Pong diagnostic; the Geometry Dash models themselves remain frozen single-seed systems.
+    \item[] Justification: The draft reports three exact parent-BC/PPO controller pairs with 25 scored attempts per frozen policy-level on three official and two auxiliary layouts, sample standard deviations, and attempt-level PPO-minus-BC bootstrap intervals. The three paired controller-seed differences are reported separately rather than pooling attempts. This is conditional replication under one frozen tokenizer/world-model seed, not full end-to-end training uncertainty; the auxiliary IRIS/Pong diagnostic has five seeds per condition.
 
 \item {\bf Experiments compute resources}
     \item[] Answer: \answerYes{}
-    \item[] Justification: Models were trained sequentially on a single NVIDIA A100 GPU; live deployment and latency evaluation used an RTX 2060 (PyTorch 2.11.0+cu126). Section~\ref{sec:setup} reports the relevant budgets and protocols.
+    \item[] Justification: The tokenizer and world model were trained sequentially on a single NVIDIA A100 GPU; the three controller replications ran sequentially on a single H200 at a time; live deployment and latency evaluation used an RTX 2060 (PyTorch 2.11.0+cu126). Section~\ref{sec:setup} reports the relevant budgets and protocols.
 
 \item {\bf Code of ethics}
     \item[] Answer: \answerYes{}
@@ -52,7 +52,7 @@
 
 \item {\bf New assets}
     \item[] Answer: \answerYes{}
-    \item[] Justification: Code and model checkpoints are released under an open-source license with documentation.
+    \item[] Justification: Code, the collected dataset, frozen base-model checkpoints, raw evaluation artifacts, and controller-checkpoint hashes are released with documentation under the repository's open-source terms.
 
 \item {\bf Crowdsourcing and research with human subjects}
     \item[] Answer: \answerNA{}

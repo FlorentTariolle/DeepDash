@@ -121,7 +121,8 @@
           entirely in autoregressive latent rollouts. Training uses approximately two hours of
           captured gameplay, including less than 20 minutes of expert segments; all learning is
           offline, without any real-environment interaction by the agent. The optimized agent controls live Geometry Dash at
-          60 FPS on an RTX 2060.
+          60 FPS on an RTX 2060. Three controller seeds retain the exact BC checkpoint used to initialize
+          each PPO run, enabling paired live comparisons under one frozen tokenizer and world model.
         </p>
       </div>
 
@@ -334,78 +335,77 @@
       <p class="eyebrow">Results</p>
       <h2 class="section-title">Controlled live evaluation</h2>
       <p class="results-lead">
-        Frozen policies evaluated at 30 FPS; entries report frames survived as mean
-        &plusmn; sample SD, with bracketed 95% bootstrap CIs where shown. Difference
-        intervals resample attempts within each frozen policy and describe deployment
-        variability, not uncertainty across training seeds.
+        Three retained parent-BC/PPO controller pairs evaluated at 30 FPS with 25 valid
+        attempts per frozen policy-level. BC and PPO entries report mean &plusmn; sample SD;
+        difference rows report PPO &minus; parent BC with 95% attempt-level bootstrap intervals.
+        These intervals describe deployment variability. The three separate seed differences,
+        not pooled attempts, are the replication evidence under one frozen tokenizer and world model.
       </p>
 
       <div class="table-wrap">
         <table class="results-table" aria-label="Controlled live Geometry Dash evaluation">
           <thead>
             <tr>
+              <th>Seed</th>
               <th>Policy</th>
-              <th>Scored n/level</th>
-              <th>Stereo Madness mean &plusmn; SD [95% CI]</th>
-              <th>Back on Track mean &plusmn; SD [95% CI]</th>
-              <th>Polargeist mean &plusmn; SD [95% CI]</th>
+              <th>Stereo Madness</th>
+              <th>Back on Track</th>
+              <th>Polargeist</th>
             </tr>
           </thead>
           <tbody>
-            <tr>
-              <td>No-op</td>
-              <td>10</td>
-              <td>46.2 &plusmn; 0.8 [45.7, 46.6]</td>
-              <td>63.4 &plusmn; 0.7 [63.0, 63.8]</td>
-              <td>41.5 &plusmn; 0.7 [41.1, 41.9]</td>
-            </tr>
-            <tr>
-              <td>BC</td>
-              <td>100</td>
-              <td>130.4 &plusmn; 91.6 [112.6, 148.3]</td>
-              <td>119.7 &plusmn; 71.9 [105.8, 133.8]</td>
-              <td>45.2 &plusmn; 9.1 [43.5, 47.0]</td>
-            </tr>
-            <tr>
-              <td>PPO</td>
-              <td>99</td>
-              <td><strong>279.4 &plusmn; 48.2 [270.2, 289.0]</strong></td>
-              <td><strong>262.9 &plusmn; 121.8 [239.4, 287.2]</strong></td>
-              <td><strong>63.8 &plusmn; 27.2 [58.8, 69.5]</strong></td>
-            </tr>
-            <tr>
-              <td>PPO &minus; BC</td>
-              <td>99 / 100</td>
-              <td><strong>149.0 [128.7, 169.3]</strong></td>
-              <td><strong>143.3 [115.8, 171.3]</strong></td>
-              <td><strong>18.7 [13.3, 24.6]</strong></td>
-            </tr>
+            <tr><td>43</td><td>BC</td><td>120.2 &plusmn; 91.8</td><td>123.5 &plusmn; 81.5</td><td>52.4 &plusmn; 16.7</td></tr>
+            <tr><td>43</td><td>PPO</td><td><strong>280.1 &plusmn; 23.3</strong></td><td><strong>260.0 &plusmn; 55.5</strong></td><td><strong>65.2 &plusmn; 33.4</strong></td></tr>
+            <tr><td>43</td><td>PPO &minus; BC [95% CI]</td><td>159.9 [122.7, 195.4]</td><td>136.5 [98.8, 174.4]</td><td>12.8 [&minus;0.2, 28.6]</td></tr>
+            <tr><td>44</td><td>BC</td><td>130.6 &plusmn; 76.0</td><td>111.1 &plusmn; 60.3</td><td>49.0 &plusmn; 16.5</td></tr>
+            <tr><td>44</td><td>PPO</td><td><strong>280.4 &plusmn; 33.5</strong></td><td><strong>195.9 &plusmn; 126.5</strong></td><td><strong>68.3 &plusmn; 44.1</strong></td></tr>
+            <tr><td>44</td><td>PPO &minus; BC [95% CI]</td><td>149.8 [116.8, 180.6]</td><td>84.8 [31.9, 139.6]</td><td>19.4 [3.0, 39.0]</td></tr>
+            <tr><td>45</td><td>BC</td><td>156.0 &plusmn; 100.2</td><td>120.2 &plusmn; 69.6</td><td>46.2 &plusmn; 9.2</td></tr>
+            <tr><td>45</td><td>PPO</td><td><strong>308.8 &plusmn; 68.6</strong></td><td><strong>209.4 &plusmn; 130.0</strong></td><td><strong>63.1 &plusmn; 32.9</strong></td></tr>
+            <tr><td>45</td><td>PPO &minus; BC [95% CI]</td><td>152.8 [106.7, 199.8]</td><td>89.2 [34.6, 147.2]</td><td>16.8 [5.7, 31.5]</td></tr>
           </tbody>
         </table>
       </div>
+      <p class="result-group-copy">
+        Across seeds, the paired PPO improvements are 154.2 &plusmn; 5.2 frames on Stereo Madness,
+        103.5 &plusmn; 28.7 on Back on Track, and 16.3 &plusmn; 3.3 on Polargeist (mean &plusmn;
+        sample SD over the three seed differences). All nine observed differences are positive;
+        seed 43's Polargeist deployment interval marginally includes zero.
+      </p>
       <section class="result-group auxiliary-results" aria-labelledby="auxiliary-results-title">
         <h3 id="auxiliary-results-title">Transfer probes</h3>
         <p class="result-group-copy">
-          The same frozen policies evaluated on two community layouts.
+          The same three exact-parent pairs evaluated on two community layouts. Stereo Madness Copy
+          is a late Level-1 proxy; Stereo INSANE Nerfed is held out within the supported mechanics.
         </p>
         <div class="table-wrap">
           <table class="results-table" aria-label="Auxiliary live Geometry Dash evaluation">
             <thead>
               <tr>
+                <th>Seed</th>
                 <th>Policy</th>
-                <th>Scored n/level</th>
                 <th>Stereo Madness Copy</th>
                 <th>Stereo INSANE Nerfed</th>
               </tr>
             </thead>
             <tbody>
-              <tr><td>No-op</td><td>10</td><td>135.0 &plusmn; 0.0</td><td>46.1 &plusmn; 0.9</td></tr>
-              <tr><td>BC</td><td>20</td><td>271.2 &plusmn; 109.8</td><td>113.7 &plusmn; 71.4</td></tr>
-              <tr><td>PPO</td><td>20</td><td><strong>525.6 &plusmn; 52.9</strong></td><td><strong>215.7 &plusmn; 77.6</strong></td></tr>
-              <tr><td>PPO &minus; BC</td><td>20 / 20</td><td><strong>254.4 [202.4, 306.2]</strong></td><td><strong>102.0 [57.4, 147.2]</strong></td></tr>
+              <tr><td>43</td><td>BC</td><td>366.8 &plusmn; 172.8</td><td>104.8 &plusmn; 72.1</td></tr>
+              <tr><td>43</td><td>PPO</td><td><strong>435.6 &plusmn; 196.1</strong></td><td><strong>290.4 &plusmn; 48.6</strong></td></tr>
+              <tr><td>43</td><td>PPO &minus; BC [95% CI]</td><td>68.8 [&minus;33.3, 166.1]</td><td>185.5 [151.1, 217.6]</td></tr>
+              <tr><td>44</td><td>BC</td><td>285.7 &plusmn; 153.5</td><td>102.1 &plusmn; 64.0</td></tr>
+              <tr><td>44</td><td>PPO</td><td><strong>495.8 &plusmn; 137.5</strong></td><td><strong>342.8 &plusmn; 80.8</strong></td></tr>
+              <tr><td>44</td><td>PPO &minus; BC [95% CI]</td><td>210.1 [127.9, 285.5]</td><td>240.6 [200.8, 280.2]</td></tr>
+              <tr><td>45</td><td>BC</td><td>299.4 &plusmn; 175.2</td><td>97.8 &plusmn; 57.9</td></tr>
+              <tr><td>45</td><td>PPO</td><td><strong>546.8 &plusmn; 94.1</strong></td><td><strong>266.7 &plusmn; 128.9</strong></td></tr>
+              <tr><td>45</td><td>PPO &minus; BC [95% CI]</td><td>247.4 [167.6, 320.7]</td><td>168.8 [115.4, 223.9]</td></tr>
             </tbody>
           </table>
         </div>
+        <p class="result-group-copy">
+          All six auxiliary mean differences are positive. The across-seed paired improvements are
+          175.4 &plusmn; 94.2 frames on Stereo Madness Copy and 198.3 &plusmn; 37.6 on Stereo
+          INSANE Nerfed; seed 43's copy-level deployment interval includes zero.
+        </p>
       </section>
     </div>
   </section>
