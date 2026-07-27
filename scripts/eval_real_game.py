@@ -455,6 +455,7 @@ def run_episode_optimized(
     graph_ctx_t = opt["graph_ctx_t"]
     graph_ctx_a = opt["graph_ctx_a"]
     graph_h_holder = opt["graph_h_t_holder"]
+    exact_preprocessor = opt.get("exact_preprocessor")
 
     while True:
         t0 = time.perf_counter()
@@ -477,23 +478,32 @@ def run_episode_optimized(
             continue
 
         stage_timer.start("sobel_preprocess")
-        edge_frame = preprocess_frame_optimized(
-            img, crop_x, crop_y, crop_size, 64, device
-        )
+        if exact_preprocessor is not None:
+            cropped = img[
+                crop_y:crop_y + crop_size,
+                crop_x:crop_x + crop_size,
+            ]
+            gray = cv2.cvtColor(cropped, cv2.COLOR_RGB2GRAY)
+            frame_t = exact_preprocessor.preprocess_gray_float(gray)
+        else:
+            edge_frame = preprocess_frame_optimized(
+                img, crop_x, crop_y, crop_size, 64, device
+            )
         stage_timer.end("sobel_preprocess")
 
         stage_timer.start("fsq_encode")
         with torch.no_grad():
-            if pin_buf is not None:
-                pin_buf[0, 0] = torch.from_numpy(
-                    edge_frame.astype(np.float32) * (1.0 / 255.0)
-                )
-                frame_t = pin_buf.to(device, non_blocking=True)
-            else:
-                frame_t = torch.from_numpy(
-                    edge_frame.astype(np.float32) * (1.0 / 255.0)
-                )
-                frame_t = frame_t.unsqueeze(0).unsqueeze(0).to(device)
+            if exact_preprocessor is None:
+                if pin_buf is not None:
+                    pin_buf[0, 0] = torch.from_numpy(
+                        edge_frame.astype(np.float32) * (1.0 / 255.0)
+                    )
+                    frame_t = pin_buf.to(device, non_blocking=True)
+                else:
+                    frame_t = torch.from_numpy(
+                        edge_frame.astype(np.float32) * (1.0 / 255.0)
+                    )
+                    frame_t = frame_t.unsqueeze(0).unsqueeze(0).to(device)
             tokens = vae.encode(frame_t).reshape(tokens_per_frame)
         stage_timer.end("fsq_encode")
 
@@ -581,6 +591,16 @@ def main():
         help="diagnostic = stage-synced evaluator path; optimized = deploy.py "
              "compiled/CUDA-graph path without per-stage syncs.",
     )
+    parser.add_argument(
+        "--preprocessor",
+        choices=("hybrid", "exact-cuda"),
+        default="hybrid",
+        help=(
+            "Preprocessing implementation for the optimized path. "
+            "exact-cuda is byte-identical to the recording pipeline and "
+            "keeps the 64x64 observation on GPU."
+        ),
+    )
     parser.add_argument("--latency-samples", type=int, default=300,
                         help="Number of frames to include in stage timing.")
     parser.add_argument("--latency-bootstrap-resamples", type=int, default=10_000,
@@ -618,6 +638,9 @@ def main():
     uses_controller = args.policy in {"ppo", "bc"}
     use_optimized = args.inference_path == "optimized"
 
+    if args.preprocessor == "exact-cuda" and not use_optimized:
+        parser.error("--preprocessor exact-cuda requires --inference-path optimized")
+
     if use_optimized and not uses_controller:
         print("Note: optimized path has no effect for no-op policy.")
 
@@ -636,6 +659,8 @@ def main():
         "graph_ctx_a": None,
         "graph_h_t_holder": None,
         "pin_buf": None,
+        "preprocessor": "hybrid",
+        "exact_preprocessor": None,
     }
 
     if uses_controller:
@@ -714,6 +739,21 @@ def main():
     else:
         region = (0, 0, 1920, 1080)
         preprocess_crop_x, preprocess_crop_y = crop_x, crop_y
+
+    if use_optimized and uses_controller and args.preprocessor == "exact-cuda":
+        if device.type != "cuda":
+            raise RuntimeError("--preprocessor exact-cuda requires CUDA")
+        from benchmark_exact_cuda_resize import ExactCudaCandidate
+        exact_preprocessor = ExactCudaCandidate(crop_size, 64, device)
+        dummy_gray = np.zeros((crop_size, crop_size), dtype=np.uint8)
+        for _ in range(3):
+            exact_preprocessor.preprocess_gray_float(dummy_gray)
+        torch.cuda.synchronize()
+        opt["preprocessor"] = "exact-cuda"
+        opt["exact_preprocessor"] = exact_preprocessor
+        opt["pin_buf"] = None
+        opt["pinned_frame_buffer"] = False
+        print("Exact CUDA preprocessing enabled")
     cam = dxcam.create() if uses_controller else None
     frame_interval = 1.0 / args.fps
 
@@ -729,7 +769,10 @@ def main():
     latency_frames = 0
     print(f"\nRunning one unscored synchronization episode, then "
           f"{args.n_runs} {args.policy} evaluation episodes...")
-    print(f"Inference path: {args.inference_path} | target cadence: {args.fps} FPS")
+    print(
+        f"Inference path: {args.inference_path} / {args.preprocessor} | "
+        f"target cadence: {args.fps} FPS"
+    )
     print("Press F10 to abort.\n")
 
     episode_idx = 0
@@ -835,6 +878,11 @@ def main():
             "fps": args.fps,
             "inference_path": args.inference_path,
             "optimizations": {
+                "preprocessor": opt.get("preprocessor", "hybrid"),
+                "direct_model_crop_capture": bool(use_optimized and uses_controller),
+                "preprocessed_observation_stays_on_gpu": bool(
+                    opt.get("exact_preprocessor") is not None
+                ),
                 "fsq_torch_compile": bool(opt.get("fsq_torch_compile")),
                 "transformer_cuda_graph": bool(opt.get("transformer_cuda_graph")),
                 "gpu_resident_context": bool(opt.get("gpu_resident_context")),

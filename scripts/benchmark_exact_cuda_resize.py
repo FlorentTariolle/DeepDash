@@ -1,9 +1,9 @@
-"""Prototype an exact CUDA replacement for OpenCV INTER_AREA downsampling.
+"""Exact CUDA preprocessing implementation and bit-identity benchmark.
 
-This is an experimental benchmark, not part of the deployment path.  It keeps
-the CPU OpenCV grayscale conversion, computes Sobel magnitude on CUDA, then
-uses a Triton kernel whose accumulation order mirrors OpenCV's separable area
-resize before returning only the final 64x64 uint8 observation to the host.
+The deployment path imports :class:`ExactCudaCandidate`. It keeps CPU OpenCV
+grayscale conversion, computes Sobel magnitude on CUDA, then uses a Triton
+kernel whose accumulation order mirrors OpenCV's separable area resize. The
+normalized 64x64 observation remains on the GPU for encoder inference.
 """
 
 from __future__ import annotations
