@@ -1,433 +1,210 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="color-scheme" content="light only" />
-  <title>DashVMC | Real-Time Discrete World Model Control in Geometry Dash</title>
+  <meta name="color-scheme" content="dark" />
+  <title>DashVMC | An AI agent that learns to play Geometry Dash</title>
 
-  <meta name="description" content="DashVMC is a discrete world-model agent trained from captured gameplay and deployed for pixel-based, non-paused Geometry Dash control at 60 FPS on a consumer GPU." />
+  <meta name="description" content="DashVMC learns from recorded Geometry Dash play, practices in its own imagined world, and controls the live game at 60 FPS." />
   <meta name="author" content="Florent Tariolle" />
   <link rel="canonical" href="https://tariolle.github.io/dash-vmc/" />
 
-  <meta property="og:title" content="DashVMC: Real-Time Discrete World Model Control in Geometry Dash" />
-  <meta property="og:description" content="A real-time Geometry Dash world-model agent with offline imagined PPO, a decoder-free live path, and interactive visual continuations." />
-  <meta property="og:image" content="https://tariolle.github.io/dash-vmc/static/images/pipeline.png" />
+  <meta property="og:title" content="DashVMC | Learning to play Geometry Dash in imagination" />
+  <meta property="og:description" content="An AI agent that learns from recorded play, practices in its own imagined world, and controls the live game in real time." />
+  <meta property="og:image" content="https://tariolle.github.io/dash-vmc/static/images/og.png" />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://tariolle.github.io/dash-vmc/" />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="DashVMC: Real-Time Discrete World Model Control in Geometry Dash" />
-  <meta name="twitter:description" content="Offline imagined PPO and a decoder-free capture-to-action path for 60 FPS Geometry Dash control on a consumer GPU." />
-  <meta name="twitter:image" content="https://tariolle.github.io/dash-vmc/static/images/pipeline.png" />
+  <meta name="twitter:title" content="DashVMC | Learning to play Geometry Dash in imagination" />
+  <meta name="twitter:description" content="Watch an AI agent practice in an imagined world and play the live game at 60 FPS." />
+  <meta name="twitter:image" content="https://tariolle.github.io/dash-vmc/static/images/og.png" />
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:wght@400;600;700&display=swap" rel="stylesheet" />
-
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.2/css/bulma.min.css" />
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/academicons@1.9.4/css/academicons.min.css" />
-
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&display=swap" rel="stylesheet" />
   <link rel="icon" type="image/png" href="static/images/ai-brain-icon.png" />
   <link rel="apple-touch-icon" href="static/images/ai-brain-icon.png" />
-  <link rel="stylesheet" href="static/css/style.css?v=20260723-60fps" />
-
-  <script>
-    window.MathJax = {
-      tex: {
-        inlineMath: [['$', '$'], ['\\(', '\\)']],
-        displayMath: [['$$', '$$'], ['\\[', '\\]']]
-      },
-      svg: { fontCache: 'global' }
-    };
-  </script>
-  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js" async></script>
+  <link rel="stylesheet" href="static/css/style.css?v=20260728-input-slate" />
 </head>
 
 <body>
-<header class="hero">
-  <div class="hero-body">
-    <div class="hero-grid">
+  <main>
+    <section class="hero" aria-labelledby="hero-title">
       <div class="hero-copy">
-        <div class="status-row">
-          <span class="status-pill">Preliminary research page</span>
-          <span class="status-date">Updated 2026-07-24</span>
-        </div>
-
-        <h1 class="publication-title">
-          <span class="title-line">DashVMC</span>
-        </h1>
-
-        <p class="hero-subtitle">
-          Real-Time Discrete World Model Control in Geometry Dash
+        <h1 id="hero-title">Dash<span class="accent-cyan">VMC</span></h1>
+        <p class="hero-lead">An AI agent that learns to play Geometry Dash in its imagination.</p>
+        <p class="hero-note">
+          It learns from recorded play, practices without touching the live game,
+          then takes control from screen pixels alone.
         </p>
-
-        <div class="publication-authors">
-          <a href="https://tariolle.github.io/" target="_blank" rel="noopener">Florent Tariolle</a>
-          <span>INSA Rouen Normandy</span>
-          <code>florent.tariolle@insa-rouen.fr</code>
+        <div class="hero-actions">
+          <a class="button button-primary" href="#story">
+            <span>See how it works</span>
+            <svg aria-hidden="true" viewBox="0 0 24 24">
+              <path d="M5 12h14M13 6l6 6-6 6" />
+            </svg>
+          </a>
+          <a class="text-link" href="static/pdfs/dashvmc.pdf" target="_blank" rel="noopener">Read the paper</a>
         </div>
-
-        <nav class="publication-links" aria-label="Project links">
-          <a class="link-button primary" href="static/pdfs/dashvmc.pdf" target="_blank" rel="noopener">
-            <span class="icon"><i class="fas fa-file-pdf"></i></span>
-            <span>Preprint</span>
-          </a>
-          <a class="link-button" href="https://github.com/Tariolle/dash-vmc" target="_blank" rel="noopener">
-            <span class="icon"><i class="fab fa-github"></i></span>
-            <span>Code</span>
-          </a>
-          <a class="link-button" href="#results">
-            <span class="icon"><i class="fas fa-chart-line"></i></span>
-            <span>Results</span>
-          </a>
-          <a class="link-button" href="#cite">
-            <span class="icon"><i class="fas fa-quote-right"></i></span>
-            <span>Cite</span>
-          </a>
-        </nav>
       </div>
 
-      <figure class="hero-demo">
-        <video
-          autoplay
-          loop
-          muted
-          playsinline
-          controls
-          poster="static/images/demo_poster.jpg"
-          preload="metadata"
-        >
+      <figure class="hero-media">
+        <video autoplay loop muted playsinline controls poster="static/images/demo_poster.jpg" preload="metadata">
           <source src="demo_preview.mp4" type="video/mp4" />
           <source src="demo.mp4" type="video/mp4" />
         </video>
-        <figcaption>
-          Geometry Dash controller trained in latent imagined rollouts, deployed at 60 FPS.
-        </figcaption>
+        <figcaption>Live Geometry Dash control</figcaption>
       </figure>
-    </div>
-  </div>
-</header>
+    </section>
 
-<main>
-  <section id="evidence" class="section-block evidence-band">
-    <div class="section-grid">
-      <div>
-        <p class="eyebrow">System overview</p>
-        <h2 class="section-title">Latent world model control at game speed</h2>
-        <p>
-          DashVMC uses an FSQ tokenizer, an action-conditioned transformer world model,
-          and a lightweight actor-critic initialized by behavioural cloning and optimized with PPO
-          entirely in autoregressive latent rollouts. Training uses approximately two hours of
-          captured gameplay, including less than 20 minutes of expert segments; all learning is
-          offline, without any real-environment interaction by the agent. The optimized agent controls live Geometry Dash at
-          60 FPS on an RTX 2060. Three controller seeds retain the exact BC checkpoint used to initialize
-          each PPO run, enabling paired live comparisons under one frozen tokenizer and world model.
-        </p>
+    <section id="story" class="story section-shell" aria-labelledby="story-title">
+      <div class="section-heading">
+        <h2 id="story-title">Watch. Imagine. Play.</h2>
+        <p>About two hours of recorded gameplay are enough to build a world the agent can practice in.</p>
       </div>
 
-      <div class="metric-panel" aria-label="Geometry Dash system metrics">
-        <div class="metric-row">
-          <span>Deployment cadence</span>
-          <strong>60 FPS</strong>
+      <figure id="architecture" class="architecture-card">
+        <div class="architecture-flow" role="list" aria-label="Recorded play trains a world model where the action model practices before controlling the live game.">
+          <div class="architecture-node architecture-input" role="listitem">
+            <span class="architecture-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <rect x="3.5" y="5.5" width="17" height="13" rx="1.5" />
+                <path d="m10 9 5 3-5 3Z" />
+              </svg>
+            </span>
+            <small>Input</small>
+            <strong>Recorded play</strong>
+            <p>Game frames and actions</p>
+          </div>
+          <span class="architecture-connector" aria-hidden="true">
+            <svg viewBox="0 0 68 24">
+              <path d="M3 12h61M56 4l8 8-8 8" />
+            </svg>
+          </span>
+          <div class="architecture-node" role="listitem">
+            <span class="architecture-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <path d="M7.5 17.5h9a4 4 0 0 0 .5-7.97A5.5 5.5 0 0 0 6.4 8.4a4.6 4.6 0 0 0 1.1 9.1Z" />
+                <circle cx="7" cy="20" r="1" />
+              </svg>
+            </span>
+            <small>Learn</small>
+            <strong>World model</strong>
+            <p>Imagines what comes next</p>
+          </div>
+          <span class="architecture-connector" aria-hidden="true">
+            <svg viewBox="0 0 68 24">
+              <path d="M3 12h61M56 4l8 8-8 8" />
+            </svg>
+          </span>
+          <div class="architecture-node" role="listitem">
+            <span class="architecture-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <path d="M12 3v3M5.6 5.6l2.1 2.1M18.4 5.6l-2.1 2.1" />
+                <rect x="5" y="8" width="14" height="11" rx="2" />
+                <circle cx="9" cy="13" r="1" />
+                <circle cx="15" cy="13" r="1" />
+                <path d="M9.5 16h5" />
+              </svg>
+            </span>
+            <small>Practice</small>
+            <strong>Action model</strong>
+            <p>Learns when to jump</p>
+          </div>
+          <span class="architecture-connector" aria-hidden="true">
+            <svg viewBox="0 0 68 24">
+              <path d="M3 12h61M56 4l8 8-8 8" />
+            </svg>
+          </span>
+          <div class="architecture-node architecture-live" role="listitem">
+            <span class="architecture-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <rect x="5" y="5" width="14" height="14" rx="1" />
+                <rect x="8" y="9" width="2" height="2" />
+                <rect x="14" y="9" width="2" height="2" />
+                <path d="M9 15h6" />
+              </svg>
+            </span>
+            <small>Play</small>
+            <strong>Live game</strong>
+            <p>Frames in, controls out</p>
+          </div>
         </div>
-        <div class="metric-row">
-          <span>Training data cadence</span>
-          <strong>30 FPS</strong>
-        </div>
-        <div class="metric-row">
-          <span>Captured gameplay</span>
-          <strong>~2 hours</strong>
-        </div>
-        <div class="metric-row">
-          <span>Expert segments</span>
-          <strong>&lt;20 min</strong>
-        </div>
-        <div class="metric-row">
-          <span>Live parameters</span>
-          <strong>15.57M</strong>
-        </div>
-        <div class="metric-row">
-          <span>Token grid</span>
-          <strong>8x8</strong>
-        </div>
-      </div>
-    </div>
-
-    <div class="evidence-cards" aria-label="Interpretation of preliminary evidence">
-      <article>
-        <h3>Live control</h3>
-        <p>The capture-to-action path runs preprocessing, tokenization, transformer context prefill, controller inference, and keyboard dispatch; neither next-grid prediction nor decoding is executed.</p>
-      </article>
-      <article>
-        <h3>Latent training</h3>
-        <p>PPO updates are performed in token-space rollouts; decoded frames are not part of the policy optimization loop.</p>
-      </article>
-      <article>
-        <h3>Visual rollouts</h3>
-        <p>The decoder is used to inspect generated futures, including plausible level continuations from real gameplay prefixes.</p>
-      </article>
-    </div>
-  </section>
-
-  <section id="contributions" class="section-block">
-    <div class="container-narrow">
-      <p class="eyebrow">Core components</p>
-      <h2 class="section-title">A lightweight world-model agent</h2>
-      <div class="contribution-grid">
-        <article class="contribution-item">
-          <h3>Discrete visual state</h3>
-          <p>
-            Sobel frames are encoded into an 8x8 FSQ token grid that is fast enough for live control.
-          </p>
-        </article>
-        <article class="contribution-item">
-          <h3>Action-conditioned dynamics</h3>
-          <p>
-            A causal transformer predicts next-frame tokens from recent token grids and interleaved jump/idle actions.
-          </p>
-        </article>
-        <article class="contribution-item">
-          <h3>Latent-rollout policy</h3>
-          <p>
-            A lightweight actor-critic is warm-started by demonstrations and optimized with PPO in model-generated latent rollouts.
-          </p>
-        </article>
-      </div>
-    </div>
-  </section>
-
-  <section id="method" class="section-block method-band">
-    <div class="container-narrow">
-      <p class="eyebrow">Training loop</p>
-      <h2 class="section-title">Control is learned in latent rollouts</h2>
-      <p>
-        The tokenizer and dynamics model define the latent environment used by the controller.
-        After behavioural cloning on demonstrations, PPO optimizes the actor-critic inside
-        autoregressive token rollouts generated by the frozen action-conditioned world model.
-        The agent performs no real-environment interaction during learning.
-      </p>
-      <p>
-        Pixel reconstruction is used to train and inspect the tokenizer, and decoded rollouts are
-        useful for demos. The controller itself consumes token grids and hidden states, so policy
-        learning does not depend on reconstructing pixels at every imagined step.
-      </p>
-    </div>
-  </section>
-
-  <section id="system" class="section-block">
-    <div class="container-narrow">
-      <p class="eyebrow">Application system</p>
-      <h2 class="section-title">Real-time agent deployment</h2>
-      <figure class="centered pipeline-figure">
-        <img src="static/images/pipeline.svg" alt="World-model agent pipeline overview" />
-        <figcaption>
-          Imagined PPO uses action-conditioned next-grid prediction. Live deployment runs the encoder, transformer context prefill, and controller only; neither masked next-grid prediction nor decoding is executed.
-        </figcaption>
       </figure>
 
-      <div class="feature-grid">
-        <article>
-          <h3>Discrete visual state</h3>
-          <p>FSQ levels [8, 5, 5, 5] produce 1000 implicit codes on an 8x8 token grid.</p>
-        </article>
-        <article>
-          <h3>Latent policy training</h3>
-          <p>BC warm-starts the actor-critic, then PPO fine-tunes it in autoregressive latent rollouts.</p>
-        </article>
-        <article>
-          <h3>Level continuations</h3>
-          <p>Real gameplay prefixes can seed action-conditioned visual rollouts of plausible future segments.</p>
-        </article>
-        <article>
-          <h3>60 FPS deployment</h3>
-          <p>The 15.57M-parameter decoder-free path deploys live at 60 FPS on an RTX 2060 despite being trained from 30-FPS captures.</p>
-        </article>
+      <div id="dreams" class="dream-heading">
+        <h3>Dreams from the world model</h3>
+        <p>The world model predicts what follows each action, letting the action model practice without interacting with the live game.</p>
       </div>
-    </div>
-  </section>
 
-  <section id="dreams" class="section-block dreams-band">
-    <div class="container-narrow">
-      <p class="eyebrow">Interactive dreams</p>
-      <h2 class="section-title">Human-controlled level continuations</h2>
-      <p class="dreams-lead">
-        A recorded gameplay prefix initializes the learned world model, then a human supplies jump or idle actions
-        while the world model generates the continuation autoregressively.
-      </p>
-
-      <figure class="featured-rollout">
-        <video autoplay loop muted playsinline controls preload="metadata"
-               poster="static/videos/dream_rollouts/long-coherent-horizon.jpg">
-          <source src="static/videos/dream_rollouts/long-coherent-horizon-featured.mp4" type="video/mp4" />
-        </video>
-        <figcaption>
-          <strong>Long coherent horizon.</strong> A sustained human-controlled continuation in the learned world model.
-        </figcaption>
-      </figure>
-
-      <div class="rollout-heading">
-        <h3>Recorded continuations</h3>
-        <span>Human actions, model-generated frames</span>
-      </div>
-      <div class="rollout-mosaic" aria-label="Human-controlled world-model rollouts">
-        <figure class="rollout-tile">
-          <video autoplay loop muted playsinline preload="metadata" poster="static/videos/dream_rollouts/decent-continuation.jpg">
-            <source src="static/videos/dream_rollouts/decent-continuation.mp4" type="video/mp4" />
+      <div class="dream-grid">
+        <figure>
+          <video autoplay loop muted playsinline preload="metadata" poster="static/videos/dream_rollouts/long-coherent-horizon.jpg">
+            <source src="static/videos/dream_rollouts/long-coherent-horizon-featured.mp4" type="video/mp4" />
           </video>
-          <figcaption>Regular continuation</figcaption>
+          <figcaption>A long generated continuation</figcaption>
         </figure>
-        <figure class="rollout-tile">
+        <figure>
           <video autoplay loop muted playsinline preload="metadata" poster="static/videos/dream_rollouts/height-transitions.jpg">
             <source src="static/videos/dream_rollouts/height-transitions.mp4" type="video/mp4" />
           </video>
-          <figcaption>Understands height transitions</figcaption>
+          <figcaption>Changing height</figcaption>
         </figure>
-        <figure class="rollout-tile">
-          <video autoplay loop muted playsinline preload="metadata" poster="static/videos/dream_rollouts/infinite-end-plausible-opening.jpg">
-            <source src="static/videos/dream_rollouts/infinite-end-plausible-opening.mp4" type="video/mp4" />
-          </video>
-          <figcaption>Plausible continuation</figcaption>
-        </figure>
-        <figure class="rollout-tile">
+        <figure>
           <video autoplay loop muted playsinline preload="metadata" poster="static/videos/dream_rollouts/transformation.jpg">
             <source src="static/videos/dream_rollouts/transformation.mp4" type="video/mp4" />
           </video>
-          <figcaption>Understands transformations</figcaption>
+          <figcaption>Changing form</figcaption>
         </figure>
       </div>
+    </section>
 
-      <div class="rollout-heading failure-heading">
-        <h3>Observed failure modes</h3>
-        <span>Limits of long autoregressive generation</span>
-      </div>
-      <div class="rollout-mosaic failure-mosaic" aria-label="Observed world-model rollout failure modes">
-        <figure class="rollout-tile">
-          <video autoplay loop muted playsinline preload="metadata" poster="static/videos/dream_rollouts/failure-infinite-replication.jpg">
-            <source src="static/videos/dream_rollouts/failure-infinite-replication.mp4" type="video/mp4" />
-          </video>
-          <figcaption>Infinite replication</figcaption>
-        </figure>
-        <figure class="rollout-tile">
-          <video autoplay loop muted playsinline preload="metadata" poster="static/videos/dream_rollouts/failure-empty-level.jpg">
-            <source src="static/videos/dream_rollouts/failure-empty-level.mp4" type="video/mp4" />
-          </video>
-          <figcaption>Empty-level continuation</figcaption>
-        </figure>
-        <figure class="rollout-tile">
-          <video autoplay loop muted playsinline preload="metadata" poster="static/videos/dream_rollouts/failure-undoable.jpg">
-            <source src="static/videos/dream_rollouts/failure-undoable.mp4" type="video/mp4" />
-          </video>
-          <figcaption>Undoable state</figcaption>
-        </figure>
-        <figure class="rollout-tile">
-          <video autoplay loop muted playsinline preload="metadata" poster="static/videos/dream_rollouts/failure-undoable-obstacle.jpg">
-            <source src="static/videos/dream_rollouts/failure-undoable-obstacle.mp4" type="video/mp4" />
-          </video>
-          <figcaption>Undoable obstacle</figcaption>
-        </figure>
-      </div>
-    </div>
-  </section>
-
-  <section id="results" class="section-block results-band">
-    <div class="container-narrow">
-      <p class="eyebrow">Results</p>
-      <h2 class="section-title">Controlled live evaluation</h2>
-      <p class="results-lead">
-        Three retained parent-BC/PPO controller pairs evaluated at 30 FPS with 25 valid
-        attempts per frozen policy-level. BC and PPO entries report mean &plusmn; sample SD;
-        difference rows report PPO &minus; parent BC with 95% attempt-level bootstrap intervals.
-        These intervals describe deployment variability. The three separate seed differences,
-        not pooled attempts, are the replication evidence under one frozen tokenizer and world model.
-      </p>
-
-      <div class="table-wrap">
-        <table class="results-table" aria-label="Controlled live Geometry Dash evaluation">
-          <thead>
-            <tr>
-              <th>Seed</th>
-              <th>Policy</th>
-              <th>Stereo Madness</th>
-              <th>Back on Track</th>
-              <th>Polargeist</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr><td>43</td><td>BC</td><td>120.2 &plusmn; 91.8</td><td>123.5 &plusmn; 81.5</td><td>52.4 &plusmn; 16.7</td></tr>
-            <tr><td>43</td><td>PPO</td><td><strong>280.1 &plusmn; 23.3</strong></td><td><strong>260.0 &plusmn; 55.5</strong></td><td><strong>65.2 &plusmn; 33.4</strong></td></tr>
-            <tr><td>43</td><td>PPO &minus; BC [95% CI]</td><td>159.9 [122.7, 195.4]</td><td>136.5 [98.8, 174.4]</td><td>12.8 [&minus;0.2, 28.6]</td></tr>
-            <tr><td>44</td><td>BC</td><td>130.6 &plusmn; 76.0</td><td>111.1 &plusmn; 60.3</td><td>49.0 &plusmn; 16.5</td></tr>
-            <tr><td>44</td><td>PPO</td><td><strong>280.4 &plusmn; 33.5</strong></td><td><strong>195.9 &plusmn; 126.5</strong></td><td><strong>68.3 &plusmn; 44.1</strong></td></tr>
-            <tr><td>44</td><td>PPO &minus; BC [95% CI]</td><td>149.8 [116.8, 180.6]</td><td>84.8 [31.9, 139.6]</td><td>19.4 [3.0, 39.0]</td></tr>
-            <tr><td>45</td><td>BC</td><td>156.0 &plusmn; 100.2</td><td>120.2 &plusmn; 69.6</td><td>46.2 &plusmn; 9.2</td></tr>
-            <tr><td>45</td><td>PPO</td><td><strong>308.8 &plusmn; 68.6</strong></td><td><strong>209.4 &plusmn; 130.0</strong></td><td><strong>63.1 &plusmn; 32.9</strong></td></tr>
-            <tr><td>45</td><td>PPO &minus; BC [95% CI]</td><td>152.8 [106.7, 199.8]</td><td>89.2 [34.6, 147.2]</td><td>16.8 [5.7, 31.5]</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <p class="result-group-copy">
-        Across seeds, the paired PPO improvements are 154.2 &plusmn; 5.2 frames on Stereo Madness,
-        103.5 &plusmn; 28.7 on Back on Track, and 16.3 &plusmn; 3.3 on Polargeist (mean &plusmn;
-        sample SD over the three seed differences). All nine observed differences are positive;
-        seed 43's Polargeist deployment interval marginally includes zero.
-      </p>
-      <section class="result-group auxiliary-results" aria-labelledby="auxiliary-results-title">
-        <h3 id="auxiliary-results-title">Transfer probes</h3>
-        <p class="result-group-copy">
-          The same three exact-parent pairs evaluated on two community layouts. Stereo Madness Copy
-          is a late Level-1 proxy; Stereo INSANE Nerfed is held out within the supported mechanics.
-        </p>
-        <div class="table-wrap">
-          <table class="results-table" aria-label="Auxiliary live Geometry Dash evaluation">
-            <thead>
-              <tr>
-                <th>Seed</th>
-                <th>Policy</th>
-                <th>Stereo Madness Copy</th>
-                <th>Stereo INSANE Nerfed</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr><td>43</td><td>BC</td><td>366.8 &plusmn; 172.8</td><td>104.8 &plusmn; 72.1</td></tr>
-              <tr><td>43</td><td>PPO</td><td><strong>435.6 &plusmn; 196.1</strong></td><td><strong>290.4 &plusmn; 48.6</strong></td></tr>
-              <tr><td>43</td><td>PPO &minus; BC [95% CI]</td><td>68.8 [&minus;33.3, 166.1]</td><td>185.5 [151.1, 217.6]</td></tr>
-              <tr><td>44</td><td>BC</td><td>285.7 &plusmn; 153.5</td><td>102.1 &plusmn; 64.0</td></tr>
-              <tr><td>44</td><td>PPO</td><td><strong>495.8 &plusmn; 137.5</strong></td><td><strong>342.8 &plusmn; 80.8</strong></td></tr>
-              <tr><td>44</td><td>PPO &minus; BC [95% CI]</td><td>210.1 [127.9, 285.5]</td><td>240.6 [200.8, 280.2]</td></tr>
-              <tr><td>45</td><td>BC</td><td>299.4 &plusmn; 175.2</td><td>97.8 &plusmn; 57.9</td></tr>
-              <tr><td>45</td><td>PPO</td><td><strong>546.8 &plusmn; 94.1</strong></td><td><strong>266.7 &plusmn; 128.9</strong></td></tr>
-              <tr><td>45</td><td>PPO &minus; BC [95% CI]</td><td>247.4 [167.6, 320.7]</td><td>168.8 [115.4, 223.9]</td></tr>
-            </tbody>
-          </table>
+    <section id="results" class="results section-shell" aria-labelledby="results-title">
+      <div class="results-intro">
+        <div class="section-heading results-heading">
+          <h2 id="results-title">What changed after practice</h2>
+          <p>After practicing in its dreams, the world model agent survives longer in the live game.</p>
         </div>
-        <p class="result-group-copy">
-          All six auxiliary mean differences are positive. The across-seed paired improvements are
-          175.4 &plusmn; 94.2 frames on Stereo Madness Copy and 198.3 &plusmn; 37.6 on Stereo
-          INSANE Nerfed; seed 43's copy-level deployment interval includes zero.
-        </p>
-      </section>
-    </div>
-  </section>
+        <aside class="ship-note">
+          <span>Policy refinement</span>
+          <p>After learning to imitate human play, the action model improves by practicing independently inside the world model.</p>
+        </aside>
+      </div>
 
-  <section id="cite" class="section-block">
-    <div class="container-narrow">
-      <p class="eyebrow">Reference</p>
-      <h2 class="section-title">Cite this preprint</h2>
-      <pre class="bibtex"><code>@misc{tariolle2026dashvmc,
-  title  = {DashVMC: Real-Time Discrete World Model Control in Geometry Dash},
-  author = {Florent Tariolle},
-  year   = {2026},
-  note   = {Preprint},
-  url    = {https://tariolle.github.io/dash-vmc/}
-}</code></pre>
-    </div>
-  </section>
-</main>
+      <ol class="proof-list">
+        <li>
+          <span>01</span>
+          <p>Improved on all three official levels</p>
+        </li>
+        <li>
+          <span>02</span>
+          <p>Transferred to an unseen level</p>
+        </li>
+        <li>
+          <span>03</span>
+          <p>Strong control in ship form</p>
+        </li>
+        <li>
+          <span>04</span>
+          <p>Keeps up with the game at <span class="accent-cyan">60 FPS</span></p>
+        </li>
+      </ol>
 
-<footer>
-  <div>&copy; 2026 Florent Tariolle. Source on <a href="https://github.com/Tariolle/dash-vmc" target="_blank" rel="noopener">GitHub</a>.</div>
-</footer>
+      <div class="closing-actions">
+        <a class="button button-primary" href="static/pdfs/dashvmc.pdf" target="_blank" rel="noopener">Read the paper</a>
+        <a class="button button-secondary" href="https://github.com/Tariolle/dash-vmc" target="_blank" rel="noopener">View the code</a>
+      </div>
+    </section>
+  </main>
 
+  <footer>
+    <a class="wordmark" href="#">Dash<span>VMC</span></a>
+    <p><a href="https://tariolle.github.io/" target="_blank" rel="noopener">Florent Tariolle</a> · INSA Rouen Normandy</p>
+    <nav aria-label="Footer navigation">
+      <a href="static/pdfs/dashvmc.pdf" target="_blank" rel="noopener">Paper</a>
+      <a href="https://github.com/Tariolle/dash-vmc" target="_blank" rel="noopener">Code</a>
+    </nav>
+  </footer>
 </body>
 </html>
