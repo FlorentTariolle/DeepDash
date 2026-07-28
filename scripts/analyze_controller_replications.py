@@ -3,7 +3,9 @@
 The script reads the raw live-evaluation JSON files and local training
 provenance for seeds 43--45. It writes a machine-readable summary and a
 Markdown report with per-seed means, sample standard deviations, and
-attempt-level bootstrap intervals for PPO minus its exact parent BC.
+attempt-level bootstrap intervals for PPO minus its exact parent BC, plus
+seed-level aggregate mean, IQM, and empirical-reference optimality-gap
+intervals on the official levels.
 """
 
 from __future__ import annotations
@@ -20,6 +22,15 @@ ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = ROOT / "analysis" / "2026-07-27_v7_controller_replication"
 BOOTSTRAP_RESAMPLES = 50_000
 BOOTSTRAP_SEED = 20_260_727
+AGGREGATE_BOOTSTRAP_SEED = 20_260_728
+
+# Historical no-op controls use the same 30-FPS diagnostic protocol and provide
+# a fixed zero point for official-level score normalization.
+OFFICIAL_NOOP_MEAN_FRAMES = {
+    "Stereo Madness": 46.2,
+    "Back on Track": 63.4,
+    "Polargeist": 41.5,
+}
 
 SEEDS = {
     43: {
@@ -76,6 +87,108 @@ def bootstrap_difference(
         differences.append(ppo_means - bc_means)
     low, high = np.percentile(np.concatenate(differences), [2.5, 97.5])
     return float(low), float(high)
+
+
+def aggregate_metrics(scores: np.ndarray) -> np.ndarray:
+    """Mean, IQM, and optimality gap for a runs-by-tasks score matrix."""
+    flat = np.sort(scores.reshape(scores.shape[:-2] + (-1,)), axis=-1)
+    trim = int(0.25 * flat.shape[-1])
+    middle = flat[..., trim : flat.shape[-1] - trim]
+    return np.stack(
+        (
+            scores.mean(axis=(-2, -1)),
+            middle.mean(axis=-1),
+            np.maximum(0.0, 1.0 - scores).mean(axis=(-2, -1)),
+        ),
+        axis=-1,
+    )
+
+
+def seed_level_aggregate_summary(rows: list[dict]) -> dict:
+    """Aggregate official-level seed means with stratified bootstrap intervals."""
+    official_levels = [
+        level_name for _, level_name, group in LEVELS if group == "official"
+    ]
+    seeds = sorted({row["seed"] for row in rows})
+    raw_scores = {}
+    for policy in ("bc", "ppo"):
+        raw_scores[policy] = np.asarray(
+            [
+                [
+                    next(
+                        row[f"{policy}_mean_frames"]
+                        for row in rows
+                        if row["seed"] == seed and row["level"] == level
+                    )
+                    for level in official_levels
+                ]
+                for seed in seeds
+            ],
+            dtype=np.float64,
+        )
+
+    noop = np.asarray(
+        [OFFICIAL_NOOP_MEAN_FRAMES[level] for level in official_levels],
+        dtype=np.float64,
+    )
+    reference = np.maximum(raw_scores["bc"], raw_scores["ppo"]).max(axis=0)
+    if np.any(reference <= noop):
+        raise ValueError("Official normalization reference must exceed no-op")
+
+    rng = np.random.default_rng(AGGREGATE_BOOTSTRAP_SEED)
+    indices = rng.integers(
+        0,
+        len(seeds),
+        size=(BOOTSTRAP_RESAMPLES, len(seeds), len(official_levels)),
+    )
+
+    policy_summaries = {}
+    for policy, values in raw_scores.items():
+        normalized = (values - noop) / (reference - noop)
+        bootstrap_scores = np.take_along_axis(
+            np.broadcast_to(
+                normalized,
+                (BOOTSTRAP_RESAMPLES, *normalized.shape),
+            ),
+            indices,
+            axis=1,
+        )
+        point = aggregate_metrics(normalized)
+        bootstrap_metrics = aggregate_metrics(bootstrap_scores)
+        low, high = np.percentile(bootstrap_metrics, [2.5, 97.5], axis=0)
+        policy_summaries[policy] = {
+            "normalized_seed_level_scores": normalized.tolist(),
+            "mean": {
+                "estimate": float(point[0]),
+                "ci95": [float(low[0]), float(high[0])],
+            },
+            "iqm": {
+                "estimate": float(point[1]),
+                "ci95": [float(low[1]), float(high[1])],
+            },
+            "optimality_gap": {
+                "estimate": float(point[2]),
+                "ci95": [float(low[2]), float(high[2])],
+            },
+        }
+
+    return {
+        "levels": official_levels,
+        "seed_order": seeds,
+        "normalization": (
+            "(seed-level mean frames - fixed no-op mean) / "
+            "(best observed retained-policy seed mean - fixed no-op mean)"
+        ),
+        "no_op_mean_frames": noop.tolist(),
+        "empirical_reference_mean_frames": reference.tolist(),
+        "bootstrap": (
+            "95% percentile intervals from task-stratified resampling of "
+            "controller seeds; normalization anchors held fixed"
+        ),
+        "bootstrap_resamples": BOOTSTRAP_RESAMPLES,
+        "bootstrap_seed": AGGREGATE_BOOTSTRAP_SEED,
+        "policies": policy_summaries,
+    }
 
 
 def validate_eval(
@@ -228,6 +341,8 @@ def main() -> None:
             }
         )
 
+    aggregate_summary = seed_level_aggregate_summary(rows)
+
     fsq_hash, transformer_hash = next(iter(frozen_hashes))
     total_seconds = sum(item["total_controller_training_wall_seconds"] for item in training)
     output = {
@@ -252,6 +367,7 @@ def main() -> None:
         "total_controller_training_wall_hours": total_seconds / 3600,
         "paired_live_results": rows,
         "replication_summary": replication,
+        "official_seed_level_aggregate_summary": aggregate_summary,
     }
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -275,6 +391,8 @@ def main() -> None:
         f"- Difference intervals use {BOOTSTRAP_RESAMPLES:,} independent attempt-level bootstrap resamples per frozen pair.",
         "- Difference intervals describe deployment variability, not controller-training uncertainty.",
         "- Three paired seed differences are the replication evidence; attempts are not pooled across seeds.",
+        "- Official aggregate metrics use seed-level policy means, with no-op mapped to 0 and the best observed retained-policy seed mean on each level mapped to 1.",
+        f"- Aggregate 95% intervals use {BOOTSTRAP_RESAMPLES:,} task-stratified bootstrap resamples of controller seeds; normalization anchors remain fixed.",
         "",
         "## Official levels",
         "",
@@ -325,6 +443,34 @@ def main() -> None:
             f"{fmt(item['sample_sd_seed_difference_frames'])} | "
             f"{item['positive_seeds']}/{item['n_seeds']} |"
         )
+
+    md += [
+        "",
+        "## Official seed-level aggregate metrics",
+        "",
+        "Scores normalize each official level from its fixed no-op mean (0) to its "
+        "best observed retained-policy seed mean (1). Intervals are 95% percentile "
+        "intervals from task-stratified bootstrap resampling of controller seeds. "
+        "The optimality gap is therefore the shortfall to this empirical reference, "
+        "not to true level completion; lower is better.",
+        "",
+        "| Metric | BC [95% CI] | PPO [95% CI] |",
+        "| --- | ---: | ---: |",
+    ]
+    metric_labels = (
+        ("mean", "Mean"),
+        ("iqm", "IQM"),
+        ("optimality_gap", "Optimality gap"),
+    )
+    for metric_key, metric_label in metric_labels:
+        cells = []
+        for policy in ("bc", "ppo"):
+            result = aggregate_summary["policies"][policy][metric_key]
+            cells.append(
+                f"{result['estimate']:.3f} "
+                f"[{result['ci95'][0]:.3f}, {result['ci95'][1]:.3f}]"
+            )
+        md.append(f"| {metric_label} | {cells[0]} | {cells[1]} |")
 
     md += [
         "",

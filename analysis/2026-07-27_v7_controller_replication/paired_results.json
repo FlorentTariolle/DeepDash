@@ -380,5 +380,113 @@
       "positive_seeds": 3,
       "n_seeds": 3
     }
-  ]
+  ],
+  "official_seed_level_aggregate_summary": {
+    "levels": [
+      "Stereo Madness",
+      "Back on Track",
+      "Polargeist"
+    ],
+    "seed_order": [
+      43,
+      44,
+      45
+    ],
+    "normalization": "(seed-level mean frames - fixed no-op mean) / (best observed retained-policy seed mean - fixed no-op mean)",
+    "no_op_mean_frames": [
+      46.2,
+      63.4,
+      41.5
+    ],
+    "empirical_reference_mean_frames": [
+      308.84,
+      260.0,
+      68.32
+    ],
+    "bootstrap": "95% percentile intervals from task-stratified resampling of controller seeds; normalization anchors held fixed",
+    "bootstrap_resamples": 50000,
+    "bootstrap_seed": 20260728,
+    "policies": {
+      "bc": {
+        "normalized_seed_level_scores": [
+          [
+            0.2816021931160524,
+            0.3055951169888098,
+            0.4079045488441462
+          ],
+          [
+            0.3212001218397807,
+            0.24252288911495423,
+            0.27815063385533195
+          ],
+          [
+            0.41821504721291497,
+            0.2891149542217701,
+            0.1767337807606265
+          ]
+        ],
+        "mean": {
+          "estimate": 0.3023376984393763,
+          "ci95": [
+            0.26083498121042165,
+            0.3457868227516064
+          ]
+        },
+        "iqm": {
+          "estimate": 0.295132604004349,
+          "ci95": [
+            0.2636030201949194,
+            0.34963989070113854
+          ]
+        },
+        "optimality_gap": {
+          "estimate": 0.6976623015606237,
+          "ci95": [
+            0.6542131772483937,
+            0.7391650187895783
+          ]
+        }
+      },
+      "ppo": {
+        "normalized_seed_level_scores": [
+          [
+            0.8904964971063052,
+            1.0,
+            0.8851603281133483
+          ],
+          [
+            0.8917148949131891,
+            0.6740590030518819,
+            1.0
+          ],
+          [
+            1.0,
+            0.7426246185147508,
+            0.8046234153616706
+          ]
+        ],
+        "mean": {
+          "estimate": 0.8765198618956829,
+          "ci95": [
+            0.8184603086297572,
+            0.9417903229645097
+          ]
+        },
+        "iqm": {
+          "estimate": 0.8943990270989026,
+          "ci95": [
+            0.825505654891549,
+            0.9780992994212611
+          ]
+        },
+        "optimality_gap": {
+          "estimate": 0.12348013810431713,
+          "ci95": [
+            0.05820967703549043,
+            0.18153969137024284
+          ]
+        }
+      }
+    }
+  }
 }

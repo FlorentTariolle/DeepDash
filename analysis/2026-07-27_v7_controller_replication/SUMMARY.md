@@ -10,6 +10,8 @@ This report replaces the historical comparison between PPO and a separately reco
 - Difference intervals use 50,000 independent attempt-level bootstrap resamples per frozen pair.
 - Difference intervals describe deployment variability, not controller-training uncertainty.
 - Three paired seed differences are the replication evidence; attempts are not pooled across seeds.
+- Official aggregate metrics use seed-level policy means, with no-op mapped to 0 and the best observed retained-policy seed mean on each level mapped to 1.
+- Aggregate 95% intervals use 50,000 task-stratified bootstrap resamples of controller seeds; normalization anchors remain fixed.
 
 ## Official levels
 
@@ -47,6 +49,16 @@ Values are the mean and sample SD of the three paired seed-level differences, no
 | Polargeist | 16.3 +/- 3.3 | 3/3 |
 | Stereo Madness Copy | 175.4 +/- 94.2 | 3/3 |
 | Stereo INSANE Nerfed | 198.3 +/- 37.6 | 3/3 |
+
+## Official seed-level aggregate metrics
+
+Scores normalize each official level from its fixed no-op mean (0) to its best observed retained-policy seed mean (1). Intervals are 95% percentile intervals from task-stratified bootstrap resampling of controller seeds. The optimality gap is therefore the shortfall to this empirical reference, not to true level completion; lower is better.
+
+| Metric | BC [95% CI] | PPO [95% CI] |
+| --- | ---: | ---: |
+| Mean | 0.302 [0.261, 0.346] | 0.877 [0.818, 0.942] |
+| IQM | 0.295 [0.264, 0.350] | 0.894 [0.826, 0.978] |
+| Optimality gap | 0.698 [0.654, 0.739] | 0.123 [0.058, 0.182] |
 
 ## Training provenance
 
