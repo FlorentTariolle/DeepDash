@@ -15,6 +15,10 @@
 # Usage:
 #   sbatch --job-name=v7_ctrl_s43 \
 #     slurm/train_v7_controller_replication.sl 43
+#   sbatch --job-name=v7_s43_h20 \
+#     slurm/train_v7_controller_replication.sl \
+#     43 checkpoints_v7_controller_seed43_h20_30k 30000 20 \
+#     checkpoints_v7_controller_seed43/controller_bc_best.pt
 #
 # The frozen V7 FSQ and transformer remain in checkpoints_v7. Controller
 # artifacts are written to a seed-specific directory and cannot overwrite the
@@ -24,21 +28,36 @@ set -Eeuo pipefail
 
 SEED=${1:-43}
 RUN_DIR=${2:-checkpoints_v7_controller_seed${SEED}}
+PPO_ITERATIONS=${3:-15000}
+MAX_DREAM_STEPS=${4:-45}
+BC_SOURCE=${5:-}
 CONFIG=configs/deepdash/v7-phase0.yaml
 FSQ_CHECKPOINT=checkpoints_v7/fsq_best.pt
 TRANSFORMER_CHECKPOINT=checkpoints_v7/transformer_best.pt
-# Safety ceiling only. Inspect the fixed-development survival curve after at
-# least 5,000 iterations and stop at its elbow before this limit if warranted.
-PPO_ITERATIONS=15000
+# Training target; checkpoint selection still retains the best fixed-development
+# survival observed before this iteration.
 
 if [[ ! "$SEED" =~ ^[0-9]+$ ]]; then
     echo "Seed must be a non-negative integer, got: $SEED" >&2
+    exit 2
+fi
+if [[ ! "$PPO_ITERATIONS" =~ ^[1-9][0-9]*$ ]]; then
+    echo "PPO iterations must be a positive integer, got: $PPO_ITERATIONS" >&2
+    exit 2
+fi
+if [[ ! "$MAX_DREAM_STEPS" =~ ^[1-9][0-9]*$ ]]; then
+    echo "Dream horizon must be a positive integer, got: $MAX_DREAM_STEPS" >&2
     exit 2
 fi
 
 REPO_ROOT=${SLURM_SUBMIT_DIR:?Submit this job from the DashVMC repository root}
 cd "$REPO_ROOT"
 SUBMIT_SCRIPT="$REPO_ROOT/slurm/train_v7_controller_replication.sl"
+
+if [[ -n "$BC_SOURCE" && ! -f "$BC_SOURCE" ]]; then
+    echo "Requested parent BC checkpoint does not exist: $BC_SOURCE" >&2
+    exit 2
+fi
 
 mkdir -p "$RUN_DIR"
 
@@ -68,8 +87,10 @@ if [[ ! -f "$MANIFEST" ]]; then
         echo "precision=bfloat16"
         echo "config=$CONFIG"
         echo "ppo_iteration_ceiling=$PPO_ITERATIONS"
+        echo "max_dream_steps=$MAX_DREAM_STEPS"
         echo "ppo_minimum_iterations=5000"
         echo "ppo_stopping_rule=fixed-development survival elbow"
+        echo "bc_source=${BC_SOURCE:-trained_in_run}"
         echo "code_commit=${DASHVMC_CODE_COMMIT:-unknown}"
         echo "fsq_checkpoint=$FSQ_CHECKPOINT"
         echo "fsq_sha256=$(sha256sum "$FSQ_CHECKPOINT" | awk '{print $1}')"
@@ -79,10 +100,12 @@ if [[ ! -f "$MANIFEST" ]]; then
     } > "$MANIFEST"
 fi
 
-if ! grep -q "^ppo_iteration_ceiling=$PPO_ITERATIONS$" "$MANIFEST"; then
+if ! grep -q "^ppo_iteration_ceiling=$PPO_ITERATIONS$" "$MANIFEST" \
+        || ! grep -q "^max_dream_steps=$MAX_DREAM_STEPS$" "$MANIFEST"; then
     {
         echo "protocol_updated_at=$(date --iso-8601=seconds)"
         echo "ppo_iteration_ceiling=$PPO_ITERATIONS"
+        echo "max_dream_steps=$MAX_DREAM_STEPS"
         echo "ppo_minimum_iterations=5000"
         echo "ppo_stopping_rule=fixed-development survival elbow"
     } >> "$MANIFEST"
@@ -125,8 +148,9 @@ resubmit_for_resume() {
 
     NEXT_JOB=$(sbatch --parsable \
         --dependency="afterany:${SLURM_JOB_ID}" \
-        --job-name="v7_ctrl_s${SEED}" \
-        "$SUBMIT_SCRIPT" "$SEED" "$RUN_DIR")
+        --job-name="v7_s${SEED}_h${MAX_DREAM_STEPS}" \
+        "$SUBMIT_SCRIPT" "$SEED" "$RUN_DIR" "$PPO_ITERATIONS" \
+        "$MAX_DREAM_STEPS" "$BC_SOURCE")
     echo "$(date --iso-8601=seconds): submitted continuation job $NEXT_JOB"
     exit 0
 }
@@ -144,6 +168,18 @@ run_training() {
         return "$STATUS"
     fi
 }
+
+if [[ ! -f "$BC_DONE" && -n "$BC_SOURCE" ]]; then
+    echo "=== Reusing exact parent BC checkpoint: $BC_SOURCE ==="
+    cp -- "$BC_SOURCE" "$RUN_DIR/controller_bc_best.pt"
+    {
+        echo "bc_reused_at=$(date --iso-8601=seconds)"
+        echo "bc_source=$BC_SOURCE"
+        echo "bc_checkpoint=$RUN_DIR/controller_bc_best.pt"
+        echo "bc_sha256=$(sha256sum "$RUN_DIR/controller_bc_best.pt" | awk '{print $1}')"
+    } >> "$MANIFEST"
+    touch "$BC_DONE"
+fi
 
 if [[ ! -f "$BC_DONE" ]]; then
     echo "=== Phase 1: V7 behavioral cloning, seed $SEED ==="
@@ -198,9 +234,10 @@ if [[ ! -f "$PPO_DONE" ]]; then
         --pretrained "$RUN_DIR/controller_bc_best.pt" \
         --checkpoint-dir "$RUN_DIR" \
         --n-iterations "$PPO_ITERATIONS" \
+        --max-dream-steps "$MAX_DREAM_STEPS" \
         --seed "$SEED" \
         --eval-seed 42 \
-        --wandb-name "v7-seed${SEED}-ppo" \
+        --wandb-name "v7-seed${SEED}-h${MAX_DREAM_STEPS}-i${PPO_ITERATIONS}-ppo" \
         "${PPO_ARGS[@]}"
 
     PPO_SELECTION=$(awk -F, '
