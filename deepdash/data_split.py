@@ -1,8 +1,11 @@
-"""Global episode-level train/val split shared across all training scripts.
+"""Global episode-level train/val assignment used across training scripts.
 
 The split is deterministic (seed 42), stratified by source (death/expert),
-and consistent across FSQ, Transformer, BC, and PPO. Val episodes are truly
-held out: no model ever trains on their data.
+and shared by FSQ, Transformer, BC, and PPO checkpoint-selection contexts.
+FSQ, Transformer, and BC exclude validation episodes from training. The
+current PPO protocol intentionally draws training rollout seeds from all
+episodes, so its fixed validation-stratum contexts are development contexts,
+not a held-out estimate of controller generalization.
 
 Usage:
     from deepdash.data_split import get_val_episodes, is_val_episode
