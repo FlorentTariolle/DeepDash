@@ -4,11 +4,11 @@
 
 \item {\bf Claims}
     \item[] Answer: \answerYes{}
-    \item[] Justification: The abstract and introduction state the main contribution as DashVMC, a real-time discrete world model control system for Geometry Dash, with Structured Label Smoothing (SLS) reported as a scoped design choice and diagnostic study.
+    \item[] Justification: The abstract and introduction state the main claim as policy improvement learned in a frozen action-conditioned world model transferring beyond its behavioural-cloning initialization to live Geometry Dash control. They also scope the real-time deployment and held-out-layout evidence.
 
 \item {\bf Limitations}
     \item[] Answer: \answerYes{}
-    \item[] Justification: Section~\ref{sec:limitations} discusses the auxiliary IRIS/Pong SLS diagnostic, Geometry Dash's single-environment and binary-action scope, the single frozen tokenizer/world-model seed, the three conditional controller seeds, finite live-attempt counts, and hardware transfer.
+    \item[] Justification: Section~\ref{sec:limitations} discusses the single-game and binary-action scope, one held-out layout within supported mechanics, one frozen tokenizer/dynamics-model seed, long-rollout fidelity, the small extended diagnostic cohort, and hardware dependence.
 
 \item {\bf Theory assumptions and proofs}
     \item[] Answer: \answerNA{}
@@ -16,7 +16,7 @@
 
 \item {\bf Experimental result reproducibility}
     \item[] Answer: \answerYes{}
-    \item[] Justification: Section~\ref{sec:setup} provides the data split, training details, controller hyperparameters, seeds, checkpoint-selection rules, and live protocol. Code, frozen tokenizer/world-model checkpoints, raw per-attempt results, per-seed controller hashes and provenance, an immutable reported-code snapshot, and a sequential reproduction recipe are available; the identifying repository URL is omitted from this double-blind manuscript.
+    \item[] Justification: Section~\ref{sec:setup} provides the collection and split procedure, training details, controller hyperparameters, seeds, checkpoint-selection rules, and live protocol. Code, frozen tokenizer/world-model checkpoints, raw per-attempt results, per-seed controller hashes and provenance, an immutable reported-code snapshot, and a sequential reproduction recipe are available; the identifying repository URL is omitted from this double-blind manuscript.
 
 \item {\bf Open access to data and code}
     \item[] Answer: \answerYes{}
@@ -28,7 +28,7 @@
 
 \item {\bf Experiment statistical significance}
     \item[] Answer: \answerYes{}
-    \item[] Justification: The draft reports three exact parent-BC/PPO controller pairs with 25 scored attempts per frozen policy-level on three official and two auxiliary layouts, sample standard deviations, and attempt-level PPO-minus-BC bootstrap intervals. Individual seed results and the three paired controller-seed differences are reported separately rather than pooling attempts; official-level mean, IQM, and empirical-reference optimality gap additionally receive seed-level stratified-bootstrap intervals. This is conditional replication under one frozen tokenizer/world-model seed, not full end-to-end training uncertainty; the auxiliary IRIS/Pong diagnostic has five seeds per condition.
+    \item[] Justification: The draft reports three exact parent-BC/PPO controller pairs with 25 scored attempts per frozen policy-level on three official and two auxiliary layouts, sample standard deviations, and attempt-level PPO-minus-BC bootstrap intervals. Individual seed results and the three paired controller-seed differences are reported separately rather than pooling attempts; official-level mean, IQM, and empirical-reference gap additionally receive seed-level stratified-bootstrap intervals. This is conditional replication under one frozen tokenizer/world-model seed, not full end-to-end training uncertainty.
 
 \item {\bf Experiments compute resources}
     \item[] Answer: \answerYes{}

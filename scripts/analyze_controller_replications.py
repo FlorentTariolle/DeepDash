@@ -4,7 +4,7 @@ The script reads the raw live-evaluation JSON files and local training
 provenance for seeds 43--45. It writes a machine-readable summary and a
 Markdown report with per-seed means, sample standard deviations, and
 attempt-level bootstrap intervals for PPO minus its exact parent BC, plus
-seed-level aggregate mean, IQM, and empirical-reference optimality-gap
+seed-level aggregate mean, IQM, and empirical-reference-gap
 intervals on the official levels.
 """
 
@@ -90,7 +90,7 @@ def bootstrap_difference(
 
 
 def aggregate_metrics(scores: np.ndarray) -> np.ndarray:
-    """Mean, IQM, and optimality gap for a runs-by-tasks score matrix."""
+    """Mean, IQM, and shortfall to the fixed empirical reference."""
     flat = np.sort(scores.reshape(scores.shape[:-2] + (-1,)), axis=-1)
     trim = int(0.25 * flat.shape[-1])
     middle = flat[..., trim : flat.shape[-1] - trim]
@@ -451,7 +451,7 @@ def main() -> None:
         "Scores normalize each official level from its fixed no-op mean (0) to its "
         "best observed retained-policy seed mean (1). Intervals are 95% percentile "
         "intervals from task-stratified bootstrap resampling of controller seeds. "
-        "The optimality gap is therefore the shortfall to this empirical reference, "
+        "The empirical-reference gap is the shortfall to this reference, "
         "not to true level completion; lower is better.",
         "",
         "| Metric | BC [95% CI] | PPO [95% CI] |",
@@ -460,7 +460,7 @@ def main() -> None:
     metric_labels = (
         ("mean", "Mean"),
         ("iqm", "IQM"),
-        ("optimality_gap", "Optimality gap"),
+        ("optimality_gap", "Empirical-reference gap"),
     )
     for metric_key, metric_label in metric_labels:
         cells = []

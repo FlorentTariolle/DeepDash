@@ -25,7 +25,6 @@ CONTINUATION_FRAMES = \
 	../analysis/2026-07-21_counterfactual_spike/idle/frame_000004.png \
 	../analysis/2026-07-21_counterfactual_spike/jump/frame_000000.png \
 	../analysis/2026-07-21_counterfactual_spike/jump/frame_000004.png \
-	../analysis/2026-07-21_counterfactual_spike/jump/frame_000008.png \
 	../analysis/2026-07-21_counterfactual_spike/jump/frame_000012.png
 
 figures/continuation.pdf: ../docs/continuation.tex $(CONTINUATION_FRAMES)
@@ -39,7 +38,7 @@ $(PREPRINT).pdf: $(PREPRINT).tex main.tex references.bib fairpreprint.cls figure
 	$(PUBLIC_TEX) $(PREPRINT)
 	$(PUBLIC_TEX) $(PREPRINT)
 
-$(SUBMISSION).pdf: $(SUBMISSION).tex main.tex references.bib checklist.tex neurips_2026.sty figures/pipeline.pdf figures/continuation.pdf
+$(SUBMISSION).pdf: $(SUBMISSION).tex main.tex references.bib neurips_2026.sty figures/pipeline.pdf figures/continuation.pdf
 	$(TEX) $(SUBMISSION)
 	$(BIB) $(SUBMISSION)
 	$(TEX) $(SUBMISSION)

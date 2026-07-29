@@ -3,16 +3,19 @@
 \ifdashvmcsubmission
   \usepackage[utf8]{inputenc}
   \usepackage[T1]{fontenc}
+  \usepackage{courier}
 \fi
 \usepackage{hyperref}
 \usepackage{url}
 \usepackage{booktabs}
+\usepackage{array}
 \usepackage{amsfonts}
 \usepackage{amsmath}
 \usepackage{microtype}
 \usepackage{xcolor}
 \usepackage{graphicx}
 \usepackage{placeins}
+\usepackage{flafter}
 
 \ifdashvmcsubmission
   \definecolor{citeblue}{HTML}{4A90E2}
@@ -27,7 +30,7 @@
 \else
   \hypersetup{
     pdftitle={DashVMC: Real-Time Discrete World Model Control in Geometry Dash},
-    pdfauthor={Florent Tariolle}
+    pdfauthor={Florent Tariolle and Florian Yger}
   }
 \fi
 
@@ -45,13 +48,11 @@
 
 \newcommand{\dashvmcabstract}{%
 World-model agents are usually evaluated in simulators that can wait for the policy; live games impose the opposite constraint, requiring capture, prediction, and action before the next frame.
-We present \emph{DashVMC}, a discrete world-model agent that plays Geometry Dash from screen pixels.
-A Finite Scalar Quantization (FSQ) tokenizer compresses Sobel-filtered observations into discrete token grids, a block-causal transformer predicts action-conditioned transitions, and a lightweight actor--critic is initialized by behavioural cloning (BC) and subsequently optimized with Proximal Policy Optimization (PPO) in latent rollouts.
-Training uses approximately 2 hours of gameplay captured at a nominal 30-FPS cadence, including less than 20 minutes of expert segments; all learning is offline, without any real-environment interaction by the agent.
-Across three independent controller seeds, PPO has higher mean live survival than its exact retained parent BC on every official level for every seed, with the largest gains on the first two levels.
-Deployed locally, the complete capture-to-action pipeline supports reactive control at 60 FPS on a consumer GPU.
-Beyond control, the learned dynamics generate interactive, open-ended visual level continuations that can remain plausible over extended rollouts.
-These results demonstrate that a specialized world model can jointly support imagined policy optimization, interactive generation, and real-time deployment.%
+We present \emph{DashVMC}, which learns a compact, action-conditioned world model from approximately two hours of recorded Geometry Dash gameplay.
+To test whether the learned dynamics are actionable, a controller is initialized by behavioural cloning (BC) and refined with Proximal Policy Optimization (PPO) entirely in frozen-model rollouts, without further interaction with the live game.
+Across three controller seeds, the refined policies improve mean live survival over their BC initializations on all three official levels and preserve the same direction on a held-out community layout.
+At deployment, the controller reuses the world model's temporal representation while skipping visual generation, enabling 60-FPS control on a consumer GPU.
+Action-conditioned continuations and rollout diagnostics show that the model remains useful for control despite imperfect long-horizon fidelity.%
 }
 
 \ifdashvmcsubmission
@@ -62,8 +63,15 @@ These results demonstrate that a specialized world model can jointly support ima
     DashVMC\\[0.1em]
     {\large\color{black!70}Real-Time Discrete World Model Control in Geometry Dash}%
   }
-  \author{Florent Tariolle}
-  \affiliation{INSA Rouen Normandy}
+  \renewcommand\authorlist{%
+    \vskip 0.4cm
+    {\fairtitlefont\bfseries Contributors}\\
+    Florent Tariolle\textsuperscript{1},
+    Florian Yger\textsuperscript{1,2}\\[0.5em]
+    {\small\fairtitlefont\bfseries
+      \textsuperscript{1}INSA Rouen Normandy\quad
+      \textsuperscript{2}LITIS}%
+  }
   \abstract{\dashvmcabstract}
   \metadata[Project page]{\href{https://tariolle.github.io/dash-vmc/}{tariolle.github.io/dash-vmc}}
   \metadata[Code]{\href{https://github.com/Tariolle/dash-vmc}{github.com/Tariolle/dash-vmc}}
@@ -84,35 +92,34 @@ These results demonstrate that a specialized world model can jointly support ima
 \label{sec:intro}
 
 A world model learns an environment's transition dynamics, conventionally written \(p_\theta(s_{t+1}\mid s_t,a_t)\): given a state \(s_t\) and action \(a_t\), it predicts the state that follows~\citep{lecun2022path}.
-When privileged environment state is unavailable, as here, the model instead operates on a learned latent representation inferred from recent observations and actions.
-Rolling the model forward allows an agent to improve its policy in imagination rather than through additional interaction with the real environment~\citep{ha2018world}.
+When privileged state is unavailable, it can learn this relation directly from recent observations and actions, then roll its predictions forward so that an agent can practice without further interaction with the real environment~\citep{ha2018world}.
 Discrete approaches such as IRIS encode images into tokens and model their evolution with an autoregressive transformer~\citep{micheli2023iris}, whereas DIAMOND uses diffusion to preserve fine visual detail~\citep{alonso2024diamond}.
-DashVMC instead targets a joint systems requirement: inexpensive imagined transitions for policy optimization together with a decoder-free live path that reuses the dynamics model's temporal state.
-It follows IRIS's discrete autoregressive formulation across frames, but predicts each next token grid in parallel and is adapted to an approximately two-hour offline corpus and a live-control setting.
+DashVMC asks whether a world model can serve two roles at once: provide an environment in which a policy can improve, and provide temporal understanding quickly enough to control a live game.
+It combines parallel next-grid prediction for inexpensive imagined rollouts with a decoder-free context path for live control.
+Relative to IRIS-style autoregressive token generation, DashVMC predicts the next 64-token grid in parallel and reuses only the transformer's temporal state at deployment.
 
-Regardless of model class, most world-model agents are evaluated in synchronous, step-based environments whose simulation advances only when the agent submits an action.
-Controlling a live, non-paused application imposes an additional wall-clock constraint: screen capture, preprocessing, state estimation, policy inference, and action dispatch must finish before the action becomes stale.
+Most world-model agents are evaluated in synchronous environments that wait for the policy.
+A live, non-paused application reverses that contract: screen capture, perception, inference, and action dispatch must finish before the action becomes stale.
 
 Geometry Dash is a small but unforgiving test of this contract.
 The avatar moves continuously, the action space is binary, and a mistimed jump causes immediate death.
 Levels are deterministic, but the agent observes only captured pixels and acts through keyboard events; it does not receive emulator state during control.
-This combination makes Geometry Dash a practical deployment stress test: can a pixel-based world-model agent close the live capture-to-action loop quickly and precisely enough for narrow timing windows on a consumer GPU?
+The apparent simplicity therefore isolates a demanding question: can an agent learn when to act from pixels, improve without touching the live game, and still react within narrow timing windows on modest hardware?
 
-DashVMC adopts the broad perception--dynamics--control organization introduced by World Models~\citep{ha2018world}.
-An FSQ tokenizer~\citep{mentzer2024fsq} encodes Sobel edge maps.
-An action-conditioned transformer world model predicts the next token grid from the recent latent context and a chosen action, enabling autoregressive imagined rollouts of the controller's decisions.
-The controller receives both the current observation grid and the transformer's temporal state; after a short BC warm start, it is optimized by PPO~\citep{schulman2017ppo} entirely in rollouts generated by the frozen world model.
-At deployment, neither decoding nor next-frame prediction is executed: the encoder, transformer context pass, and controller run once per frame, while policy optimization has already happened offline.
+DashVMC follows the perception--dynamics--control organization of World Models~\citep{ha2018world}.
+It compresses each frame into a small discrete grid, learns how that grid changes under jump or idle actions, and trains a lightweight action model in the resulting imagined environment.
+Behavioural cloning (BC) first teaches the action model the broad rhythm of human play; PPO~\citep{schulman2017ppo} then refines it through repeated imagined consequences.
+When the trained policy returns to the live game, it reuses the world model's temporal state while omitting next-grid prediction and decoding.
 
-This is a systems co-design contribution rather than a new generic world-model primitive.
-The 64-token visual grid bounds live perception and context-encoding cost, while the parallel next-frame predictor bounds the cost of imagined rollouts; explicit action conditioning permits counterfactual rollouts; BC avoids an expensive random-policy transient; and GPU-resident state plus captured execution remove avoidable synchronization from the live path.
 Our contributions are:
 \begin{enumerate}
-  \item an end-to-end discrete world-model agent for pixel-based control of the original, non-paused Geometry Dash game, whose parallel imagined transition fits within a 30-FPS frame period and whose decoder-free capture-to-action path sustains a 60-FPS live cadence on a consumer GPU; and
-  \item an offline training pipeline using approximately two hours of captured gameplay, including less than 20 minutes of expert segments, that initializes a lightweight controller with BC and optimizes it with PPO entirely in autoregressive rollouts of the frozen action-conditioned world model, without any real-environment interaction by the agent during learning.
+  \item a compact discrete, action-conditioned world model learned from approximately two hours of offline gameplay, whose rollouts support policy refinement without further live-game interaction;
+  \item a shared temporal representation used both to generate action-conditioned continuations and to support a decoder-free control path sustaining 60 FPS on a consumer GPU; and
+  \item evidence that the learned dynamics are actionable: controllers refined only in frozen-model rollouts improve over their exact BC parents on all three official levels across three seeds, with the same direction on a held-out layout.
 \end{enumerate}
-We evaluate these contributions through three retained BC-to-PPO controller pairs on three official and two auxiliary layouts, matched-action interventions, end-to-end latency profiling, and qualitative open-ended rollouts and failure analysis.
+We evaluate these claims through three retained BC-to-PPO controller pairs, one held-out community layout, a matched-action intervention, end-to-end latency measurements, and open-ended rollouts.
 
+\FloatBarrier
 \section{Related work}
 \label{sec:related}
 
@@ -127,7 +134,7 @@ Our protocol leaves the game clock running and supplies the controller with temp
 \paragraph{FSQ tokenization and policy initialization.}
 FSQ replaces learned vector-quantization codebooks with bounded scalar levels, avoiding commitment losses and codebook collapse while exposing an integer coordinate lattice~\citep{mentzer2024fsq}; we use the improved iFSQ bounding function~\citep{lin2026ifsq}.
 For policy initialization, demonstration-based RL has repeatedly shown that supervised behaviour can reduce the expensive early interaction phase~\citep{hester2018deep,baker2022vpt}.
-Here demonstrations only initialize the controller: the final policy is selected after PPO improvement in the learned environment.
+Therefore we use the demonstrations only to initialize the controller: the final policy is selected after PPO improvement in the learned environment.
 
 \paragraph{Representation anchors and alternatives.}
 Joint-embedding prediction can avoid spending capacity on high-magnitude input detail that is irrelevant or unpredictable from context~\citep{vanassel2025joint}, and LeWorldModel demonstrates stable end-to-end predictive learning from pixels with continuous latents~\citep{maes2026leworldmodel}.
@@ -135,16 +142,18 @@ DashVMC instead applies deterministic preprocessing that converts each cropped R
 Among discrete tokenizers, Gaussian Quant reports stronger rate--distortion performance than FSQ on large image benchmarks~\citep{xu2025gq}.
 Whether those gains transfer to low-resolution Sobel edge maps and downstream world-model control remains untested.
 
+\FloatBarrier
 \section{DashVMC}
 \label{sec:method}
 
-The three modules are trained sequentially: \(V\) and \(M\) are frozen before controller fitting, and the selected controller is frozen for deployment.
-Figure~\ref{fig:pipeline} separates the imagined PPO path from the live reactive path.
+DashVMC is organized around a simple loop: recorded play trains a world model, the action model is refined in rollouts from the frozen dynamics model, and the resulting controller is returned to the live game.
+The visual encoder \(V\), dynamics model \(M\), and action model \(C\) are trained in sequence and then frozen for deployment.
+Figure~\ref{fig:pipeline} shows how the same learned state supports both imagined practice and live reaction.
 
-\begin{figure}[ht!]
+\begin{figure}[!htbp]
   \centering
   \includegraphics[width=\textwidth]{figures/pipeline.pdf}
-  \caption{DashVMC policy improvement and deployment. \textbf{(a)} PPO rollouts start from a recorded \(K=4\) token--action context. The frozen world model predicts \(\hat{\mathbf z}_{\mathrm{next}}\) and \(p_{\mathrm{death}}\) while returning context feature \(\mathbf h\); the controller acts from the first imagined step, and the predicted grid and selected action are appended to the rolling context. The first four transitions form a controller-active grace period: they replace the recorded seed and are excluded from PPO to filter deaths likely already unavoidable from the initial context. PPO updates only \(C\). \textbf{(b)} During live control, all weights are frozen. \(V\) encodes captured frames and \(M\) performs context prefill only to produce \(\mathbf h_t\). The controller receives the current grid \(\mathbf z_t\) directly together with \(\mathbf h_t\) and dispatches the keyboard action; neither next-grid prediction nor decoding is run.}
+  \caption{Learning in imagination and acting in the live game. \textbf{(a)} A recorded context seeds the frozen world model; the action model chooses what to do, the world model predicts the consequence, and PPO updates only the action model. \textbf{(b)} In the live game, the encoder and temporal context provide the state used for action selection, while visual generation is skipped.}
   \label{fig:pipeline}
 \end{figure}
 
@@ -153,28 +162,23 @@ Figure~\ref{fig:pipeline} separates the imagined PPO path from the live reactive
 
 Each RGB capture is cropped, converted to grayscale, filtered with Sobel edges, and resized to \(\imgsize\).
 A convolutional autoencoder maps the result through three stride-2 stages to a four-channel \(\gridsize\) latent map.
-Each spatial vector is independently quantized with iFSQ levels \(\fsqlevels\), using the bounding function \(2\operatorname{sigmoid}(1.6z)-1\), and yields \(\ntokens\) token IDs from \(\vocabsize\) implicit codes.
-The tokenizer is trained on adjacent frame pairs with pixel-MSE reconstruction plus temporal slowness and latent-uniformity regularizers~\citep{xia2025grwm}.
-The encoder and decoder contain \(941{,}924\) and \(941{,}921\) trainable parameters, respectively.
-After selection, the encoder is frozen and the decoder is retained only for visualizing dreams.
+Each spatial vector is independently quantized with iFSQ levels \(\fsqlevels\), using the bounding function \(2\operatorname{sigmoid}(1.6z)-1\), and yields \(\ntokens\) token IDs from \(\vocabsize\) implicit codes~\citep{mentzer2024fsq,lin2026ifsq}.
+The tokenizer is trained on adjacent frames with reconstruction, temporal-slowness, and latent-uniformity objectives~\citep{xia2025grwm}.
+Once selected, its encoder is frozen; its decoder is used to visualize dreams but is not required by the action model.
 
 \subsection{Action-conditioned dynamics}
 \label{sec:transformer}
 
-The dynamics model has \(\nlayers\) transformer layers, width \(\hdim\), and \(\nheads\) attention heads, for \(14{,}723{,}520\) unique trainable parameters including \(141{,}120\) in the contrastive predictive coding (CPC) training heads.
-Each frame block contains 64 visual tokens and one \textsc{alive}/\textsc{death} status token; action tokens are inserted between blocks.
-Given \(K=\nctx\) observed frame--action pairs, a final masked block requests the next frame.
-The resulting sequence has \(K(65+1)+65=329\) positions; every target-frame position receives a learned \texttt{[MASK]} embedding, so no target token is exposed during training.
+The dynamics model is an eight-layer, width-384 transformer that receives four recent frame--action pairs.
+Each frame block contains 64 visual tokens and one \textsc{alive}/\textsc{death} status token, with action tokens inserted between blocks; a final masked block requests the next frame.
 Attention is bidirectional within a frame and causal across frame/action blocks, so all next-frame positions are predicted in one forward pass without seeing their targets.
-Factored 3D rotary embeddings encode row, column, and time, with spatial and temporal bases 10 and 10,000; status and action tokens use the grid centre coordinates~\citep{su2024rope}.
-The status logits supply the rollout termination score, and the final context state \(\mathbf h_t\in\mathbb R^{\hdim}\) summarizes recent dynamics for the controller.
-In the reported interleaved sequence, this state is taken from the most recent action-token position.
-Death frames are oversampled \(5\times\) during training to prevent the overwhelmingly common \textsc{alive} class from admitting a trivial always-alive solution.
-Consequently, the \textsc{death} score from a two-class softmax over \textsc{alive}/\textsc{death} is used operationally rather than interpreted as a calibrated environment probability.
+An explicit action token separates consecutive frames, so the model can answer the question central to policy learning: what changes if the action model jumps rather than idles?
+It predicts all 64 codes of the next grid in parallel, together with an \textsc{alive}/\textsc{death} score, and exposes a temporal summary \(\mathbf h_t\), taken from the most recent action-token position, to the action model.
+Parallel prediction keeps imagined steps inexpensive, while the rolling context lets generated consequences become the starting point for the next decision.
 
-We add TWISTER's action-conditional contrastive predictive-coding loss with weight 0.1~\citep{burchi2025twister}: for each future offset \(k\leq K\), an MLP predicts \(\mathbf h_{t+k}\) from \(\mathbf h_t\) and the intervening actions and is scored with in-batch InfoNCE~\citep{oord2018cpc}.
-We also independently replace 5\% of context tokens uniformly and 5\% with adjacent FSQ codes.
-The token loss uses focal modulation~\citep{lin2017focal} and structured label smoothing (SLS), implemented as a fixed local FSQ-coordinate target.
+Training combines next-grid prediction with action-conditional contrastive predictive coding of weight 0.1~\citep{burchi2025twister,oord2018cpc}, context corruption, and an auxiliary death objective.
+For context corruption, 5\% of context tokens are replaced uniformly and another 5\% with adjacent FSQ codes.
+The token loss uses focal modulation~\citep{lin2017focal} and structured label smoothing (SLS), which assigns its smoothing mass to nearby coordinates in the FSQ lattice rather than uniformly across unrelated codes.
 For target code \(i\) with lattice coordinate \(\mathbf c_i\),
 \begin{equation}
 q(j\mid i)=
@@ -187,228 +191,200 @@ q(j\mid i)=
 \label{eq:sls}
 \end{equation}
 with \(\varepsilon=0.1\) and \(\sigma=0.9\).
-Unlike uniform label smoothing~\citep{szegedy2016rethinking}, this assigns the smoothing mass locally on the FSQ lattice.
-Writing \(H(q,p)=-\sum_j q(j\mid i)\log p_j\), focal modulation is applied once to the aggregate soft-target loss as \((1-e^{-H})^2H\), rather than independently per class; the output projection is tied to the token embedding.
-Decoder perturbations motivated this target: adjacent FSQ coordinates reconstructed nearly identical patches, with visual error increasing with coordinate offset.
-In an archived same-architecture comparison on an earlier 256-width model, replacing uniform smoothing with SLS improved validation token accuracy (32.85\% to 33.66\%) and CPC loss (0.345 to 0.238) at an essentially unchanged train--validation gap.
-This single-run development comparison supports the local choice; a later matched IRIS/Pong diagnostic does not support a general claim (Section~\ref{sec:limitations}).
+Writing \(H(q,p)=-\sum_j q(j\mid i)\log p_j\), focal modulation is applied once to the aggregate soft-target loss as \((1-e^{-H})^2H\), and the output projection is tied to the token embedding.
+This local target reflects the observation that neighbouring FSQ codes decode to visually similar patches; it is a design choice for this representation rather than a general claim about world-model training.
 
 \subsection{Controller and latent policy improvement}
 \label{sec:controller}
 
-The \(\ctrlparams\)-parameter actor--critic embeds the current \(\gridsize\) token grid, processes it with two convolutions and max pooling, concatenates the resulting 256-dimensional feature with \(\mathbf h_t\), and uses zero-initialized heads to predict jump probability, value, and an eight-action auxiliary output covering the current and next seven actions.
-The controller is first fit to expert actions by BC, then optimized with PPO in autoregressive rollouts from the frozen world model.
+The \(\ctrlparams\)-parameter actor--critic embeds the current token grid, processes it with two convolutions and max pooling, and concatenates the resulting 256-dimensional feature with the dynamics model's temporal summary \(\mathbf h_t\).
+Separate heads predict jump probability, value, and an eight-action auxiliary output covering the current and next seven actions.
+Its training has two stages with different purposes.
+BC teaches it to reproduce the broad timing of expert actions; PPO then lets it depart from imitation and discover, through repeated imagined consequences, actions that survive longer.
 
-Each PPO iteration starts from recorded four-frame contexts and generates 512 imagined episodes of at most 45 steps.
-The controller acts from the first imagined step, but the first four transitions form a grace period that is excluded from PPO updates.
-At this short horizon, deaths are usually already determined by the recorded approach state---for example, a jump may be ending too close to an obstacle for any action to prevent the collision---so the exclusion keeps such effectively unavoidable outcomes from influencing the policy update.
-These four transitions also refresh the rolling context, so retained transitions use an entirely model-generated four-frame context.
-The 45-step horizon roughly covers obstacles visible in the recorded seed.
-Beyond it, they have usually left the crop, so the model can enter a physically valid but uninformative empty segment; later obstacles must also be generated rather than seed-observed, progressively shifting controller inputs away from encoded real frames.
-We stop at this boundary to learn consequences of observed obstacles without relying on invented challenges.
-Rollouts use the fixed argmax boundary of the two status logits, equivalently terminating when the operational death score exceeds 0.5; this threshold is not interpreted as a calibrated 50\% environment probability.
+Each PPO iteration generates 512 imagined episodes of at most 45 steps from recorded four-frame contexts, with greedy next-grid predictions and sampled Bernoulli actions.
+The first four generated transitions refresh the context but are excluded from PPO because the recorded approach may already make a collision unavoidable.
+The remaining horizon covers the obstacles visible in the seed while avoiding long updates dominated by geometry invented beyond it.
+Rollouts terminate when the death logit exceeds the \textsc{alive} logit; because death frames are oversampled \(5\times\) during dynamics training, this score is used as an operational boundary rather than a calibrated probability.
 Reward is \(+1\) per survived step and \(-0.25\) per jump, preventing an always-jump local optimum.
 We use Generalized Advantage Estimation (GAE)~\citep{schulman2015gae} with \(\gamma=0.995\), \(\lambda=0.95\), PPO clip 0.2, and auxiliary-action loss weight 0.1.
 
 \subsection{Reactive deployment path}
 \label{sec:deployment-method}
 
-The training corpus is captured at a nominal 30-FPS cadence, but the optimized live stack is deployed at 60 FPS.
-Desktop Duplication captures only the $1032\times1032$ model crop; after CPU grayscale conversion, CUDA Sobel filtering and an ordered area-resize kernel reproduce the recorded-data preprocessing while keeping the normalized $64\times64$ observation on the GPU.
-Across 128 synthetic crops and 100 fresh live captures, this path produced zero output-byte mismatches against the original CPU pipeline.
-Token context remains in a GPU-resident ring buffer.
-At each step, the transformer runs context prefill only to obtain \(\mathbf h_t\); its masked next-grid prediction phase is not executed.
-The packaged live path retains the \(941{,}924\)-parameter encoder, \(14{,}582{,}016\)-parameter transformer context path, and \(\ctrlparams\)-parameter controller, for \(15{,}569{,}486\) parameters in total.
-It discards the \(941{,}921\)-parameter decoder, \(141{,}120\) CPC-head parameters, and 384-parameter mask embedding.
-The \(384{,}768\)-entry vocabulary projection is tied to the input token embedding, so removing its prediction-module alias saves no additional weights; skipping masked prediction primarily saves computation and activations.
-The FSQ encoder uses \texttt{torch.compile}, and transformer context encoding is captured in a CUDA Graph after warm-up.
-A keyboard update is issued only when the binary action changes.
-The loop sleeps after action dispatch to maintain the selected cadence, but that deliberate sleep is excluded from capture-to-action latency.
-This is deliberately reactive rather than an inference-time planning system: online search or trajectory optimization would have to share the same 16.7-ms (60-FPS) budget with capture and dispatch.
+Training asks the world model to generate consequences; live control only asks it to interpret what has just happened.
+Desktop Duplication captures only the \(1032\times1032\) model crop; CPU grayscale conversion followed by CUDA Sobel filtering and area resizing produces the \(64\times64\) observation.
+Each frame is encoded and appended to a GPU-resident context, and the transformer runs context prefill only to produce \(\mathbf h_t\).
+The next-grid predictor and image decoder are skipped, reducing the deployed path to 15.57 million parameters; the encoder uses \texttt{torch.compile}, and transformer context encoding uses a CUDA Graph after warm-up.
+The accelerated preprocessing path was checked against the recorded-data pipeline on synthetic and fresh live captures and produced byte-identical observations.
+This is a reactive controller rather than an online planner: the policy has already performed its search through experience during offline imagined training.
 
+\FloatBarrier
 \section{Experimental setup}
 \label{sec:setup}
 
 \paragraph{Data and training.}
-The unaugmented corpus contains 4,264 base gameplay episodes and 251,963 source frames, equivalent to approximately 2.33 hours at the nominal 30-FPS capture cadence.
-Each recorded frame is paired with the binary keyboard action applied at that timestep (jump or idle), yielding action-labelled trajectories for dynamics learning and BC.
-It includes deliberate failures and 36 expert trajectories or segments, with the expert subset totaling less than 20 minutes of gameplay.
-The base episodes span primarily official Levels 1--7 and multiple community-created levels.
-Episodes containing mechanics outside the selected model's scope, including gravity inversion, were excluded to keep the learned dynamics tractable at this scale.
-Episodes are split once, 90/10, by base identifier and source with seed 42, and all derived samples inherit the base episode's assignment.
-During FSQ training, each adjacent-frame pair receives a shared two-dimensional translation whose horizontal and vertical integer offsets are sampled independently and uniformly from \([-4,4]\) pixels, with border padding.
-For dynamics training, each episode is tokenized at vertical offsets \(\{-4,-2,0,2,4\}\), expanding the corpus to 21,320 episodes.
-The frozen encoder retokenizes the corpus before dynamics training.
-Tokenizer and dynamics training use seed 42; the controller replication uses seeds 43, 44, and 45 while holding those two components fixed.
-Base training is sequential in BF16 on one A100, the controller replications run in BF16 on one H200 at a time, and live inference is measured on an RTX 2060.
+Before augmentation, the corpus contains 4,264 action-labelled gameplay episodes, or 251,963 frames and approximately 2.33 hours at the nominal 30-FPS capture cadence.
+Each captured frame is paired with the current space-bar state (\textsc{idle}/\textsc{jump}); process memory marks death/respawn boundaries for segmentation and scoring but never enters the controller.
+It includes deliberate failures, official Levels 1--7, several community levels, and 36 expert trajectories or segments totaling less than 20 minutes.
+Mechanics outside the selected scope, including gravity inversion, are excluded.
+Failure and expert trajectories are each split 90/10 with seed 42 at the base-episode level.
+During tokenizer training, each adjacent-frame pair receives a shared two-dimensional translation whose horizontal and vertical offsets are sampled independently and uniformly from \([-4,4]\) pixels.
+For dynamics training, the frozen encoder instead tokenizes each base episode at vertical offsets \(\{-4,-2,0,2,4\}\), expanding the corpus to 21,320 episode variants.
+All temporal windows and translated variants inherit the assignment of their base episode; a SHA-256 audit of the 4,264 usable base frame--action trajectory pairs found no exact duplicates before augmentation.
+The tokenizer, dynamics model, and BC controller use this split, whereas PPO draws rollout seeds from the full recorded corpus and uses 512 fixed contexts from the 10\% stratum for checkpoint selection.
+Tokenizer and dynamics training use seed 42, while controller training is repeated with seeds 43--45 under the same frozen representation and world model.
+The first two stages run sequentially in BF16 on one A100, controller training runs in BF16 on one H200 at a time, and live inference and local latency evaluation use the same RTX 2060 with PyTorch 2.11.0+cu126 (CUDA 12.6).
 Table~\ref{tab:training} records the optimization and selection details that materially determine the frozen system.
 
-\begin{table}[ht!]
+\begin{table}[!htbp]
   \centering
   \footnotesize
   \caption{Training and checkpoint selection. Tokenizer/dynamics learning rates use cosine decay after any stated warm-up.}
   \label{tab:training}
-  \begin{tabular}{p{0.12\textwidth}p{0.58\textwidth}p{0.18\textwidth}}
+  \begin{tabular}{>{\raggedright\arraybackslash}p{0.12\textwidth}>{\raggedright\arraybackslash}p{0.58\textwidth}>{\raggedright\arraybackslash}p{0.18\textwidth}}
     \toprule
     Stage & Optimization & Selection \\
     \midrule
     Tokenizer & Adam; 1,000 epochs; batch 2,048; cosine LR from \(10^{-3}\) to \(10^{-5}\); slowness 0.1; uniformity 0.01; validation every 10 epochs. & Min. loss (epoch 920). \\
     Dynamics & AdamW; 200 epochs \(\times\) 500 steps; batch 512; LR \(2\!\times\!10^{-3}\!\to\!5\!\times\!10^{-5}\) after 5-epoch warm-up; weight decay 0.01; dropout 0.1; max grad. norm 1.0; death frames oversampled \(5\times\). & Max. death F1 (epoch 139). \\
     BC & Three seeds; AdamW; 50 epochs/seed; batch 512; LR \(10^{-3}\); weight decay \(10^{-4}\); positive jump weight 1.5. & Min. loss (10; 10; 11). \\
-    PPO & Three seeds; Adam; 15,000 iterations/seed; 512 rollouts/iteration; four update epochs; minibatch 512; LR \(10^{-4}\); entropy/critic weights 0.01/0.5; ratio clip 0.2; max grad. norm 0.5. & Best development survival (12,420; 5,090; 12,280). \\
+    PPO & Three seeds; Adam; 15,000 iterations/seed; 512 rollouts/iteration; four update epochs; minibatch 512; LR \(10^{-4}\); entropy/critic weights 0.01/0.5; ratio clip 0.2; max grad. norm 0.5. & Best dev. survival (12,420; 5,090; 12,280). \\
     \bottomrule
   \end{tabular}
 \end{table}
 
-The historical end-to-end stage logs sum to approximately 12.6 A100 hours.
-The three reported controller replications add 51.54 H200 wall-clock hours and execute 45,000 PPO iterations in total; per-seed controller times are 17.41, 17.06, and 17.07 hours.
-These logged times exclude offline preprocessing, live evaluation, and manual handoffs between stages.
+The historical tokenizer and dynamics stages total approximately 12.6 A100 hours; the three controller replications add 51.54 H200 hours and 45,000 PPO iterations.
 
 \paragraph{Checkpoint and live evaluation.}
 PPO checkpoint selection uses survival on 512 fixed latent development contexts every ten iterations.
-Because training seeds may originate from the same episode collection and selection is adaptive, this is explicitly a development metric, not held-out validation.
-For live evaluation, all checkpoints are frozen and Auto-Retry is enabled.
-Auto-Retry only standardizes restarts and supplies no observation to the policy; the policy receives neither a level identifier, elapsed time or frame index, level progress, nor game memory.
-Live actions are deterministic: jump is selected exactly when the controller output exceeds 0.5.
-For each controller seed, we retain 25 scored attempts for both the selected BC checkpoint and the PPO checkpoint initialized from that exact BC parent on each of the first three official levels: \emph{Stereo Madness}, \emph{Back on Track}, and \emph{Polargeist}.
-The two auxiliary live evaluations use the same 25-attempt paired protocol at the 30-FPS evaluation cadence.
-The first uses \emph{Stereo Madness Copy} (KRUTOYARBUS), a community copy that begins at the first ship section of the official \emph{Stereo Madness} level, because official Level 1--3 attempts die before ship.
-The second uses one custom community level, \emph{Stereo INSANE Nerfed} (XXcapta1n), as a single held-out layout within the supported mechanic distribution (no gravity inversion or other out-of-scope mechanics).
-This level was first accessed for this evaluation after the corpus and checkpoints were frozen and is therefore absent from the training data.
-In addition, a separate cadence-transfer probe reruns the historical frozen V7 PPO controller for 25 scored attempts on Stereo Madness Copy at 60 FPS on the optimized deploy-equivalent inference path (direct crop capture, exact CUDA preprocessing, FSQ \texttt{torch.compile}, transformer CUDA graph, GPU-resident context, no per-stage CUDA synchronization).
-Every paired evaluation first waits until the evaluator observes an in-level, alive state, then excludes one synchronization episode and retains the next 25 valid attempts.
-The exclusion prevents manual game resume or startup waiting time from inflating apparent survival.
-Game memory is used only to delimit alive/dead episodes, never as policy input.
-The primary endpoint is frames survived; when comparing 30-FPS and 60-FPS deployments, we use the recorded episode wall time from evaluation start to detected death because frame counts are not comparable across cadences.
-Reported variation within each frozen policy is the sample standard deviation across attempts.
-PPO-minus-parent-BC intervals are 95\% percentile-bootstrap intervals using 50,000 resamples, with attempts resampled independently within each frozen policy.
-These intervals quantify deployment variability from capture and action timing, not controller-training uncertainty.
-Replication evidence is instead the three paired seed-level differences; attempts are never pooled across seeds and presented as independent training runs.
-All three controller pairs share one frozen tokenizer and world-model seed, so this is controller-seed replication rather than end-to-end training uncertainty.
-For an aggregate seed-level view of the three official levels, we first map each level's fixed historical no-op mean to 0 and its best observed mean among the retained BC and PPO controller seeds to 1.
-We then report the mean, interquartile mean (IQM), and optimality gap \(E[\max(0,1-s)]\), with 95\% percentile intervals from 50,000 task-stratified bootstrap resamples of controller seeds following \citet{agarwal2021precipice}.
-The empirical normalization anchors remain fixed across resamples, so these intervals quantify controller-seed uncertainty conditional on the frozen tokenizer/world model and the observed anchors; the gap is to the empirical reference, not to true level completion.
-The earlier comparison against a separately reconstructed BC checkpoint is superseded and excluded from the reported control results.
-Deployment measurements use Desktop Duplication via \texttt{dxcam} directly over region $(x,y,s)=(660,48,1032)$, exact Sobel preprocessing to $64\times64$, and \texttt{keyboard} space dispatch on PyTorch 2.11.0+cu126.
+All live checkpoints are then frozen and act deterministically from pixels alone; Auto-Retry standardizes restarts but provides no policy input.
+For each seed, we compare PPO with the exact BC checkpoint that initialized it over 25 scored attempts on \emph{Stereo Madness}, \emph{Back on Track}, and \emph{Polargeist}.
+This pairing is by controller lineage: the 25 BC and 25 PPO live attempts are separate samples rather than attempt-matched trials.
+The same protocol is used on two auxiliary layouts.
+\emph{Stereo Madness Copy} begins at the official level's first ship section, revealing later control behaviour that the official Level 1--3 runs do not reach.
+\emph{Stereo INSANE Nerfed} is a community layout first accessed after the corpus and checkpoints were frozen, providing a held-out test within the supported mechanics.
+To validate the earlier 30-FPS evaluations, a cadence check compares the identical frozen PPO checkpoint on Stereo Madness Copy over 25 optimized-path attempts at 60 FPS and 20 earlier diagnostic-path attempts at 30 FPS.
+
+The primary endpoint is frames survived; the cross-cadence probe uses episode wall time because frame counts change with cadence.
+Within-policy variation is the sample standard deviation over attempts.
+PPO-minus-parent-BC intervals independently resample the 25 attempts from each frozen policy 50,000 times.
+These attempt-level intervals characterize deployment variability rather than controller-training uncertainty; the three controller-seed differences provide the replication evidence.
+For the official-level aggregate, each level is normalized from its fixed historical no-op mean to the best observed retained-policy seed mean.
+We report the mean, interquartile mean (IQM), and empirical-reference gap with 50,000 task-stratified bootstrap resamples of controller seeds following \citet{agarwal2021precipice}.
+These seed-level summaries complement, rather than pool, the three controller replications.
 
 \paragraph{Latency and continuation protocols.}
-Latency is measured on 5,000 consecutive frames of the final 60-FPS optimized deployment path, from capture through action update, with CUDA synchronization only at the end-to-end boundary.
+Live latency is measured from capture through action dispatch over 5,000 consecutive frames of the optimized 60-FPS path.
 For the qualitative intervention, the world model is initialized from a fixed encoded four-frame prefix immediately before a spike.
 Greedy continuations differ only in the first conditioned action, jump or idle; all subsequent actions are idle.
+Post-hoc quantitative diagnostics re-encode the unaugmented base trajectories in the fixed validation stratum with the selected tokenizer.
+They contain 22,745 next-frame windows from 413 usable trajectories; twelve additional failure trajectories are shorter than the five frames required for one context--target window.
+For the paired action intervention, we hold each recorded four-frame context fixed and flip only the final binary action, which directly precedes the target frame.
+The reported interval resamples whole trajectories 5,000 times, stratified by failure or expert source.
+For autoregressive fidelity, predicted grids are fed back greedily while replaying the recorded future actions.
+The standard cohort contains 1,024 starts, capped at 64 per trajectory, from 150 failure and three expert trajectories; an exploratory 200-step cohort contains 256 starts from the only four sufficiently long validation trajectories.
 
 \paragraph{External transition-latency protocol.}
-To characterize computational design rather than control quality, we benchmark the released Pong checkpoints of IRIS and DIAMOND alongside the selected DashVMC checkpoint on the same RTX 2060 SUPER.
-Each model runs in a fresh process at batch size one with FP32 eager execution; after 30 warm-up transitions, 100 transitions are timed individually with CUDA synchronization at each boundary, and the full procedure is repeated twice.
-The measured operation follows each native imagination interface: DashVMC predicts a 64-token latent grid in parallel together with its death score; IRIS autoregressively predicts 16 tokens, decodes the observation, and predicts reward and termination; and DIAMOND performs three-step pixel diffusion and predicts reward and termination.
-The differing output representations make this an operational latency comparison, not a matched generation-quality or control benchmark.
+We also time the native imagined transition of DashVMC and released Pong checkpoints of IRIS and DIAMOND on the same RTX 2060.
+Each model runs in a fresh process at batch size one with FP32 eager execution; 30 warm-up transitions are followed by 100 synchronized transitions, repeated twice.
+DashVMC predicts a latent grid and status, IRIS generates and decodes 16 tokens plus reward and termination, and DIAMOND performs three diffusion steps plus reward and termination.
+Because these native interfaces produce different representations, the comparison concerns transition cost rather than generation quality or control.
 
+\FloatBarrier
 \section{Results}
 \label{sec:results}
 
-\subsection{Frozen-system and live-control results}
+\subsection{Policy refinement in the live game}
 \label{sec:gd-results}
 
-All component metrics below are reported at their checkpoint-selection points rather than as independent maxima.
-The selected tokenizer reaches \(3.894\times10^{-4}\) per-pixel validation MSE (34.10\,dB PSNR), obtained by dividing its per-frame reconstruction SSE of 1.595 by \(64^2\).
-On the unweighted validation distribution with its natural death frequency, the transformer reaches death precision/recall/F1 of 0.7337/0.8654/0.7941.
-Under the training-time full-vocabulary argmax metric, it reaches 29.74\% token accuracy; low exact-token accuracy can coexist with useful local predictions in a 1,000-class grid, but it also bounds dream reliability.
-The selected BC validation accuracies for seeds 43--45 are 78.97\%, 79.15\%, and 79.15\%; their selected PPO checkpoints survive 30.13, 29.95, and 29.96 of 45 steps on the shared fixed latent development contexts.
+The central question is whether policy improvement learned only through frozen-model rollouts transfers beyond imitation to the live game.
+The selected tokenizer reconstructs held-out edge maps at 34.10\,dB PSNR.
+On the unaugmented validation trajectories, the dynamics model reaches 29.58\% visual-token accuracy and 0.793 death F1.
+Because validation death F1 selected the dynamics checkpoint, the latter is a development-stratum estimate rather than an untouched test result.
+These component metrics establish a usable but imperfect imagined environment; the live comparison below tests whether it nevertheless teaches better actions.
 
-\begin{table*}[t]
+\begin{table*}[!htbp]
   \centering
   \scriptsize
-  \caption{Paired official-level live frame survival for three controller seeds. BC and PPO entries are mean $\pm$ sample standard deviation over 25 valid attempts. Each $\Delta$ row is PPO minus its exact parent BC, reported as mean [95\% attempt-level bootstrap interval]. The three seed differences, rather than pooled attempts, are the replication evidence.}
+  \setlength{\tabcolsep}{4pt}
+  \caption{Live survival on all five layouts. No-op entries are mean frames $\pm$ standard deviation over 10 attempts and are shared across seeds. BC/PPO entries use 25 attempts; $\Delta$ is PPO minus its exact parent BC [95\% attempt-level bootstrap interval]. The first three are official levels, Stereo Madness Copy begins in ship form, and Stereo INSANE Nerfed is held out.}
   \label{tab:live-controls}
-  \begin{tabular}{clccc}
+  \begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.18\textwidth}lccc@{}}
     \toprule
-    Seed & Policy & Stereo Madness & Back on Track & Polargeist \\
+    Level & Policy & Seed 43 & Seed 44 & Seed 45 \\
     \midrule
-    43 & BC & $120.2\pm91.8$ & $123.5\pm81.5$ & $52.4\pm16.7$ \\
-       & PPO & $280.1\pm23.3$ & $260.0\pm55.5$ & $65.2\pm33.4$ \\
-       & $\Delta$ [95\% CI] & $159.9\ [122.7,195.4]$ & $136.5\ [98.8,174.4]$ & $12.8\ [-0.2,28.6]$ \\
+    Stereo Madness & No-op & \multicolumn{3}{c}{shared: $46.2\pm0.7$} \\
+       & BC & $120.2\pm91.8$ & $130.6\pm76.0$ & $156.0\pm100.2$ \\
+       & PPO & $\boldsymbol{280.1\pm23.3}$ & $\boldsymbol{280.4\pm33.5}$ & $\boldsymbol{308.8\pm68.6}$ \\
+       & $\Delta$ [95\% CI] & $159.9\ [122.7,195.4]$ & $149.8\ [116.8,180.6]$ & $152.8\ [106.7,199.8]$ \\
     \addlinespace
-    44 & BC & $130.6\pm76.0$ & $111.1\pm60.3$ & $49.0\pm16.5$ \\
-       & PPO & $280.4\pm33.5$ & $195.9\pm126.5$ & $68.3\pm44.1$ \\
-       & $\Delta$ [95\% CI] & $149.8\ [116.8,180.6]$ & $84.8\ [31.9,139.6]$ & $19.4\ [3.0,39.0]$ \\
+    Back on Track & No-op & \multicolumn{3}{c}{shared: $63.4\pm0.7$} \\
+       & BC & $123.5\pm81.5$ & $111.1\pm60.3$ & $120.2\pm69.6$ \\
+       & PPO & $\boldsymbol{260.0\pm55.5}$ & $\boldsymbol{195.9\pm126.5}$ & $\boldsymbol{209.4\pm130.0}$ \\
+       & $\Delta$ [95\% CI] & $136.5\ [98.8,174.4]$ & $84.8\ [31.9,139.6]$ & $89.2\ [34.6,147.2]$ \\
     \addlinespace
-    45 & BC & $156.0\pm100.2$ & $120.2\pm69.6$ & $46.2\pm9.2$ \\
-       & PPO & $308.8\pm68.6$ & $209.4\pm130.0$ & $63.1\pm32.9$ \\
-       & $\Delta$ [95\% CI] & $152.8\ [106.7,199.8]$ & $89.2\ [34.6,147.2]$ & $16.8\ [5.7,31.5]$ \\
+    Polargeist & No-op & \multicolumn{3}{c}{shared: $41.5\pm0.7$} \\
+       & BC & $52.4\pm16.7$ & $49.0\pm16.5$ & $46.2\pm9.2$ \\
+       & PPO & $\boldsymbol{65.2\pm33.4}$ & $\boldsymbol{68.3\pm44.1}$ & $\boldsymbol{63.1\pm32.9}$ \\
+       & $\Delta$ [95\% CI] & $12.8\ [-0.2,28.6]$ & $19.4\ [3.0,39.0]$ & $16.8\ [5.7,31.5]$ \\
+    \midrule
+    Stereo Madness Copy & No-op & \multicolumn{3}{c}{shared: $135.0\pm0.0$} \\
+       & BC & $366.8\pm172.8$ & $285.7\pm153.5$ & $299.4\pm175.2$ \\
+       & PPO & $\boldsymbol{435.6\pm196.1}$ & $\boldsymbol{495.8\pm137.5}$ & $\boldsymbol{546.8\pm94.1}$ \\
+       & $\Delta$ [95\% CI] & $68.8\ [-33.3,166.1]$ & $210.1\ [127.9,285.5]$ & $247.4\ [167.6,320.7]$ \\
+    \addlinespace
+    Stereo INSANE Nerfed & No-op & \multicolumn{3}{c}{shared: $46.1\pm0.8$} \\
+       & BC & $104.8\pm72.1$ & $102.1\pm64.0$ & $97.8\pm57.9$ \\
+       & PPO & $\boldsymbol{290.4\pm48.6}$ & $\boldsymbol{342.8\pm80.8}$ & $\boldsymbol{266.7\pm128.9}$ \\
+       & $\Delta$ [95\% CI] & $185.5\ [151.1,217.6]$ & $240.6\ [200.8,280.2]$ & $168.8\ [115.4,223.9]$ \\
     \bottomrule
   \end{tabular}
 \end{table*}
 
-Table~\ref{tab:live-controls} shows a positive PPO-minus-parent-BC mean for all nine official-level seed pairs.
+The shared no-op rows of Table~\ref{tab:live-controls} establish the level-dependent difficulty floor: BC exceeds no-op on every layout, and PPO then improves over its parent imitation policy in all fifteen seed-level comparisons.
 Across the three controller seeds, the paired improvements are $154.2\pm5.2$ frames on \emph{Stereo Madness}, $103.5\pm28.7$ on \emph{Back on Track}, and $16.3\pm3.3$ on \emph{Polargeist}, where the variation is the sample standard deviation across the three seed differences.
 Table~\ref{tab:aggregate-controls} summarizes the same official-level results from seed-level policy means rather than attempt-level samples.
-PPO improves both aggregate location estimates and reduces the empirical-reference gap, with intervals computed over the three controller seeds.
+PPO raises both aggregate location estimates and reduces the empirical-reference gap.
 Every attempt-level interval on the first two levels excludes zero.
 The smaller Polargeist improvement is positive for all three seeds, although seed 43's deployment-variability interval marginally includes zero; seeds 44 and 45 exclude it.
-Polargeist introduces yellow orbs requiring a second timed input while airborne.
-All three official live-evaluation levels occur in the offline corpus, so they measure the transfer of imagined policy optimization to live deployment; held-out transfer is evaluated separately below.
+Polargeist introduces a new timing demand---yellow orbs that require a second input while airborne---which helps explain why improvement is smaller there.
 
-\begin{table}[t]
+\begin{table}[!htbp]
   \centering
   \small
-  \caption{Official-level aggregate normalized survival from the three controller seeds. Entries are estimates [95\% seed-level stratified-bootstrap intervals]. Normalization maps no-op to 0 and the best observed retained-policy seed mean on each level to 1. Higher is better for mean and IQM; lower is better for the empirical-reference optimality gap.}
+  \caption{Aggregate normalized survival over official levels. Scores map no-op to 0 and the best observed retained-policy seed mean to 1. Entries are estimates [95\% seed-level stratified-bootstrap intervals]; higher is better except for the empirical-reference gap.}
   \label{tab:aggregate-controls}
   \begin{tabular}{lcc}
     \toprule
     Metric & BC & PPO \\
     \midrule
-    Mean & $0.302\ [0.261,0.346]$ & $\mathbf{0.877}\ [0.818,0.942]$ \\
-    IQM & $0.295\ [0.264,0.350]$ & $\mathbf{0.894}\ [0.826,0.978]$ \\
-    Optimality gap $\downarrow$ & $0.698\ [0.654,0.739]$ & $\mathbf{0.123}\ [0.058,0.182]$ \\
+    Mean $\uparrow$ & $0.302\ [0.261,0.346]$ & $\mathbf{0.877}\ [0.818,0.942]$ \\
+    IQM $\uparrow$ & $0.295\ [0.264,0.350]$ & $\mathbf{0.894}\ [0.826,0.978]$ \\
+    Empirical-reference gap $\downarrow$ & $0.698\ [0.654,0.739]$ & $\mathbf{0.123}\ [0.058,0.182]$ \\
     \bottomrule
   \end{tabular}
 \end{table}
 
-Table~\ref{tab:aux-controls} reports the same exact-parent comparison on the two auxiliary layouts.
-All six auxiliary seed differences are positive.
+The final two level blocks show that the same no-op--BC--PPO progression extends beyond the three official layouts.
 On Stereo Madness Copy, seed 43's attempt-level interval includes zero while seeds 44 and 45 exclude it; the mean paired improvement across seeds is $175.4\pm94.2$ frames.
 On Stereo INSANE Nerfed, all three intervals exclude zero and the mean paired improvement is $198.3\pm37.6$ frames.
-Stereo INSANE Nerfed provides held-out transfer within the supported mechanic distribution; the Level-1 copy is not held-out content.
-Qualitatively, the agent exhibits strong ship control on Stereo Madness Copy, which starts at the official level's first ship section.
+Stereo INSANE Nerfed shows that the refinement transfers to an unseen layout within the supported mechanics.
+Stereo Madness Copy is not held out, but it exposes a different qualitative ability: starting at the official level's first ship section, the agent maintains altitude and avoids obstacles with strong ship control.
 The 60-FPS cadence probe on Stereo Madness Copy yields similar observed real-time survival: mean recorded episode wall time is 17.72\,s at 60 FPS versus 17.79\,s at 30 FPS, with a 95\% bootstrap interval of $[-1.04,0.89]$\,s for the mean difference (60 FPS minus 30 FPS).
-Both conditions die in the same recurring 15--21\,s band; frame counts roughly double under the higher cadence, as expected, so the cross-cadence comparison uses recorded time rather than frames.
-This supports practical 60-FPS deployment from 30-FPS training data on this layout.
+On this checkpoint and layout, the similarity supports treating earlier 30-FPS evaluations as representative after 60-FPS acceleration.
 
-\begin{table*}[t]
-  \centering
-  \scriptsize
-  \caption{Paired auxiliary live frame survival under the same protocol as Table~\ref{tab:live-controls}. Stereo Madness Copy is a late Level-1 community copy used as a ship-reachable segment proxy; Stereo INSANE Nerfed is one custom held-out layout within the supported mechanic distribution.}
-  \label{tab:aux-controls}
-  \begin{tabular}{clcc}
-    \toprule
-    Seed & Policy & Stereo Madness Copy & Stereo INSANE Nerfed \\
-    \midrule
-    43 & BC & $366.8\pm172.8$ & $104.8\pm72.1$ \\
-       & PPO & $435.6\pm196.1$ & $290.4\pm48.6$ \\
-       & $\Delta$ [95\% CI] & $68.8\ [-33.3,166.1]$ & $185.5\ [151.1,217.6]$ \\
-    \addlinespace
-    44 & BC & $285.7\pm153.5$ & $102.1\pm64.0$ \\
-       & PPO & $495.8\pm137.5$ & $342.8\pm80.8$ \\
-       & $\Delta$ [95\% CI] & $210.1\ [127.9,285.5]$ & $240.6\ [200.8,280.2]$ \\
-    \addlinespace
-    45 & BC & $299.4\pm175.2$ & $97.8\pm57.9$ \\
-       & PPO & $546.8\pm94.1$ & $266.7\pm128.9$ \\
-       & $\Delta$ [95\% CI] & $247.4\ [167.6,320.7]$ & $168.8\ [115.4,223.9]$ \\
-    \bottomrule
-  \end{tabular}
-\end{table*}
-
-\subsection{Capture-to-action latency}
+\FloatBarrier
+\subsection{Live control at game speed}
 \label{sec:deployment-results}
 
-On 5,000 consecutive frames of the final 60-FPS optimized path, end-to-end capture-to-action latency averages 12.018\,ms (95\% bootstrap interval for the mean $[11.982,12.056]$\,ms), with median 12.083\,ms, p95 14.069\,ms, and maximum 24.059\,ms.
-Only 11/5,000 measurements exceed the 16.667-ms frame period.
-The reciprocal mean is 83.2 FPS of compute-equivalent throughput, while the p95 latency corresponds to 71.1 FPS.
-A matched 300-frame before/after profile isolates the preprocessing change: replacing the hybrid CUDA-Sobel/CPU-resize path with the exact CUDA path reduces mean full-loop latency from 14.395 to 11.907\,ms (17.3\%) and p95 from 16.424 to 14.043\,ms (14.5\%).
+Reactive play requires the complete perception-to-action loop, not just policy inference, to finish within each 16.67-ms frame.
+Over 5,000 consecutive frames, DashVMC averages 12.018\,ms from capture to action dispatch, with p95 latency of 14.069\,ms; only 11 frames exceed the 60-FPS budget.
 
-\begin{table}[ht!]
+\begin{table}[!htbp]
   \centering
   \small
-  \caption{End-to-end latency for 5,000 consecutive frames of the final optimized path on an RTX 2060 at the 60-FPS deployment cadence. Deliberate cadence sleep is excluded.}
+  \caption{End-to-end capture-to-action latency over 5,000 frames on an RTX 2060. Deliberate cadence sleep is excluded.}
   \label{tab:latency}
   \begin{tabular}{lr}
     \toprule
@@ -424,23 +400,21 @@ A matched 300-frame before/after profile isolates the preprocessing change: repl
   \end{tabular}
 \end{table}
 
-These timings differ from diagnostic evaluator logs that move context through CPU/NumPy and synchronize after each GPU stage.
-Official-level and 30-FPS auxiliary survival use that diagnostic path; the 60-FPS cadence probe and deployment latency use the optimized path.
-The two preprocessing implementations produced the same observation bytes in the identity gate and use the same frozen model/controller weights; the distinction is execution optimization rather than policy definition.
+The optimized and diagnostic paths use the same frozen model and produce identical observations; the difference is execution speed rather than policy behaviour.
 
-\subsection{Batch-1 imagined-transition latency}
+\FloatBarrier
+\subsection{Cost of an imagined step}
 \label{sec:transition-latency}
 
-Table~\ref{tab:transition-latency} reports the two independent run means.
-All three released models fit within the RTX 2060 SUPER's 8-GB memory budget at batch size one.
+Table~\ref{tab:transition-latency} compares the cost of one native imagined transition.
 DashVMC's native imagined transition averages 11.05\,ms, compared with 49.30\,ms for DIAMOND and 177.83\,ms for IRIS, corresponding to 4.5$\times$ and 16.1$\times$ lower latency, respectively.
-Only the DashVMC transition itself falls within a 33.3-ms frame period on this hardware.
+Only DashVMC fits the 16.67-ms 60-FPS period on this hardware.
 These measurements concern generative transition latency, not policy action-selection latency, and therefore do not establish whether retrained IRIS or DIAMOND agents could act on Geometry Dash in real time.
 
-\begin{table}[ht!]
+\begin{table}[!htbp]
   \centering
   \small
-  \caption{Batch-1 native imagination-transition latency on an RTX 2060 SUPER. Values are synchronized run means in milliseconds. The models produce different representations and were not trained on a common dataset; this table compares operational cost, not quality or control.}
+  \caption{Cost of one native imagined transition at batch size one on an RTX 2060. Values are synchronized run means in milliseconds; the comparison concerns operational cost, not generation quality.}
   \label{tab:transition-latency}
   \begin{tabular}{lrrr}
     \toprule
@@ -453,71 +427,94 @@ These measurements concern generative transition latency, not policy action-sele
   \end{tabular}
 \end{table}
 
-\subsection{Action-conditioned continuations}
+\FloatBarrier
+\subsection{Action sensitivity and autoregressive fidelity}
 \label{sec:continuations}
 
-World-model generation is not capped by the 45-step PPO horizon: each predicted grid and human-selected action can be fed back into the rolling context, so the interactive loop can continue for an arbitrary number of steps unless predicted death or an optional user limit stops it.
-Recorded examples can remain visually and mechanically plausible through substantial stretches, including height transitions and avatar transformations, before drift produces repeated motifs, empty segments, or impossible geometry.
+The learned dynamics model can be rolled out beyond the 45-step training horizon by feeding each predicted grid and newly selected action back into its context.
+In interactive rollouts it reproduces recognizable Geometry Dash structure, including scrolling terrain, camera movements, height changes, collisions, and avatar transformations.
+Some continuations remain coherent for long stretches, while others eventually repeat motifs, empty the scene, or produce impossible geometry.
+Separate free-running demonstrations include continuations lasting hundreds of generated steps.
 \ifdashvmcsubmission\else
-  Additional successes and failure cases are available on the \href{https://tariolle.github.io/dash-vmc/\#dreams}{project page}.
+  Video demonstrations of interactive level continuations are available on the \href{https://tariolle.github.io/dash-vmc/\#dreams}{project page}.
 \fi
 
 Figure~\ref{fig:continuation} tests action sensitivity while holding the visual context fixed.
-The jump-conditioned branch clears the spike and lands; the idle-conditioned branch reaches a death score of 0.74 at \(t+5\) and terminates.
-Decoding is used only for inspection, not controller training.
+The two futures begin from the same recorded moment, yet a single changed action produces the expected qualitative divergence: the jump branch clears the spike and lands, while the idle branch collides and terminates.
+This deliberately short matched-context diagnostic isolates action conditioning; it is not intended to measure long-horizon coherence.
+The corresponding corpus-wide intervention supports the same conclusion.
+Across all 22,745 validation transitions, the factual action has lower next-frame negative log-likelihood than its flipped counterpart in 69.25\% of contexts.
+The trajectory-mean advantage is 0.165 nats per visual token (95\% episode-bootstrap interval [0.150, 0.181]); factual-action token accuracy is 29.58\% versus 27.77\% after flipping, and 11.03\% of argmax token predictions change.
 
-\begin{figure}[ht!]
+\begin{figure}[!htbp]
   \centering
-  \includegraphics[width=0.82\textwidth]{figures/continuation.pdf}
-  \caption{Greedy continuations from one reconstructed four-frame prefix; only the first future action differs. At \(t+1,t+5,t+9,t+13\), the jump branch clears the spike. The idle branch terminates at \(t+5\) (death score 0.74), so later frames are not generated.}
+  \includegraphics[width=\textwidth]{figures/continuation.pdf}
+  \caption{Action-conditioning diagnostic from one shared four-frame context. The rows are aligned at \(t+1\) and \(t+5\): changing only the first future action makes the idle branch collide and terminate, while the jump branch clears the spike and lands by \(t+13\).}
   \label{fig:continuation}
 \end{figure}
 
-\subsection{Design diagnostics}
-\label{sec:ablations}
-
-Table~\ref{tab:diagnostics} condenses engineering variants explored before freezing the system.
-Because the variants span successive development stacks, the table records engineering choices rather than controlled architectural rankings.
-
-\begin{table}[ht!]
+\begin{table}[!htbp]
   \centering
-  \footnotesize
-  \caption{Pre-freeze design diagnostics from successive development stacks. ``Live'' denotes real-game progress in local evaluation.}
-  \label{tab:diagnostics}
-  \begin{tabular}{p{0.20\textwidth}p{0.48\textwidth}p{0.17\textwidth}}
+  \scriptsize
+  \setlength{\tabcolsep}{5pt}
+  \caption{Recorded-action autoregressive diagnostics. Per-token accuracy and decoder-space PSNR compare the predicted grid with the recorded grid; JS compares their pooled token marginals. The standard cohort uses 1,024 starts from 153 trajectories. The exploratory extended cohort uses 256 starts from only four sufficiently long trajectories.}
+  \label{tab:rollout-diagnostics}
+  \begin{tabular}{lrrrr}
     \toprule
-    Variant & Observed outcome & Decision \\
+    Cohort & Horizon & Token acc. $\uparrow$ & PSNR $\uparrow$ & Token JS $\downarrow$ \\
     \midrule
-    PPO without BC (earlier stack) & Same latent plateau, about 2,000 more iterations (\(\approx6\) A100 hours); BC takes about 5 minutes. & Keep BC. \\
-    Transformer width 512 & Better CE/contrastive metrics, no live gain, slower training. & Use width 384. \\
-    MLP on \(\mathbf h_t\) only & PPO was 2--5\(\times\) faster with a smaller train--eval gap, but local live progress was worse. & Keep grid input. \\
+    Standard & 1 & 30.12\% & 32.82 & 0.0037 \\
+             & 5 & 19.23\% & 28.24 & 0.0044 \\
+             & 10 & 14.04\% & 25.21 & 0.0050 \\
+             & 20 & 8.39\% & 22.48 & 0.0078 \\
+             & 45 & 2.86\% & 20.00 & 0.0205 \\
+    \addlinespace
+    Extended & 45 & 2.91\% & 19.84 & 0.0412 \\
+             & 100 & 1.49\% & 19.62 & 0.0498 \\
+             & 200 & 0.76\% & 19.57 & 0.0880 \\
     \bottomrule
   \end{tabular}
 \end{table}
+
+Table~\ref{tab:rollout-diagnostics} separates visual structure from exact recorded-trajectory fidelity.
+Rapid decay is partly expected in this left-scrolling game: every step reveals previously off-screen geometry at the right edge, so after many steps much of the target frame was absent from the four-frame seed.
+Exact token accuracy therefore conflates accumulated dynamics error with prediction of newly revealed content; the 2.86\% at 45 steps is not a pure measure of compounding error.
+Pooled token marginals drift more slowly, but this weak distributional check and the four-trajectory extended cohort cannot establish perceptual realism.
+We therefore treat the hundred-step examples as qualitative evidence that generation can remain structured, not as evidence of faithful long-horizon simulation.
+
+\FloatBarrier
+\paragraph{Development observations.}
+\label{sec:ablations}
+
+Uncontrolled development runs suggested that BC saved about 2,000 PPO iterations, width 512 improved training metrics but not live play, and an \(\mathbf h_t\)-only MLP trained 2--5\(\times\) faster but progressed less in the game; we therefore retained BC, width 384, and the token-grid input.
 
 \FloatBarrier
 \section{Limitations}
 \label{sec:limitations}
 
 DashVMC is a single-game study with binary actions and deterministic layouts.
-The three controller seeds share one frozen tokenizer and world model, and the held-out evaluation covers one community layout.
-IRIS and DIAMOND were not trained on the DashVMC corpus, so Table~\ref{tab:transition-latency} compares generative transition cost rather than matched Geometry-Dash control.
-SLS remains a local design choice: it was selected from a single Geometry-Dash development comparison and underperformed hard CE in final return in a matched five-seed IRIS/Pong diagnostic.
-The decoded continuations can drift over long horizons, and successive dataset doublings suggest that the model remains data-limited.
-Finally, the latency results are specific to the tested GPU and 64-pixel edge observations.
+Broader generalization therefore remains open, and the held-out test covers one community layout rather than new mechanics.
+The three controller seeds share one frozen tokenizer and dynamics model, so they measure controller-training variability rather than end-to-end model uncertainty.
+Recorded-future fidelity falls rapidly in long dreams, and geometry can drift or repeat, pointing to the limits of the modest training corpus.
+The 200-step quantitative cohort is drawn from only four sufficiently long validation trajectories, while token-marginal similarity is not a perceptual-quality metric.
+Finally, the reported speed reflects the tested hardware and compact edge representation; richer games may require a different balance between visual detail and reaction time.
 
+\FloatBarrier
 \section{Conclusion}
 \label{sec:conclusion}
 
-DashVMC shows that a lightweight and specialized world model can support both low-latency imagined transitions and live reactive control in a timing-sensitive game.
-Across three controller seeds, PPO improves mean live survival over its exact retained parent BC on all three official levels for every seed and preserves that direction on a late Level-1 copy and one custom held-out community level, while the optimized capture-to-action path sustains a 60-FPS live cadence on a consumer GPU despite 30-FPS training data.
-A matched-prefix intervention shows that the model's visual future responds to the tested action change, and interactive examples show that those dynamics can produce open-ended, plausible level continuations.
+DashVMC shows that a world model need not reproduce the recorded future exactly to improve a policy.
+Despite long-rollout drift, policies trained inside the frozen model outperform their BC parents in the live game.
+The model matters not because BC requires it, but because it supplies an offline environment where PPO can explore alternatives without further interaction.
+At deployment, it instead provides temporal context for real-time control while generation is skipped.
+This split---generative during training, representational during acting---offers a route from offline gameplay to agents for environments that cannot wait for the policy.
+Whether it extends beyond binary-action levels, and how horizon and model uncertainty shape improvement, remain open.
 
 \ifdashvmcsubmission\else
+  \FloatBarrier
   \section*{Acknowledgments}
-  We thank Florian Yger for valuable discussions and careful feedback on earlier versions of this manuscript.
   We thank Ma{\"e}l Planchot for contributing gameplay data.
-  The NVIDIA A100 and H200 GPUs used for primary and controller-replication training were provided by MesoNet (CRIANN, Rouen) through the Representation Learning course at INSA Rouen Normandy.
+The computing resources used for training were provided by CRIANN through the Representation Learning course at INSA Rouen Normandie.
   Geometry Dash is developed by RobTop Games.
 \fi
 
@@ -525,7 +522,7 @@ A matched-prefix intervention shows that the model's visual future responds to t
 \bibliography{references}
 
 \ifdashvmcsubmission
-  \newpage
+  \clearpage
   \input{checklist}
 \fi
 
