@@ -29,6 +29,8 @@ data/atari/
 slurm/logs/
 
 # LaTeX build artifacts
+paper/.codex_pdf_review/
+paper/tmp/
 *.aux
 *.log
 *.nav
