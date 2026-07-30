@@ -18,6 +18,7 @@ on:
       - 'analysis/2026-07-21_counterfactual_spike/**'
       - 'docs/pipeline.tex'
       - 'docs/continuation.tex'
+      - 'docs/assets/fonts/**'
       - '.github/workflows/build-paper.yml'
   pull_request:
     paths:
@@ -35,6 +36,7 @@ on:
       - 'analysis/2026-07-21_counterfactual_spike/**'
       - 'docs/pipeline.tex'
       - 'docs/continuation.tex'
+      - 'docs/assets/fonts/**'
       - '.github/workflows/build-paper.yml'
   workflow_dispatch:
 
@@ -52,6 +54,7 @@ jobs:
         with:
           working_directory: docs
           root_file: pipeline.tex
+          latexmk_use_xelatex: true
 
       - name: Copy pipeline figure into paper
         run: cp docs/pipeline.pdf paper/figures/pipeline.pdf
@@ -61,6 +64,7 @@ jobs:
         with:
           working_directory: docs
           root_file: continuation.tex
+          latexmk_use_xelatex: true
 
       - name: Copy continuation figure into paper
         run: cp docs/continuation.pdf paper/figures/continuation.pdf
