@@ -308,6 +308,92 @@ def _forward_logits(
     return output
 
 
+@torch.inference_mode()
+def evaluate_cpc(
+    *,
+    model: WorldModel,
+    episodes: list[Episode],
+    device: torch.device,
+    batch_size: int,
+    context_frames: int,
+    alive_token: int,
+    amp_dtype: torch.dtype,
+    seed: int,
+) -> dict[str, Any]:
+    """Evaluate InfoNCE on a fixed permutation with fixed-size negative sets."""
+    if not model.use_cpc:
+        return {
+            "available": False,
+            "reason": "checkpoint has no CPC modules",
+        }
+    if batch_size < 2:
+        raise ValueError("CPC evaluation requires batch_size >= 2")
+
+    references = [
+        WindowRef(episode_index, start)
+        for episode_index, episode in enumerate(episodes)
+        for start in range(episode.length - context_frames)
+    ]
+    rng = np.random.default_rng(seed)
+    permutation = rng.permutation(len(references))
+    usable = (len(permutation) // batch_size) * batch_size
+    permutation = permutation[:usable]
+    if usable == 0:
+        raise RuntimeError("No complete CPC evaluation batch is available")
+
+    total = 0.0
+    for batch_start in range(0, usable, batch_size):
+        batch_refs = [
+            references[int(index)]
+            for index in permutation[batch_start:batch_start + batch_size]
+        ]
+        contexts_np = np.stack(
+            [
+                _append_status(
+                    episodes[ref.episode_index].tokens[
+                        ref.start:ref.start + context_frames
+                    ],
+                    alive_token,
+                )
+                for ref in batch_refs
+            ]
+        )
+        actions_np = np.stack(
+            [
+                episodes[ref.episode_index].actions[
+                    ref.start:ref.start + context_frames
+                ]
+                for ref in batch_refs
+            ]
+        )
+        contexts = torch.from_numpy(contexts_np).to(device, non_blocking=True)
+        actions = torch.from_numpy(actions_np).to(device, non_blocking=True)
+        dummy_target = torch.full(
+            (batch_size, 1, contexts.size(2)),
+            alive_token,
+            dtype=torch.long,
+            device=device,
+        )
+        frame_tokens = torch.cat([contexts, dummy_target], dim=1)
+        with _autocast(device, amp_dtype):
+            output = model(frame_tokens, actions)
+        if not isinstance(output, tuple) or len(output) != 2:
+            raise RuntimeError("CPC-enabled model did not return (logits, cpc_loss)")
+        cpc_loss = output[1]
+        total += float(cpc_loss.item()) * batch_size
+
+    return {
+        "available": True,
+        "infonce_nats": total / usable,
+        "n_windows": usable,
+        "discarded_windows": len(references) - usable,
+        "batch_size": batch_size,
+        "permutation_seed": seed,
+        "negative_sampling": "in-batch",
+        "context": "unaugmented global validation episodes",
+    }
+
+
 def _binary_auroc(labels: np.ndarray, scores: np.ndarray) -> float:
     labels = labels.astype(np.int64, copy=False)
     positives = int(labels.sum())
@@ -1196,6 +1282,25 @@ def _write_report(path: Path, results: dict[str, Any]) -> None:
         "used historically to select the dynamics checkpoint. The action "
         "intervention and autoregressive metrics were not selection criteria.",
         "",
+        "## Matched CPC",
+        "",
+    ]
+    cpc = results["cpc"]
+    if cpc["available"]:
+        lines.extend(
+            [
+                f"- InfoNCE: {_format_metric(cpc['infonce_nats'])} nats",
+                f"- Windows: {cpc['n_windows']:,} "
+                f"(discarded incomplete batch: {cpc['discarded_windows']:,})",
+                f"- Batch size / in-batch negative set: {cpc['batch_size']}",
+                f"- Fixed permutation seed: {cpc['permutation_seed']}",
+            ]
+        )
+    else:
+        lines.append(f"- Unavailable: {cpc['reason']}")
+    lines.extend(
+        [
+        "",
         "## One-step prediction",
         "",
         f"- Windows: {visual['n_windows']:,}",
@@ -1236,7 +1341,8 @@ def _write_report(path: Path, results: dict[str, Any]) -> None:
         "",
         "| Cohort | Horizon | N | Token accuracy | Decoded PSNR | Token-marginal JS |",
         "|---|---:|---:|---:|---:|---:|",
-    ]
+        ]
+    )
     for cohort_name, cohort in results["rollouts"].items():
         for horizon, groups in cohort["horizons"].items():
             metrics = groups["all"]
@@ -1284,6 +1390,15 @@ def main() -> None:
     )
     parser.add_argument("--encode-batch-size", type=int, default=512)
     parser.add_argument("--eval-batch-size", type=int, default=256)
+    parser.add_argument(
+        "--cpc-batch-size",
+        type=int,
+        default=512,
+        help=(
+            "Fixed batch size and in-batch negative-set size for matched CPC "
+            "evaluation; the incomplete final batch is discarded."
+        ),
+    )
     parser.add_argument("--decode-batch-size", type=int, default=512)
     parser.add_argument("--standard-samples", type=int, default=1024)
     parser.add_argument("--standard-max-per-episode", type=int, default=64)
@@ -1389,9 +1504,6 @@ def main() -> None:
         cpc_dim=int(config.get("cpc_dim", 64)),
     ).to(device)
     _load_checkpoint(model, transformer_checkpoint)
-    # The CPC modules must exist to load the training checkpoint, but the
-    # auxiliary loss is irrelevant at evaluation and would add computation.
-    model.use_cpc = False
     model.eval()
     for parameter in model.parameters():
         parameter.requires_grad_(False)
@@ -1443,6 +1555,20 @@ def main() -> None:
     )
 
     rng = np.random.default_rng(args.seed)
+    print("Evaluating matched CPC loss...", flush=True)
+    cpc = evaluate_cpc(
+        model=model,
+        episodes=episodes,
+        device=device,
+        batch_size=args.cpc_batch_size,
+        context_frames=context_frames,
+        alive_token=model.ALIVE_TOKEN,
+        amp_dtype=amp_dtype,
+        seed=args.seed,
+    )
+    # The remaining diagnostics do not use the auxiliary objective.
+    model.use_cpc = False
+
     print("Evaluating all one-step validation windows...", flush=True)
     one_step, one_step_rows = evaluate_one_step(
         model=model,
@@ -1501,7 +1627,7 @@ def main() -> None:
 
     elapsed = time.time() - started
     results = {
-        "schema_version": 1,
+        "schema_version": 2,
         "evaluation": "frozen_world_model_heldout_diagnostics",
         "post_training_only": True,
         "seed": args.seed,
@@ -1534,6 +1660,7 @@ def main() -> None:
             "levels": levels,
             "checkpoint_use_cpc": checkpoint_use_cpc,
         },
+        "cpc": cpc,
         "one_step": one_step,
         "rollouts": rollouts,
     }
