@@ -275,6 +275,12 @@ For the official-level aggregate, each level is normalized from its fixed histor
 We report the mean, interquartile mean (IQM), and empirical-reference gap with 50,000 task-stratified bootstrap resamples of controller seeds following \citet{agarwal2021precipice}.
 These seed-level summaries complement, rather than pool, the three controller replications.
 
+For a post-freeze rollout-horizon probe, we retrain seed 43 from the exact same BC parent with \(H=20\) for 30,000 PPO iterations, versus \(H=45\) for 15,000 iterations in the primary run.
+This keeps total compute in the same range: the \(H=20\) and \(H=45\) runs take 15.61 and 17.41 H200 hours, with checkpoints selected at iterations 25,770 and 12,420 under the same fixed-development rule.
+We evaluate \(H=20\) over 10 scored attempts on each of the five layouts and compare it with the existing 25-attempt seed-43 \(H=45\) results.
+Per-level difference intervals independently resample attempts within each horizon 50,000 times; the macro interval applies the same stratified resampling before taking the unweighted mean of the five relative changes.
+Because horizon and iteration count co-vary, this is a roughly compute-matched shorter-rollout probe rather than an isolated horizon ablation.
+
 \paragraph{Latency and continuation protocols.}
 Live latency is measured from capture through action dispatch over 5,000 consecutive frames of the optimized 60-FPS path.
 For the qualitative intervention, the world model is initialized from a fixed encoded four-frame prefix immediately before a spike.
@@ -474,6 +480,33 @@ Pooled token marginals drift more slowly, but this weak distributional check and
 We therefore treat the hundred-step examples as qualitative evidence that generation can remain structured, not as evidence of faithful long-horizon simulation.
 
 \FloatBarrier
+\paragraph{Rollout horizon.}
+
+Table~\ref{tab:horizon-probe} shows no clear live advantage for either horizon.
+Three layouts are nearly unchanged, \(H=20\) has a higher point estimate on \emph{Back on Track}, and \(H=45\) has a higher point estimate on \emph{Stereo Madness Copy}, but every per-level interval includes zero.
+The unweighted macro-average relative change is \(+1.9\%\) for \(H=20\), with a 95\% stratified-bootstrap interval of \([-8.1,13.5]\%\).
+Thus, under this roughly matched compute budget, reducing the maximum dream length to 20 steps preserves real-game performance but does not establish an improvement over \(H=45\).
+
+\begin{table}[H]
+  \centering
+  \scriptsize
+  \setlength{\tabcolsep}{4pt}
+  \caption{Seed-43 live rollout-horizon probe in frames. Horizon columns are mean $\pm$ sample standard deviation over 25 attempts for \(H=45\) and 10 for \(H=20\). Difference intervals independently bootstrap attempts from the two policies.}
+  \label{tab:horizon-probe}
+  \begin{tabular}{@{}lrrr@{}}
+    \toprule
+    Level & \(H=45\) & \(H=20\) & \(\Delta_{20-45}\) [95\% CI] \\
+    \midrule
+    Stereo Madness & $280.1\pm23.3$ & $281.5\pm34.9$ & $1.4\ [-21.1,23.8]$ \\
+    Back on Track & $260.0\pm55.5$ & $319.8\pm122.0$ & $59.8\ [-19.0,129.7]$ \\
+    Polargeist & $65.2\pm33.4$ & $62.7\pm29.3$ & $-2.5\ [-23.0,19.9]$ \\
+    Stereo Madness Copy & $435.6\pm196.1$ & $383.2\pm163.6$ & $-52.4\ [-173.9,69.7]$ \\
+    Stereo INSANE Nerfed & $290.4\pm48.6$ & $296.4\pm47.7$ & $6.0\ [-27.0,40.5]$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\FloatBarrier
 \paragraph{Development observations.}
 \label{sec:ablations}
 
@@ -488,6 +521,7 @@ Broader generalization therefore remains open, and the held-out test covers one 
 The three controller seeds share one frozen tokenizer and dynamics model, so they measure controller-training variability rather than end-to-end model uncertainty.
 Training was limited to one GPU at a time, constraining the breadth of the experimental matrix.
 We therefore prioritized end-to-end validation and targeted component ablations over multi-seed ablations and model- or data-scaling curves.
+The rollout-horizon probe retrains only controller seed 43, uses 10 \(H=20\) attempts per level, and doubles the iteration count while shortening the horizon to keep compute approximately matched; it therefore neither isolates horizon alone nor measures horizon sensitivity across training seeds.
 Recorded-future fidelity falls rapidly in long dreams, and geometry can drift or repeat, pointing to the limits of the modest training corpus.
 The 200-step quantitative cohort is drawn from only four sufficiently long validation trajectories, while token-marginal similarity is not a perceptual-quality metric.
 Live evaluation through the original desktop application proceeds at wall-clock speed and is difficult to accelerate or parallelize, limiting the scale of deployment tests.
