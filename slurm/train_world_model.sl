@@ -12,17 +12,46 @@
 
 # Joint FSQ + Transformer training on H200 with USR1 auto-resume.
 #
-# Submit:  sbatch slurm/train_world_model.sl [config]
-# Example: sbatch slurm/train_world_model.sl configs/e6.11-gaussian-cpc.yaml
+# Submit:  sbatch slurm/train_world_model.sl [config] [training overrides...]
+# Example: sbatch slurm/train_world_model.sl configs/deepdash/e6.11-gaussian-cpc.yaml
+# Ablation example:
+#   sbatch slurm/train_world_model.sl configs/deepdash/v7-phase0.yaml \
+#     --checkpoint-dir checkpoints_v7_ablation_no_sls \
+#     --label-smoothing 0
 # Monitor: tail -f slurm/logs/train_world_model.out
 
-CONFIG=${1:-configs/e6.10-gaussian-single-group.yaml}
+CONFIG=configs/deepdash/e6.10-gaussian-single-group.yaml
+if [[ $# -gt 0 && $1 != -* ]]; then
+    CONFIG=$1
+    shift
+fi
+EXTRA_ARGS=("$@")
 
-# Extract checkpoint_dir from the transformer section of the config.
-CKPT_DIR=$(python -c "import yaml; print(yaml.safe_load(open('$CONFIG')).get('transformer',{}).get('checkpoint_dir','checkpoints'))")
+# Resolve checkpoint_dir from a command-line override first, then the config.
+CKPT_DIR=""
+for ((i = 0; i < ${#EXTRA_ARGS[@]}; i++)); do
+    case "${EXTRA_ARGS[$i]}" in
+        --checkpoint-dir)
+            if ((i + 1 >= ${#EXTRA_ARGS[@]})); then
+                echo "--checkpoint-dir requires a value" >&2
+                exit 2
+            fi
+            CKPT_DIR=${EXTRA_ARGS[$((i + 1))]}
+            ;;
+        --checkpoint-dir=*)
+            CKPT_DIR=${EXTRA_ARGS[$i]#--checkpoint-dir=}
+            ;;
+    esac
+done
+if [[ -z "$CKPT_DIR" ]]; then
+    CKPT_DIR=$(python -c "import yaml; print(yaml.safe_load(open('$CONFIG')).get('transformer',{}).get('checkpoint_dir','checkpoints'))")
+fi
 
 echo "=== Config: $CONFIG ==="
 echo "=== Checkpoint dir: $CKPT_DIR ==="
+printf '=== Overrides:'
+printf ' %q' "${EXTRA_ARGS[@]}"
+printf ' ===\n'
 
 # Auto-resume: the trap creates a sentinel file before requeuing.
 RESUME_FLAG="$CKPT_DIR/.resume_transformer"
@@ -38,7 +67,7 @@ handle_timeout() {
     # 1-job-at-a-time policy, the new job sits in the queue until this one
     # finishes saving — no race, no scontrol-requeue silent-failure path.
     echo "=== Submitting resume job ==="
-    sbatch "$0" "$CONFIG"
+    sbatch "$0" "$CONFIG" "${EXTRA_ARGS[@]}"
     kill -TERM "$TRAIN_PID" 2>/dev/null
     wait "$TRAIN_PID"
     exit 0
@@ -62,6 +91,7 @@ fi
 echo "=== Train world model ($(date)) ==="
 python -u scripts/train_world_model.py \
     --config "$CONFIG" \
+    "${EXTRA_ARGS[@]}" \
     $RESUME_ARG &
 
 TRAIN_PID=$!

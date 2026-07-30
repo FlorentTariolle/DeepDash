@@ -10,10 +10,12 @@
 !analysis/2026-07-26_v7_seed44_live25/*.json
 !analysis/2026-07-27_v7_seed45_live25/*.json
 !analysis/2026-07-27_v7_controller_replication/*.json
+!analysis/2026-07-30_v7_seed43_h20_live10/*.json
 !analysis/2026-07-21_bc_reconstruction/controller_bc_args.json
 __pycache__/
 .venv/
 .codex_tmp/
+/tmp/
 sls-wm-analysis/
 data/deepdash/frames/
 data/deepdash/train/
@@ -58,6 +60,8 @@ checkpoints/*_final.pt
 checkpoints/transformer_state.pt
 checkpoints/transformer_state.pt
 checkpoints_atari_*/
+checkpoints_v7_controller_seed*/
+checkpoints_v7_ablation_*/
 wandb/
 
 papers/

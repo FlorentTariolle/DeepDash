@@ -1315,6 +1315,16 @@ def main() -> None:
         help="Compile the transformer backbone (default: true).",
     )
     parser.add_argument(
+        "--checkpoint-use-cpc",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "Whether the evaluated checkpoint contains CPC modules. "
+            "Defaults to transformer.use_cpc from the config; use "
+            "--no-checkpoint-use-cpc for a CPC ablation checkpoint."
+        ),
+    )
+    parser.add_argument(
         "--max-val-episodes",
         type=int,
         default=0,
@@ -1343,6 +1353,11 @@ def main() -> None:
     tokens_per_frame = int(config["tokens_per_frame"])
     context_frames = int(config["context_frames"])
     vocab_size = int(config["vocab_size"])
+    checkpoint_use_cpc = (
+        bool(config.get("use_cpc", False))
+        if args.checkpoint_use_cpc is None
+        else bool(args.checkpoint_use_cpc)
+    )
     if math.prod(levels) != vocab_size:
         raise ValueError(
             f"FSQ levels imply {math.prod(levels)} codes, config says {vocab_size}"
@@ -1370,7 +1385,7 @@ def main() -> None:
         tokens_per_frame=tokens_per_frame,
         adaln=bool(config.get("adaln", False)),
         fsq_dim=None,
-        use_cpc=bool(config.get("use_cpc", False)),
+        use_cpc=checkpoint_use_cpc,
         cpc_dim=int(config.get("cpc_dim", 64)),
     ).to(device)
     _load_checkpoint(model, transformer_checkpoint)
@@ -1517,6 +1532,7 @@ def main() -> None:
             "tokens_per_frame": tokens_per_frame,
             "vocab_size": vocab_size,
             "levels": levels,
+            "checkpoint_use_cpc": checkpoint_use_cpc,
         },
         "one_step": one_step,
         "rollouts": rollouts,
