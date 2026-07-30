@@ -1,9 +1,11 @@
 TEX = pdflatex -interaction=nonstopmode -halt-on-error
 PUBLIC_TEX = xelatex -interaction=nonstopmode -halt-on-error
+FIGURE_TEX = xelatex -interaction=nonstopmode -halt-on-error
 BIB = bibtex
 PREPRINT = dashvmc-preprint
 SUBMISSION = dashvmc-submission
 PY = python
+FIGURE_FONT = ../docs/assets/fonts/AlphaLyrae-Medium.ttf
 
 all: preprint submission
 
@@ -14,9 +16,9 @@ submission: $(SUBMISSION).pdf
 website: $(PREPRINT).pdf
 	$(PY) -c "import shutil; shutil.copyfile('$(PREPRINT).pdf', '../docs/static/pdfs/dashvmc.pdf')"
 
-figures/pipeline.pdf: ../docs/pipeline.tex
+figures/pipeline.pdf: ../docs/pipeline.tex $(FIGURE_FONT)
 	$(PY) -c "import os; os.makedirs('figures', exist_ok=True)"
-	cd ../docs && $(TEX) pipeline.tex
+	cd ../docs && $(FIGURE_TEX) pipeline.tex
 	$(PY) -c "import shutil; shutil.copy('../docs/pipeline.pdf', 'figures/pipeline.pdf')"
 
 CONTINUATION_FRAMES = \
@@ -27,9 +29,9 @@ CONTINUATION_FRAMES = \
 	../analysis/2026-07-21_counterfactual_spike/jump/frame_000004.png \
 	../analysis/2026-07-21_counterfactual_spike/jump/frame_000012.png
 
-figures/continuation.pdf: ../docs/continuation.tex $(CONTINUATION_FRAMES)
+figures/continuation.pdf: ../docs/continuation.tex $(FIGURE_FONT) $(CONTINUATION_FRAMES)
 	$(PY) -c "import os; os.makedirs('figures', exist_ok=True)"
-	cd ../docs && $(TEX) continuation.tex
+	cd ../docs && $(FIGURE_TEX) continuation.tex
 	$(PY) -c "import shutil; shutil.copy('../docs/continuation.pdf', 'figures/continuation.pdf')"
 
 $(PREPRINT).pdf: $(PREPRINT).tex main.tex references.bib fairpreprint.cls figures/pipeline.pdf figures/continuation.pdf

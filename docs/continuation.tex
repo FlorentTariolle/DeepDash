@@ -2,7 +2,17 @@
 \usepackage{tikz}
 \usepackage{graphicx}
 \usepackage{amsmath}
+\usepackage{fontspec}
 \usetikzlibrary{arrows.meta,calc}
+
+\newfontfamily\figurefont[
+  Path=assets/fonts/,
+  UprightFont=AlphaLyrae-Medium.ttf,
+  BoldFont=AlphaLyrae-Medium.ttf,
+  BoldFeatures={FakeBold=1.6},
+  Ligatures=TeX,
+  RawFeature=-calt
+]{Alpha Lyrae}
 
 % Shared visual language with pipeline.tex.
 \definecolor{ink}{HTML}{243142}
@@ -29,15 +39,15 @@
 
 \begin{document}
 \begin{tikzpicture}[
-  font=\sffamily,
+  font=\figurefont\footnotesize,
   frame/.style={inner sep=0pt, outer sep=0pt},
   frameborder/.style={rounded corners=2.5pt, line width=0.85pt},
   branch/.style={-{Stealth[length=2.6mm,width=1.8mm]}, line width=1.0pt},
-  label/.style={font=\scriptsize, text=ink, align=left, inner sep=0pt},
-  score/.style={font=\tiny, text=muted, align=left, inner sep=0pt},
-  note/.style={font=\scriptsize, text=muted, align=center, inner sep=0pt},
+  label/.style={font=\figurefont\scriptsize, text=ink, align=left, inner sep=0pt},
+  score/.style={font=\figurefont\tiny, text=muted, align=left, inner sep=0pt},
+  note/.style={font=\figurefont\scriptsize, text=muted, align=center, inner sep=0pt},
   outcome/.style={
-    font=\tiny\bfseries,
+    font=\figurefont\tiny\bfseries,
     rounded corners=1.2pt,
     fill=white,
     inner xsep=2.5pt,
@@ -59,16 +69,16 @@
   \placeframe{shared}{(-5.20,-3.61)}
     {../analysis/2026-07-21_counterfactual_spike/shared_context/frame_000003.png}
   \draw[frameborder, draw=ink!65] (shared.south west) rectangle (shared.north east);
-  \node[label, anchor=north, font=\scriptsize\bfseries] at ($(shared.south)+(0,-0.16)$)
+  \node[label, anchor=north, font=\figurefont\scriptsize\bfseries] at ($(shared.south)+(0,-0.16)$)
     {shared context};
   \node[note, anchor=north] at ($(shared.south)+(0,-0.43)$) {$t=174$};
 
   % Branch headings.
-  \node[anchor=west, font=\small\bfseries, text=idle] at (-3.50,-0.28) {IDLE};
-  \node[anchor=west, font=\scriptsize, text=muted] at (-2.46,-0.28)
+  \node[anchor=west, font=\figurefont\footnotesize\bfseries, text=idle] at (-3.50,-0.28) {IDLE};
+  \node[anchor=west, font=\figurefont\scriptsize, text=muted] at (-2.46,-0.28)
     {no jump at branch point};
-  \node[anchor=west, font=\small\bfseries, text=jump] at (-3.50,-3.88) {JUMP};
-  \node[anchor=west, font=\scriptsize, text=muted] at (-2.34,-3.88)
+  \node[anchor=west, font=\figurefont\footnotesize\bfseries, text=jump] at (-3.50,-3.88) {JUMP};
+  \node[anchor=west, font=\figurefont\scriptsize, text=muted] at (-2.34,-3.88)
     {jump at branch point};
 
   % Idle-conditioned future.

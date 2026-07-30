@@ -5,6 +5,7 @@
   \usepackage[T1]{fontenc}
   \usepackage{courier}
 \fi
+\usepackage{float}
 \usepackage{hyperref}
 \usepackage{url}
 \usepackage{booktabs}
@@ -147,7 +148,7 @@ Whether those gains transfer to low-resolution Sobel edge maps and downstream wo
 \label{sec:method}
 
 DashVMC is organized around a simple loop: recorded play trains a world model, the action model is refined in rollouts from the frozen dynamics model, and the resulting controller is returned to the live game.
-The visual encoder \(V\), dynamics model \(M\), and action model \(C\) are trained in sequence and then frozen for deployment.
+The visual encoder, dynamics model, and action model are trained in sequence and then frozen for deployment.
 Figure~\ref{fig:pipeline} shows how the same learned state supports both imagined practice and live reaction.
 
 \begin{figure}[!htbp]
@@ -304,7 +305,7 @@ On the unaugmented validation trajectories, the dynamics model reaches 29.58\% v
 Because validation death F1 selected the dynamics checkpoint, the latter is a development-stratum estimate rather than an untouched test result.
 These component metrics establish a usable but imperfect imagined environment; the live comparison below tests whether it nevertheless teaches better actions.
 
-\begin{table*}[!htbp]
+\begin{table}[H]
   \centering
   \scriptsize
   \setlength{\tabcolsep}{4pt}
@@ -340,7 +341,7 @@ These component metrics establish a usable but imperfect imagined environment; t
        & $\Delta$ [95\% CI] & $185.5\ [151.1,217.6]$ & $240.6\ [200.8,280.2]$ & $168.8\ [115.4,223.9]$ \\
     \bottomrule
   \end{tabular}
-\end{table*}
+\end{table}
 
 The shared no-op rows of Table~\ref{tab:live-controls} establish the level-dependent difficulty floor: BC exceeds no-op on every layout, and PPO then improves over its parent imitation policy in all fifteen seed-level comparisons.
 Across the three controller seeds, the paired improvements are $154.2\pm5.2$ frames on \emph{Stereo Madness}, $103.5\pm28.7$ on \emph{Back on Track}, and $16.3\pm3.3$ on \emph{Polargeist}, where the variation is the sample standard deviation across the three seed differences.
@@ -379,28 +380,13 @@ On this checkpoint and layout, the similarity supports treating earlier 30-FPS e
 \label{sec:deployment-results}
 
 Reactive play requires the complete perception-to-action loop, not just policy inference, to finish within each 16.67-ms frame.
-Over 5,000 consecutive frames, DashVMC averages 12.018\,ms from capture to action dispatch, with p95 latency of 14.069\,ms; only 11 frames exceed the 60-FPS budget.
-
-\begin{table}[!htbp]
-  \centering
-  \small
-  \caption{End-to-end capture-to-action latency over 5,000 frames on an RTX 2060. Deliberate cadence sleep is excluded.}
-  \label{tab:latency}
-  \begin{tabular}{lr}
-    \toprule
-    Statistic & Value \\
-    \midrule
-    Mean [95\% bootstrap CI] & \textbf{12.018 [11.982, 12.056] ms} \\
-    Median & 12.083 ms \\
-    p95 & 14.069 ms \\
-    Maximum & 24.059 ms \\
-    Frames over 16.667 ms & 11/5,000 \\
-    Reciprocal-mean throughput & 83.2 FPS \\
-    \bottomrule
-  \end{tabular}
-\end{table}
-
-The optimized and diagnostic paths use the same frozen model and produce identical observations; the difference is execution speed rather than policy behaviour.
+At 60 Hz, the controller can revise the binary key state every frame---60 decisions per second, not 60 distinct key presses.
+Over 5,000 frames, the complete capture-to-action path averages 12\,ms while the same RTX 2060 also renders the game.
+The mean leaves 4.65\,ms (27.9\%) of the frame period unused, equivalent to 83.2 unpaced loops per second.
+Mean and median differ by only 0.065\,ms, and 11/5,000 frames (0.22\%) exceed the period, indicating stable throughput across capture, preprocessing, model inference, and key-state update.
+This doubles the temporal resolution of the 30-FPS demonstrations.
+Qualitatively, the ship policy uses sustained thrust and release intervals: ship motion remains correctable in flight, whereas a cube jump is largely ballistic until landing and therefore demands sparser, more precise timing.
+The smooth, low-duty-cycle behaviour is consistent with PPO's per-step jump penalty, although it does not isolate that penalty's effect.
 
 \FloatBarrier
 \subsection{Cost of an imagined step}
@@ -409,12 +395,11 @@ The optimized and diagnostic paths use the same frozen model and produce identic
 Table~\ref{tab:transition-latency} compares the cost of one native imagined transition.
 DashVMC's native imagined transition averages 11.05\,ms, compared with 49.30\,ms for DIAMOND and 177.83\,ms for IRIS, corresponding to 4.5$\times$ and 16.1$\times$ lower latency, respectively.
 Only DashVMC fits the 16.67-ms 60-FPS period on this hardware.
-These measurements concern generative transition latency, not policy action-selection latency, and therefore do not establish whether retrained IRIS or DIAMOND agents could act on Geometry Dash in real time.
 
 \begin{table}[!htbp]
   \centering
   \small
-  \caption{Cost of one native imagined transition at batch size one on an RTX 2060. Values are synchronized run means in milliseconds; the comparison concerns operational cost, not generation quality.}
+  \caption{Batch-1 native imagined-transition latency on an RTX 2060 (synchronized run means in milliseconds). Interfaces differ, so this compares operational cost rather than quality.}
   \label{tab:transition-latency}
   \begin{tabular}{lrrr}
     \toprule
@@ -426,6 +411,12 @@ These measurements concern generative transition latency, not policy action-sele
     \bottomrule
   \end{tabular}
 \end{table}
+
+The short path follows from predicting all 64 target tokens in parallel after a context prefill and keeping PPO rollouts in latent space: the seed is encoded once, predicted grids are fed back directly, and no decoder reconstructs pixels.
+A fixed four-frame context and batched rollouts further reduce the repeated cost.
+Because every imagined step invokes the dynamics model, these savings compound through PPO and make single-GPU experiments more affordable.
+This benchmark concerns generation, whereas live control skips next-grid prediction and decoding entirely.
+The interfaces also differ, so it explains operational cost without establishing generation-quality superiority or whether retrained IRIS or DIAMOND policies could control this game.
 
 \FloatBarrier
 \subsection{Action sensitivity and autoregressive fidelity}
@@ -446,18 +437,18 @@ The corresponding corpus-wide intervention supports the same conclusion.
 Across all 22,745 validation transitions, the factual action has lower next-frame negative log-likelihood than its flipped counterpart in 69.25\% of contexts.
 The trajectory-mean advantage is 0.165 nats per visual token (95\% episode-bootstrap interval [0.150, 0.181]); factual-action token accuracy is 29.58\% versus 27.77\% after flipping, and 11.03\% of argmax token predictions change.
 
-\begin{figure}[!htbp]
+\begin{figure}[H]
   \centering
   \includegraphics[width=\textwidth]{figures/continuation.pdf}
   \caption{Action-conditioning diagnostic from one shared four-frame context. The rows are aligned at \(t+1\) and \(t+5\): changing only the first future action makes the idle branch collide and terminate, while the jump branch clears the spike and lands by \(t+13\).}
   \label{fig:continuation}
 \end{figure}
 
-\begin{table}[!htbp]
+\begin{table}[H]
   \centering
   \scriptsize
   \setlength{\tabcolsep}{5pt}
-  \caption{Recorded-action autoregressive diagnostics. Per-token accuracy and decoder-space PSNR compare the predicted grid with the recorded grid; JS compares their pooled token marginals. The standard cohort uses 1,024 starts from 153 trajectories. The exploratory extended cohort uses 256 starts from only four sufficiently long trajectories.}
+  \caption{Recorded-action rollout diagnostics. Accuracy and decoder-space PSNR compare predicted with recorded grids; JS compares pooled token marginals. Standard: 1,024 starts from 153 trajectories; extended: 256 starts from four long trajectories.}
   \label{tab:rollout-diagnostics}
   \begin{tabular}{lrrrr}
     \toprule
@@ -495,8 +486,11 @@ Uncontrolled development runs suggested that BC saved about 2,000 PPO iterations
 DashVMC is a single-game study with binary actions and deterministic layouts.
 Broader generalization therefore remains open, and the held-out test covers one community layout rather than new mechanics.
 The three controller seeds share one frozen tokenizer and dynamics model, so they measure controller-training variability rather than end-to-end model uncertainty.
+Training was limited to one GPU at a time, constraining the breadth of the experimental matrix.
+We therefore prioritized end-to-end validation and targeted component ablations over multi-seed ablations and model- or data-scaling curves.
 Recorded-future fidelity falls rapidly in long dreams, and geometry can drift or repeat, pointing to the limits of the modest training corpus.
 The 200-step quantitative cohort is drawn from only four sufficiently long validation trajectories, while token-marginal similarity is not a perceptual-quality metric.
+Live evaluation through the original desktop application proceeds at wall-clock speed and is difficult to accelerate or parallelize, limiting the scale of deployment tests.
 Finally, the reported speed reflects the tested hardware and compact edge representation; richer games may require a different balance between visual detail and reaction time.
 
 \FloatBarrier
@@ -513,8 +507,8 @@ Whether it extends beyond binary-action levels, and how horizon and model uncert
 \ifdashvmcsubmission\else
   \FloatBarrier
   \section*{Acknowledgments}
+  We thank Cl\'ement Chatelain and Robin Condat for their guidance during the Representation Learning course at INSA Rouen Normandy, in which this project began, and CRIANN for providing the computing resources used for training.
   We thank Ma{\"e}l Planchot for contributing gameplay data.
-The computing resources used for training were provided by CRIANN through the Representation Learning course at INSA Rouen Normandie.
   Geometry Dash is developed by RobTop Games.
 \fi
 
