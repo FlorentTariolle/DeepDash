@@ -2,12 +2,11 @@
 # Rebuild pipeline figure from docs/pipeline.tex.
 # Outputs: static/images/pipeline.svg and static/images/pipeline.png (site/README),
 # plus architecture_pipeline.png for backward compatibility.
-# Requires: pdflatex, pdftocairo, pdftoppm, Python with Pillow.
+# Requires: xelatex, pdftocairo, pdftoppm, Python with Pillow.
 set -e
 cd "$(dirname "$0")"
 
-pdflatex -interaction=nonstopmode pipeline.tex > /dev/null || true
-[ -f pipeline.pdf ] || { echo "pdflatex failed"; exit 1; }
+xelatex -interaction=nonstopmode -halt-on-error pipeline.tex > /dev/null
 
 pdftocairo -svg pipeline.pdf static/images/pipeline.svg
 
