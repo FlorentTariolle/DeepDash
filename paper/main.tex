@@ -292,6 +292,12 @@ The reported interval resamples whole trajectories 5,000 times, stratified by fa
 For autoregressive fidelity, predicted grids are fed back greedily while replaying the recorded future actions.
 The standard cohort contains 1,024 starts, capped at 64 per trajectory, from 150 failure and three expert trajectories; an exploratory 200-step cohort contains 256 starts from the only four sufficiently long validation trajectories.
 
+\paragraph{Targeted dynamics-loss ablations.}
+We compare the reported structured-SLS+CPC dynamics model with three single-training-run variants: uniform label smoothing with the same \(\varepsilon=0.1\), no label smoothing, and structured SLS without CPC.
+They retain the tokenizer, tokenized corpus, split, architecture, seed 42, optimizer, schedule, corruption, focal modulation, death oversampling, and maximum-validation-death-F1 selection rule; only the named loss component changes.
+All four frozen checkpoints are scored by the same evaluator on the exact same validation windows and rollout starts.
+For checkpoints containing CPC modules, auxiliary InfoNCE is recomputed using one fixed window permutation, batches of 512, and therefore identical in-batch negative sets; it is unavailable for the no-CPC checkpoint.
+
 \paragraph{External transition-latency protocol.}
 We also time the native imagined transition of DashVMC and released Pong checkpoints of IRIS and DIAMOND on the same RTX 2060.
 Each model runs in a fresh process at batch size one with FP32 eager execution; 30 warm-up transitions are followed by 100 synchronized transitions, repeated twice.
@@ -307,7 +313,7 @@ Because these native interfaces produce different representations, the compariso
 
 The central question is whether policy improvement learned only through frozen-model rollouts transfers beyond imitation to the live game.
 The selected tokenizer reconstructs held-out edge maps at 34.10\,dB PSNR.
-On the unaugmented validation trajectories, the dynamics model reaches 29.58\% visual-token accuracy and 0.793 death F1.
+On the unaugmented validation trajectories, the dynamics model reaches 29.58\% visual-token accuracy and 0.794 death F1.
 Because validation death F1 selected the dynamics checkpoint, the latter is a development-stratum estimate rather than an untouched test result.
 These component metrics establish a usable but imperfect imagined environment; the live comparison below tests whether it nevertheless teaches better actions.
 
@@ -440,8 +446,8 @@ Figure~\ref{fig:continuation} tests action sensitivity while holding the visual 
 The two futures begin from the same recorded moment, yet a single changed action produces the expected qualitative divergence: the jump branch clears the spike and lands, while the idle branch collides and terminates.
 This deliberately short matched-context diagnostic isolates action conditioning; it is not intended to measure long-horizon coherence.
 The corresponding corpus-wide intervention supports the same conclusion.
-Across all 22,745 validation transitions, the factual action has lower next-frame negative log-likelihood than its flipped counterpart in 69.25\% of contexts.
-The trajectory-mean advantage is 0.165 nats per visual token (95\% episode-bootstrap interval [0.150, 0.181]); factual-action token accuracy is 29.58\% versus 27.77\% after flipping, and 11.03\% of argmax token predictions change.
+Across all 22,745 validation transitions, the factual action has lower next-frame negative log-likelihood than its flipped counterpart in 69.52\% of contexts.
+The trajectory-mean advantage is 0.165 nats per visual token (95\% episode-bootstrap interval [0.150, 0.181]); factual-action token accuracy is 29.58\% versus 27.78\% after flipping, and 11.04\% of argmax token predictions change.
 
 \begin{figure}[H]
   \centering
@@ -460,24 +466,75 @@ The trajectory-mean advantage is 0.165 nats per visual token (95\% episode-boots
     \toprule
     Cohort & Horizon & Token acc. $\uparrow$ & PSNR $\uparrow$ & Token JS $\downarrow$ \\
     \midrule
-    Standard & 1 & 30.12\% & 32.82 & 0.0037 \\
-             & 5 & 19.23\% & 28.24 & 0.0044 \\
-             & 10 & 14.04\% & 25.21 & 0.0050 \\
-             & 20 & 8.39\% & 22.48 & 0.0078 \\
-             & 45 & 2.86\% & 20.00 & 0.0205 \\
+    Standard & 1 & 30.14\% & 32.83 & 0.0037 \\
+             & 5 & 19.29\% & 28.25 & 0.0045 \\
+             & 10 & 14.06\% & 25.23 & 0.0052 \\
+             & 20 & 8.26\% & 22.45 & 0.0079 \\
+             & 45 & 2.91\% & 19.99 & 0.0208 \\
     \addlinespace
-    Extended & 45 & 2.91\% & 19.84 & 0.0412 \\
-             & 100 & 1.49\% & 19.62 & 0.0498 \\
-             & 200 & 0.76\% & 19.57 & 0.0880 \\
+    Extended & 45 & 3.02\% & 19.78 & 0.0351 \\
+             & 100 & 1.38\% & 19.49 & 0.0428 \\
+             & 200 & 0.74\% & 19.39 & 0.0733 \\
     \bottomrule
   \end{tabular}
 \end{table}
 
 Table~\ref{tab:rollout-diagnostics} separates visual structure from exact recorded-trajectory fidelity.
 Rapid decay is partly expected in this left-scrolling game: every step reveals previously off-screen geometry at the right edge, so after many steps much of the target frame was absent from the four-frame seed.
-Exact token accuracy therefore conflates accumulated dynamics error with prediction of newly revealed content; the 2.86\% at 45 steps is not a pure measure of compounding error.
+Exact token accuracy therefore conflates accumulated dynamics error with prediction of newly revealed content; the 2.91\% at 45 steps is not a pure measure of compounding error.
 Pooled token marginals drift more slowly, but this weak distributional check and the four-trajectory extended cohort cannot establish perceptual realism.
 We therefore treat the hundred-step examples as qualitative evidence that generation can remain structured, not as evidence of faithful long-horizon simulation.
+
+\begin{table}[H]
+  \centering
+  \scriptsize
+  \setlength{\tabcolsep}{3pt}
+  \caption{Matched dynamics-loss ablations on the fixed validation data. One-step entries are hard-target NLL / token accuracy (\%) / death F1; action entries are episode-mean factual NLL advantage / windows favoring the factual action (\%) / changed argmax tokens (\%). CPC is matched InfoNCE, an auxiliary loss-component measurement rather than a universal quality score. Rollout sequences give token accuracy (\%), decoder PSNR, and token-marginal JS at horizons 1/5/10/20/45. Each row is one training run.}
+  \label{tab:loss-ablation}
+  \resizebox{\textwidth}{!}{%
+  \begin{tabular}{@{}lcccccc@{}}
+    \toprule
+    Variant & One-step NLL / acc. / F1 & Action adv. / favor / change & CPC & Rollout acc. & PSNR & Token JS \\
+    \midrule
+    Structured SLS + CPC
+      & 2.613 / 29.58 / .794
+      & .165 / 69.52 / 11.04
+      & .268
+      & 30.14/19.29/14.06/8.26/2.91
+      & 32.83/28.25/25.23/22.45/19.99
+      & .0037/.0045/.0052/.0079/.0208 \\
+    Uniform LS + CPC
+      & 2.675 / 27.93 / .826
+      & .156 / 70.06 / 13.12
+      & .459
+      & 28.12/16.49/11.29/6.36/2.24
+      & 32.67/27.69/24.71/22.05/19.92
+      & .0051/.0067/.0087/.0141/.0358 \\
+    No LS + CPC
+      & 2.604 / 29.01 / .808
+      & .196 / 69.63 / 13.40
+      & .318
+      & 29.06/18.39/13.39/7.81/3.01
+      & 32.52/28.19/25.19/22.39/19.96
+      & .0048/.0057/.0076/.0107/.0287 \\
+    Structured SLS, no CPC
+      & 2.634 / 28.39 / .787
+      & .148 / 68.71 / 11.97
+      & --
+      & 28.47/17.78/12.60/7.68/2.90
+      & 32.52/28.06/25.00/22.28/19.93
+      & .0047/.0060/.0070/.0104/.0240 \\
+    \bottomrule
+  \end{tabular}}
+\end{table}
+
+Table~\ref{tab:loss-ablation} gives a consistent matched signal for CPC: removing it from the structured-SLS model worsens one-step NLL, token accuracy, death F1, factual-action advantage, and rollout accuracy and PSNR at every standard horizon, while increasing token-marginal JS.
+The smoothing comparison is mixed.
+Removing smoothing slightly improves hard-target NLL, death F1, and factual-action advantage, but reduces one-step argmax accuracy and most rollout metrics.
+Uniform smoothing attains the highest death F1 and fraction of windows favoring the factual action, yet has the weakest hard-target NLL, token accuracy, and rollout fidelity.
+Structured SLS gives the best rollout accuracy through horizon 20 and the best PSNR and token-marginal JS at every reported standard horizon; no smoothing is only slightly higher in token accuracy at horizon 45 (3.01\% versus 2.91\%).
+Under the fixed negative sets, structured SLS also has the lowest matched CPC InfoNCE, but its magnitude is specific to this batch and negative-sampling protocol.
+These single-run, model-level results suggest that CPC contributes broadly and that the FSQ-lattice structure, rather than generic smoothing alone, supports rollout fidelity; they do not establish controller or live-game effects without retraining the downstream policy.
 
 \FloatBarrier
 \paragraph{Rollout horizon.}
@@ -510,7 +567,7 @@ Thus, under this roughly matched compute budget, reducing the maximum dream leng
 \paragraph{Development observations.}
 \label{sec:ablations}
 
-Uncontrolled development runs suggested that BC saved about 2,000 PPO iterations, width 512 improved training metrics but not live play, and an \(\mathbf h_t\)-only MLP trained 2--5\(\times\) faster but progressed less in the game; we therefore retained BC, width 384, and the token-grid input.
+Separate uncontrolled development runs suggested that BC saved about 2,000 PPO iterations, width 512 improved training metrics but not live play, and an \(\mathbf h_t\)-only MLP trained 2--5\(\times\) faster but progressed less in the game; we therefore retained BC, width 384, and the token-grid input.
 
 \FloatBarrier
 \section{Limitations}
@@ -521,6 +578,7 @@ Broader generalization therefore remains open, and the held-out test covers one 
 The three controller seeds share one frozen tokenizer and dynamics model, so they measure controller-training variability rather than end-to-end model uncertainty.
 Training was limited to one GPU at a time, constraining the breadth of the experimental matrix.
 We therefore prioritized end-to-end validation and targeted component ablations over multi-seed ablations and model- or data-scaling curves.
+The dynamics-loss comparison uses one training run per variant, shares one tokenizer, selects checkpoints on death F1 from the same stratum used for diagnostics, and does not retrain the controller; it therefore measures targeted model-level differences rather than training variance or live-policy effects.
 The rollout-horizon probe retrains only controller seed 43, uses 10 \(H=20\) attempts per level, and doubles the iteration count while shortening the horizon to keep compute approximately matched; it therefore neither isolates horizon alone nor measures horizon sensitivity across training seeds.
 Recorded-future fidelity falls rapidly in long dreams, and geometry can drift or repeat, pointing to the limits of the modest training corpus.
 The 200-step quantitative cohort is drawn from only four sufficiently long validation trajectories, while token-marginal similarity is not a perceptual-quality metric.
