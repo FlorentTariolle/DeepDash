@@ -90,7 +90,7 @@
   \node[modelbox, text width=2.10cm] (wm) at (-0.32,-1.90)
     {\textbf{World model}};
   \node[policybox, text width=2.05cm] (ctrl) at (2.90,-1.90)
-    {\textbf{Actor--critic}};
+    {\textbf{Action model}};
   \node[status, draw=model, text=model!85!black] at (wm.south) {FROZEN};
   \node[status, draw=policy, text=policy!70!black] at (ctrl.south) {TRAINED};
   \node[policybox, text width=1.45cm] (ppo) at (6.25,-1.90)
@@ -127,7 +127,7 @@
 
   \coordinate (rollturn) at (ctx.south |- roll.west);
   \draw[imagined] (roll.west) --
-    node[edgelabel, above=2.5pt] {step $t+1$} (rollturn)
+    node[edgelabel, above=2.5pt] {$\mathcal S_{t+1}$} (rollturn)
     -- (ctx.south);
   \draw[flow] (roll) -- (gate);
   \coordinate (gateturn) at (ppo.south |- gate.east);
@@ -152,7 +152,7 @@
   \node[modelbox, text width=1.80cm] (prefill) at (2.15,-8.10)
     {\textbf{World model}};
   \node[policybox, text width=2.15cm] (livectrl) at (5.40,-8.10)
-    {\textbf{Controller}};
+    {\textbf{Action model}};
 
   \draw[flow] (game) -- node[edgelabel, above=2.5pt] {$\mathbf x_t$} (enc);
   \draw[flow] (enc) -- node[edgelabel, above=2.5pt] {$\mathbf z_t$} (livectx);
@@ -162,13 +162,13 @@
   \coordinate (gridrouteL) at ($(livectx.south)+(0,-0.58)$);
   \coordinate (gridrouteR) at (livectrl.south |- gridrouteL);
   \draw[stateflow] (livectx.south) -- (gridrouteL)
-    -- node[edgelabel, pos=0.50, below=2.5pt] {current grid $\mathbf z_t$} (gridrouteR)
+    -- node[edgelabel, pos=0.50, below=2.5pt] {$\mathbf z_t$} (gridrouteR)
     -- (livectrl.south);
 
   \coordinate (actionrouteR) at ($(livectrl.north)+(0,0.58)$);
   \coordinate (actionrouteL) at (game.north |- actionrouteR);
   \draw[policyflow] (livectrl.north) -- (actionrouteR)
-    -- node[edgelabel, above=2.5pt] {apply $a_{t+1}$} (actionrouteL)
+    -- node[edgelabel, above=2.5pt] {$a_{t+1}$} (actionrouteL)
     -- (game.north);
   \end{scope}
 

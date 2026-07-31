@@ -4,11 +4,11 @@
 
 \item {\bf Claims}
     \item[] Answer: \answerYes{}
-    \item[] Justification: The abstract and introduction state the main claim as policy improvement learned in a frozen action-conditioned world model transferring beyond its behavioural-cloning initialization to live Geometry Dash control. They also scope the real-time deployment and held-out-layout evidence.
+    \item[] Justification: The abstract and introduction state the main claim as policy improvement learned in a frozen action-conditioned world model transferring beyond its behavioural-cloning initialization to live Geometry Dash control. They distinguish the measured 60-Hz systems path from the limited behavioural cadence probe and do not claim that reusing the temporal summary is independently superior to other controllers.
 
 \item {\bf Limitations}
     \item[] Answer: \answerYes{}
-    \item[] Justification: Section~\ref{sec:limitations} discusses the single-game and binary-action scope, one held-out layout within supported mechanics, one frozen tokenizer/dynamics-model seed, long-rollout fidelity, the small extended diagnostic cohort, and hardware dependence.
+    \item[] Justification: Section~\ref{sec:limitations} discusses the single-game scope, repeated-prefix risk in the episode split, one frozen tokenizer/dynamics seed, missing temporal-controller baselines, off-distribution death calibration, single-run loss ablations, the limited horizon and cadence probes, compute constraints, and hardware dependence.
 
 \item {\bf Theory assumptions and proofs}
     \item[] Answer: \answerNA{}
@@ -16,11 +16,11 @@
 
 \item {\bf Experimental result reproducibility}
     \item[] Answer: \answerYes{}
-    \item[] Justification: Section~\ref{sec:setup} provides the collection and split procedure, training details, controller hyperparameters, seeds, checkpoint-selection rules, and live protocol. Code, frozen tokenizer/world-model checkpoints, raw per-attempt results, per-seed controller hashes and provenance, an immutable reported-code snapshot, and a sequential reproduction recipe are available; the identifying repository URL is omitted from this double-blind manuscript.
+    \item[] Justification: Section~\ref{sec:setup} provides the collection and split procedure, training details, controller hyperparameters, seeds, checkpoint-selection rules, and live protocol. Code, checkpoints, raw results, hashes, and the reproduction recipe are committed for public release; identifying links are omitted during double-blind review.
 
 \item {\bf Open access to data and code}
-    \item[] Answer: \answerYes{}
-    \item[] Justification: Code, the dataset, frozen base-model checkpoints, raw live results, and derived paired tables are publicly available, and the collection procedure is described in Section~\ref{sec:setup}. The identifying repository URL is withheld during double-blind review and will be restored in the camera-ready version.
+    \item[] Answer: \answerNo{}
+    \item[] Justification: To preserve double-blind review, the identifying repository is not linked in the submission. Code, collected data, frozen checkpoints, raw evaluations, and provenance will be linked publicly in the camera-ready version.
 
 \item {\bf Experimental setting/details}
     \item[] Answer: \answerYes{}
@@ -28,7 +28,7 @@
 
 \item {\bf Experiment statistical significance}
     \item[] Answer: \answerYes{}
-    \item[] Justification: The draft reports three exact parent-BC/PPO controller pairs with 25 scored attempts per frozen policy-level on three official and two auxiliary layouts, sample standard deviations, and attempt-level PPO-minus-BC bootstrap intervals. Individual seed results and the three paired controller-seed differences are reported separately rather than pooling attempts; official-level mean, IQM, and empirical-reference gap additionally receive seed-level stratified-bootstrap intervals. This is conditional replication under one frozen tokenizer/world-model seed, not full end-to-end training uncertainty.
+    \item[] Justification: The draft reports three exact parent-BC/PPO controller pairs with 25 scored attempts per frozen policy-level on three official and two auxiliary layouts, sample standard deviations, and attempt-level PPO-minus-BC bootstrap intervals. Individual seed results and the three paired controller-seed differences are reported rather than pooling attempts. This is conditional replication under one frozen tokenizer/world-model seed, not full end-to-end training uncertainty.
 
 \item {\bf Experiments compute resources}
     \item[] Answer: \answerYes{}
@@ -51,8 +51,8 @@
     \item[] Justification: All referenced works are properly cited. Geometry Dash is a commercial game by RobTop Games; gameplay data was collected from a legally purchased copy.
 
 \item {\bf New assets}
-    \item[] Answer: \answerYes{}
-    \item[] Justification: Code, the collected dataset, frozen base-model checkpoints, raw evaluation artifacts, and controller-checkpoint hashes are released with documentation under the repository's open-source terms.
+    \item[] Answer: \answerNo{}
+    \item[] Justification: Code, the collected dataset, frozen base-model checkpoints, raw evaluation artifacts, and controller-checkpoint hashes will be released with documentation after double-blind review.
 
 \item {\bf Crowdsourcing and research with human subjects}
     \item[] Answer: \answerNA{}
@@ -64,6 +64,6 @@
 
 \item {\bf Declaration of LLM usage}
     \item[] Answer: \answerYes{}
-    \item[] Justification: OpenAI Codex was used to help restructure and edit the manuscript. The authors verified the resulting text, figures, numerical claims, and references; LLMs were not part of the methodology or experiments.
+    \item[] Justification: ChatGPT was used to help restructure and edit the manuscript. The authors verified the resulting text, figures, numerical claims, and references; LLMs were not part of the methodology or experiments.
 
 \end{enumerate}
