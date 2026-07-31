@@ -140,10 +140,14 @@ Figure~\ref{fig:pipeline} shows how the same learned state supports both imagine
 \ifdashvmcsubmission
   \begin{figure}[!htbp]
 \else
-  \begin{figure}[H]
+  \begin{figure}[!htbp]
 \fi
   \centering
-  \includegraphics[width=\textwidth]{figures/pipeline.pdf}
+  \ifdashvmcsubmission
+    \includegraphics[width=\textwidth]{figures/pipeline.pdf}
+  \else
+    \includegraphics[width=0.82\textwidth]{figures/pipeline.pdf}
+  \fi
   \caption{Learning in imagination and acting in the live game. \textbf{(a)} A recorded context seeds the frozen world model; the action model chooses what to do, the world model predicts the consequence, and PPO updates only the action model. \textbf{(b)} In the live game, the encoder and temporal context provide the state used for action selection, while visual generation is skipped.}
   \label{fig:pipeline}
 \end{figure}
@@ -157,6 +161,9 @@ Each spatial vector is independently quantized with iFSQ levels \(\fsqlevels\), 
 The tokenizer is trained on adjacent frames with reconstruction, temporal-slowness, and latent-uniformity objectives~\citep{xia2025grwm}.
 Once selected, its encoder is frozen; its decoder is used to visualize dreams but is not required by the action model.
 
+\ifdashvmcsubmission\else
+  \FloatBarrier
+\fi
 \subsection{Action-conditioned dynamics}
 \label{sec:transformer}
 
@@ -425,7 +432,11 @@ The trajectory-mean advantage is 0.165 nats per visual token (95\% episode-boots
 
 \begin{figure}[H]
   \centering
-  \includegraphics[width=\textwidth]{figures/continuation.pdf}
+  \ifdashvmcsubmission
+    \includegraphics[width=\textwidth]{figures/continuation.pdf}
+  \else
+    \includegraphics[width=0.70\textwidth]{figures/continuation.pdf}
+  \fi
   \caption{Action-conditioning diagnostic from one shared four-frame context. The rows are aligned at \(t+1\) and \(t+5\): changing only the first future action makes the idle branch collide and terminate, while the jump branch clears the spike and lands by \(t+13\).}
   \label{fig:continuation}
 \end{figure}
