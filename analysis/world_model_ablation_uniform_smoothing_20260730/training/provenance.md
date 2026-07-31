@@ -8,7 +8,8 @@ job `2771331` (`v7_wm_uniform`). The job completed successfully with exit code
 
 - Checkpoint directory: `checkpoints_v7_ablation_uniform_smoothing`
 - Label smoothing: `0.1`
-- FSQ smoothing bandwidth: `0.0` (uniform non-target mass)
+- FSQ smoothing bandwidth: `0.0` (structured kernel disabled; PyTorch
+  uniform label smoothing applies)
 - CPC weight: `0.1`
 - Training seed: `42`
 - Schedule: 200 epochs, 500 steps per epoch
