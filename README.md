@@ -11,7 +11,7 @@ Training uses approximately two hours of gameplay captured at a nominal 30 FPS c
 </p>
 
 <p align="center">
-  <img src="docs/static/images/pipeline.png" width="82%">
+  <img src="docs/static/images/pipeline_live.png" width="96%">
 </p>
 
 ## Cite this preprint
