@@ -34,7 +34,7 @@ import torch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from deepdash.fsq import FSQVAE
 from deepdash.world_model import WorldModel
-from deepdash.controller import CNNPolicy, V3CNNPolicy
+from deepdash.controller import CNNPolicy, V3CNNGridPolicy, V3CNNPolicy
 
 
 # Win32 helpers for topmost window
@@ -248,10 +248,11 @@ def main():
     parser.add_argument("--context-frames", type=int, default=None)
     parser.add_argument("--dropout", type=float, default=None)
     parser.add_argument("--policy-class", type=str, default=None,
-                        choices=["cnn", "v3_cnn"],
+                        choices=["cnn", "v3_cnn", "v3_cnn_grid"],
                         help="Controller architecture. 'cnn' = E6.10-era "
                              "CNNPolicy. 'v3_cnn' = V3-deploy/V7 faithful "
-                             "(direct h_t concat, ReLU+MaxPool, MTP head).")
+                             "(direct h_t concat, ReLU+MaxPool, MTP head). "
+                             "'v3_cnn_grid' is the spatial-only ablation.")
     args = parser.parse_args()
 
     from deepdash.config import apply_config
@@ -261,6 +262,8 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
     K = args.context_frames
+    policy_class = (getattr(args, "policy_class", None) or "cnn").lower()
+    uses_temporal_state = policy_class != "v3_cnn_grid"
 
     # --- Load models ---
     print("Loading FSQ-VAE...")
@@ -273,27 +276,30 @@ def main():
     vae.prepare_for_encoder_only()
     del state
 
-    print("Loading Transformer...")
-    wm = WorldModel(
-        vocab_size=args.vocab_size, embed_dim=args.embed_dim,
-        n_heads=args.n_heads, n_layers=args.n_layers,
-        context_frames=args.context_frames, dropout=args.dropout,
-        tokens_per_frame=args.tokens_per_frame,
-        adaln=getattr(args, 'adaln', False),
-        fsq_dim=None,
-        use_cpc=False,
-    ).to(device)
-    state = torch.load(args.transformer_checkpoint, map_location=device,
-                       weights_only=True)
-    state = {k.removeprefix("_orig_mod."): v for k, v in state.items()}
-    wm.load_state_dict(state, strict=False)
-    wm.eval()
-    wm.prepare_for_context_only()
-    del state
+    wm = None
+    if uses_temporal_state:
+        print("Loading Transformer...")
+        wm = WorldModel(
+            vocab_size=args.vocab_size, embed_dim=args.embed_dim,
+            n_heads=args.n_heads, n_layers=args.n_layers,
+            context_frames=args.context_frames, dropout=args.dropout,
+            tokens_per_frame=args.tokens_per_frame,
+            adaln=getattr(args, 'adaln', False),
+            fsq_dim=None,
+            use_cpc=False,
+        ).to(device)
+        state = torch.load(args.transformer_checkpoint, map_location=device,
+                           weights_only=True)
+        state = {k.removeprefix("_orig_mod."): v for k, v in state.items()}
+        wm.load_state_dict(state, strict=False)
+        wm.eval()
+        wm.prepare_for_context_only()
+        del state
+    else:
+        print("Grid-only inference: world model is not loaded")
 
     print("Loading Controller...")
     grid_size = int(args.tokens_per_frame ** 0.5)
-    policy_class = (getattr(args, "policy_class", None) or "cnn").lower()
     if policy_class == "v3_cnn":
         controller = V3CNNPolicy(
             vocab_size=args.vocab_size,
@@ -303,6 +309,14 @@ def main():
             mtp_steps=int(getattr(args, "mtp_steps", None) or 8),
         ).to(device)
         print(f"  V3CNNPolicy (mtp_steps={controller.mtp_steps})")
+    elif policy_class == "v3_cnn_grid":
+        controller = V3CNNGridPolicy(
+            vocab_size=args.vocab_size,
+            grid_size=grid_size,
+            token_embed_dim=getattr(args, 'token_embed_dim', 16),
+            mtp_steps=int(getattr(args, "mtp_steps", None) or 8),
+        ).to(device)
+        print(f"  V3CNNGridPolicy (mtp_steps={controller.mtp_steps})")
     else:
         controller = CNNPolicy(
             vocab_size=args.vocab_size,
@@ -323,7 +337,7 @@ def main():
     del state
 
     retained_params = sum(
-        p.numel() for module in (vae, wm, controller)
+        p.numel() for module in (vae, wm, controller) if module is not None
         for p in module.parameters()
     )
     print(f"Retained deployment parameters: {retained_params:,}")
@@ -349,25 +363,28 @@ def main():
 
         # CUDA Graph for encode_context: records all kernels once,
         # replays with a single CPU call (zero per-op launch overhead).
-        try:
-            graph_ctx_t = torch.zeros(1, K, 65, dtype=torch.long, device=device)
-            graph_ctx_a = torch.zeros(1, K, dtype=torch.long, device=device)
+        if wm is not None:
+            try:
+                graph_ctx_t = torch.zeros(
+                    1, K, 65, dtype=torch.long, device=device)
+                graph_ctx_a = torch.zeros(
+                    1, K, dtype=torch.long, device=device)
 
-            # Warmup runs (CUDA needs to see the kernels before capture)
-            with torch.no_grad():
-                for _ in range(3):
-                    wm.encode_context(graph_ctx_t, graph_ctx_a)
-            torch.cuda.synchronize()
-
-            encode_graph = torch.cuda.CUDAGraph()
-            with torch.cuda.graph(encode_graph):
+                # Warmup runs (CUDA needs to see the kernels before capture)
                 with torch.no_grad():
-                    graph_h_t = wm.encode_context(graph_ctx_t, graph_ctx_a)
+                    for _ in range(3):
+                        wm.encode_context(graph_ctx_t, graph_ctx_a)
+                torch.cuda.synchronize()
 
-            use_cuda_graph = True
-            print("CUDA Graph captured for encode_context")
-        except Exception as e:
-            print(f"CUDA Graph capture failed, using eager: {e}")
+                encode_graph = torch.cuda.CUDAGraph()
+                with torch.cuda.graph(encode_graph):
+                    with torch.no_grad():
+                        graph_h_t = wm.encode_context(graph_ctx_t, graph_ctx_a)
+
+                use_cuda_graph = True
+                print("CUDA Graph captured for encode_context")
+            except Exception as e:
+                print(f"CUDA Graph capture failed, using eager: {e}")
 
     print("All models loaded.\n")
 
@@ -399,7 +416,8 @@ def main():
     ctx_tokens = torch.zeros(K, 64, dtype=torch.long, device=device)
     ctx_actions = torch.zeros(K, dtype=torch.long, device=device)
     ctx_fill = 0  # how many frames stored so far
-    ctx_status = torch.full((K, 1), wm.ALIVE_TOKEN, dtype=torch.long, device=device)
+    ctx_status = None if wm is None else torch.full(
+        (K, 1), wm.ALIVE_TOKEN, dtype=torch.long, device=device)
     frame_count = 0
 
 
@@ -410,22 +428,29 @@ def main():
         pin_buf = None
 
     if exact_preprocessor is None:
-        gpu_stages = ["fsq", "transformer", "controller"]
+        gpu_stages = ["fsq"]
+        if uses_temporal_state:
+            gpu_stages.append("transformer")
+        gpu_stages.append("controller")
         cpu_stages = [
             "capture", "crop", "grayscale", "sobel", "downscale",
             "end_to_end",
         ]
         aggregate_stages = [
-            "capture", "crop", "grayscale", "sobel", "downscale",
-            "fsq", "transformer", "controller",
+            "capture", "crop", "grayscale", "sobel", "downscale", "fsq",
         ]
     else:
-        gpu_stages = ["preprocess", "fsq", "transformer", "controller"]
+        gpu_stages = ["preprocess", "fsq"]
+        if uses_temporal_state:
+            gpu_stages.append("transformer")
+        gpu_stages.append("controller")
         cpu_stages = ["capture", "crop", "grayscale", "end_to_end"]
         aggregate_stages = [
-            "capture", "crop", "grayscale", "preprocess",
-            "fsq", "transformer", "controller",
+            "capture", "crop", "grayscale", "preprocess", "fsq",
         ]
+    if uses_temporal_state:
+        aggregate_stages.append("transformer")
+    aggregate_stages.append("controller")
 
     bench = StageBench(
         gpu_stages=gpu_stages,
@@ -558,26 +583,31 @@ def main():
             continue
 
         # --- Transformer: get h_t (all on GPU, no CPU round-trip) ---
-        bench.gpu_start("transformer")
-        if use_cuda_graph:
-            ctx_t = torch.cat([ctx_tokens, ctx_status], dim=1).unsqueeze(0)
-            graph_ctx_t.copy_(ctx_t)
-            graph_ctx_a.copy_(ctx_actions.unsqueeze(0))
-            encode_graph.replay()
-            h_t = graph_h_t
-        else:
-            with torch.no_grad():
+        h_t = None
+        if uses_temporal_state:
+            bench.gpu_start("transformer")
+            if use_cuda_graph:
                 ctx_t = torch.cat([ctx_tokens, ctx_status], dim=1).unsqueeze(0)
-                ctx_a = ctx_actions.unsqueeze(0)
-                h_t = wm.encode_context(ctx_t, ctx_a)
-        bench.gpu_end("transformer")
+                graph_ctx_t.copy_(ctx_t)
+                graph_ctx_a.copy_(ctx_actions.unsqueeze(0))
+                encode_graph.replay()
+                h_t = graph_h_t
+            else:
+                with torch.no_grad():
+                    ctx_t = torch.cat([ctx_tokens, ctx_status], dim=1).unsqueeze(0)
+                    ctx_a = ctx_actions.unsqueeze(0)
+                    h_t = wm.encode_context(ctx_t, ctx_a)
+            bench.gpu_end("transformer")
 
         # --- Controller: decide action ---
         bench.gpu_start("controller")
         with torch.no_grad():
             # ctx_tokens is (K, 64); controller wants (B=1, 64) = current frame
             z_t = ctx_tokens[-1:].clone()
-            prob, _ = controller(z_t, h_t.float())
+            if policy_class == "v3_cnn_grid":
+                prob, _ = controller(z_t)
+            else:
+                prob, _ = controller(z_t, h_t.float())
         bench.gpu_end("controller")
         # prob[0].item() forces the only sync of the frame; CUDA events are
         # now safe to query.
@@ -672,7 +702,8 @@ def main():
             "model": {
                 "config": args.config,
                 "vae_checkpoint": args.vae_checkpoint,
-                "transformer_checkpoint": args.transformer_checkpoint,
+                "transformer_checkpoint": args.transformer_checkpoint
+                if wm is not None else None,
                 "controller_checkpoint": args.controller_checkpoint,
                 "policy_class": policy_class,
                 "context_frames": K,

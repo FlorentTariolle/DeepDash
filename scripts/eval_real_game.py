@@ -36,7 +36,12 @@ import torch
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from deepdash.fsq import FSQVAE
 from deepdash.world_model import WorldModel
-from deepdash.controller import CNNPolicy, MLPPolicy, V3CNNPolicy
+from deepdash.controller import (
+    CNNPolicy,
+    MLPPolicy,
+    V3CNNGridPolicy,
+    V3CNNPolicy,
+)
 from deepdash.gd_mem import GDReader
 
 
@@ -134,11 +139,13 @@ class StageTimer:
                     round(float(ci_low), 3), round(float(ci_high), 3)
                 ]
             out[name] = stats
-        component_names = [
-            "capture", "sobel_preprocess", "fsq_encode", "transformer",
-            "controller_action",
+        required_components = [
+            "capture", "sobel_preprocess", "fsq_encode", "controller_action",
         ]
-        if all(name in out for name in component_names):
+        if all(name in out for name in required_components):
+            component_names = required_components.copy()
+            if "transformer" in out:
+                component_names.insert(-1, "transformer")
             out["component_sum_mean_ms"] = round(
                 sum(out[name]["mean_ms"] for name in component_names), 3
             )
@@ -195,7 +202,7 @@ def preprocess_frame_optimized(rgb, crop_x, crop_y, crop_size, target_size, devi
 
 
 def enable_optimized_inference(vae, wm, device, context_frames):
-    """Match scripts/deploy.py optimized path: compile FSQ + CUDA graph encode."""
+    """Compile the encoder and, when present, graph the temporal model."""
     use_compile = False
     use_cuda_graph = False
     encode_graph = None
@@ -231,29 +238,30 @@ def enable_optimized_inference(vae, wm, device, context_frames):
     except Exception as exc:
         print(f"torch.compile not available: {exc}")
 
-    try:
-        graph_ctx_t = torch.zeros(
-            1, context_frames, 65, dtype=torch.long, device=device
-        )
-        graph_ctx_a = torch.zeros(
-            1, context_frames, dtype=torch.long, device=device
-        )
-        with torch.no_grad():
-            for _ in range(3):
-                wm.encode_context(graph_ctx_t, graph_ctx_a)
-        torch.cuda.synchronize()
-        encode_graph = torch.cuda.CUDAGraph()
-        with torch.cuda.graph(encode_graph):
+    if wm is not None:
+        try:
+            graph_ctx_t = torch.zeros(
+                1, context_frames, 65, dtype=torch.long, device=device
+            )
+            graph_ctx_a = torch.zeros(
+                1, context_frames, dtype=torch.long, device=device
+            )
             with torch.no_grad():
-                graph_h_t = wm.encode_context(graph_ctx_t, graph_ctx_a)
-        use_cuda_graph = True
-        print("CUDA Graph captured for encode_context")
-    except Exception as exc:
-        print(f"CUDA Graph capture failed, using eager: {exc}")
-        encode_graph = None
-        graph_ctx_t = None
-        graph_ctx_a = None
-        graph_h_t = None
+                for _ in range(3):
+                    wm.encode_context(graph_ctx_t, graph_ctx_a)
+            torch.cuda.synchronize()
+            encode_graph = torch.cuda.CUDAGraph()
+            with torch.cuda.graph(encode_graph):
+                with torch.no_grad():
+                    graph_h_t = wm.encode_context(graph_ctx_t, graph_ctx_a)
+            use_cuda_graph = True
+            print("CUDA Graph captured for encode_context")
+        except Exception as exc:
+            print(f"CUDA Graph capture failed, using eager: {exc}")
+            encode_graph = None
+            graph_ctx_t = None
+            graph_ctx_a = None
+            graph_h_t = None
 
     pin_buf = torch.zeros(1, 1, 64, 64, dtype=torch.float32, pin_memory=True)
     return {
@@ -356,22 +364,28 @@ def run_episode_diagnostic(
                 time.sleep(frame_interval - elapsed)
             continue
 
-        stage_timer.start("transformer")
-        with torch.no_grad(), torch.amp.autocast("cuda", enabled=device.type == "cuda"):
-            ctx_tok_np = np.array(ctx_tokens)
-            ctx_act_np = np.array(ctx_actions)
-            status = np.full((K, 1), wm.ALIVE_TOKEN, dtype=np.int64)
-            ctx_with_status = np.concatenate([ctx_tok_np, status], axis=1)
-            ctx_t = torch.from_numpy(ctx_with_status[None]).to(device)
-            ctx_a = torch.from_numpy(ctx_act_np[None]).to(device)
-            h_t = wm.encode_context(ctx_t, ctx_a)
-        stage_timer.cuda_sync(device)
-        stage_timer.end("transformer")
+        h_t = None
+        if policy_class != "v3_cnn_grid":
+            stage_timer.start("transformer")
+            with torch.no_grad(), torch.amp.autocast(
+                    "cuda", enabled=device.type == "cuda"):
+                ctx_tok_np = np.array(ctx_tokens)
+                ctx_act_np = np.array(ctx_actions)
+                status = np.full((K, 1), wm.ALIVE_TOKEN, dtype=np.int64)
+                ctx_with_status = np.concatenate([ctx_tok_np, status], axis=1)
+                ctx_t = torch.from_numpy(ctx_with_status[None]).to(device)
+                ctx_a = torch.from_numpy(ctx_act_np[None]).to(device)
+                h_t = wm.encode_context(ctx_t, ctx_a)
+            stage_timer.cuda_sync(device)
+            stage_timer.end("transformer")
 
         stage_timer.start("controller_action")
         with torch.no_grad():
             if policy_class == "mlp":
                 prob, _ = controller(h_t.float())
+            elif policy_class == "v3_cnn_grid":
+                z_t = torch.from_numpy(ctx_tokens[-1][None]).to(device)
+                prob, _ = controller(z_t)
             else:
                 z_t = torch.from_numpy(ctx_tokens[-1][None]).to(device)
                 prob, _ = controller(z_t, h_t.float())
@@ -448,7 +462,8 @@ def run_episode_optimized(
     tokens_per_frame = 64
     ctx_tokens = torch.zeros(K, tokens_per_frame, dtype=torch.long, device=device)
     ctx_actions = torch.zeros(K, dtype=torch.long, device=device)
-    ctx_status = torch.full((K, 1), wm.ALIVE_TOKEN, dtype=torch.long, device=device)
+    ctx_status = None if wm is None else torch.full(
+        (K, 1), wm.ALIVE_TOKEN, dtype=torch.long, device=device)
     ctx_fill = 0
     pin_buf = opt["pin_buf"]
     encode_graph = opt["encode_graph"]
@@ -523,24 +538,29 @@ def run_episode_optimized(
                 time.sleep(frame_interval - elapsed)
             continue
 
-        stage_timer.start("transformer")
-        if encode_graph is not None:
-            ctx_t = torch.cat([ctx_tokens, ctx_status], dim=1).unsqueeze(0)
-            graph_ctx_t.copy_(ctx_t)
-            graph_ctx_a.copy_(ctx_actions.unsqueeze(0))
-            encode_graph.replay()
-            h_t = graph_h_holder[0]
-        else:
-            with torch.no_grad():
+        h_t = None
+        if policy_class != "v3_cnn_grid":
+            stage_timer.start("transformer")
+            if encode_graph is not None:
                 ctx_t = torch.cat([ctx_tokens, ctx_status], dim=1).unsqueeze(0)
-                ctx_a = ctx_actions.unsqueeze(0)
-                h_t = wm.encode_context(ctx_t, ctx_a)
-        stage_timer.end("transformer")
+                graph_ctx_t.copy_(ctx_t)
+                graph_ctx_a.copy_(ctx_actions.unsqueeze(0))
+                encode_graph.replay()
+                h_t = graph_h_holder[0]
+            else:
+                with torch.no_grad():
+                    ctx_t = torch.cat([ctx_tokens, ctx_status], dim=1).unsqueeze(0)
+                    ctx_a = ctx_actions.unsqueeze(0)
+                    h_t = wm.encode_context(ctx_t, ctx_a)
+            stage_timer.end("transformer")
 
         stage_timer.start("controller_action")
         with torch.no_grad():
             if policy_class == "mlp":
                 prob, _ = controller(h_t.float())
+            elif policy_class == "v3_cnn_grid":
+                z_t = ctx_tokens[-1:].clone()
+                prob, _ = controller(z_t)
             else:
                 z_t = ctx_tokens[-1:].clone()
                 prob, _ = controller(z_t, h_t.float())
@@ -617,8 +637,9 @@ def main():
     parser.add_argument("--context-frames", type=int, default=None)
     parser.add_argument("--dropout", type=float, default=None)
     parser.add_argument("--policy-class", type=str, default=None,
-                        choices=["mlp", "cnn", "v3_cnn"],
-                        help="Controller architecture. V7 uses v3_cnn.")
+                        choices=["mlp", "cnn", "v3_cnn", "v3_cnn_grid"],
+                        help="Controller architecture. V7 uses v3_cnn; "
+                             "v3_cnn_grid is the spatial-only ablation.")
     parser.add_argument("--output", default="eval_results.json")
     args = parser.parse_args()
 
@@ -665,6 +686,8 @@ def main():
 
     if uses_controller:
         print("Loading models...")
+        policy_class = (getattr(args, "policy_class", None) or "mlp").lower()
+        uses_temporal_state = policy_class != "v3_cnn_grid"
         vae = FSQVAE(levels=args.levels).to(device)
         state = torch.load(args.vae_checkpoint, map_location=device, weights_only=True)
         state = {k.removeprefix("_orig_mod."): v for k, v in state.items()}
@@ -673,31 +696,40 @@ def main():
         vae.prepare_for_encoder_only()
         del state
 
-        wm = WorldModel(
-            vocab_size=args.vocab_size, embed_dim=args.embed_dim,
-            n_heads=args.n_heads, n_layers=args.n_layers,
-            context_frames=args.context_frames, dropout=args.dropout,
-            tokens_per_frame=args.tokens_per_frame,
-            adaln=getattr(args, 'adaln', False),
-            fsq_dim=None,
-            use_cpc=False,
-        ).to(device)
-        state = torch.load(args.transformer_checkpoint, map_location=device,
-                           weights_only=True)
-        state = {k.removeprefix("_orig_mod."): v for k, v in state.items()}
-        wm.load_state_dict(state, strict=False)
-        wm.eval()
-        wm.prepare_for_context_only()
-        del state
+        if uses_temporal_state:
+            wm = WorldModel(
+                vocab_size=args.vocab_size, embed_dim=args.embed_dim,
+                n_heads=args.n_heads, n_layers=args.n_layers,
+                context_frames=args.context_frames, dropout=args.dropout,
+                tokens_per_frame=args.tokens_per_frame,
+                adaln=getattr(args, 'adaln', False),
+                fsq_dim=None,
+                use_cpc=False,
+            ).to(device)
+            state = torch.load(args.transformer_checkpoint, map_location=device,
+                               weights_only=True)
+            state = {k.removeprefix("_orig_mod."): v for k, v in state.items()}
+            wm.load_state_dict(state, strict=False)
+            wm.eval()
+            wm.prepare_for_context_only()
+            del state
+        else:
+            print("Grid-only inference: world model is not loaded")
 
         grid_size = int(args.tokens_per_frame ** 0.5)
-        policy_class = (getattr(args, "policy_class", None) or "mlp").lower()
         if policy_class == "v3_cnn":
             controller = V3CNNPolicy(
                 vocab_size=args.vocab_size,
                 grid_size=grid_size,
                 token_embed_dim=getattr(args, "token_embed_dim", 16),
                 h_dim=args.embed_dim,
+                mtp_steps=int(getattr(args, "mtp_steps", None) or 8),
+            ).to(device)
+        elif policy_class == "v3_cnn_grid":
+            controller = V3CNNGridPolicy(
+                vocab_size=args.vocab_size,
+                grid_size=grid_size,
+                token_embed_dim=getattr(args, "token_embed_dim", 16),
                 mtp_steps=int(getattr(args, "mtp_steps", None) or 8),
             ).to(device)
         elif policy_class == "cnn":
@@ -718,7 +750,7 @@ def main():
         controller.eval()
         del state
         retained_params = sum(
-            p.numel() for module in (vae, wm, controller)
+            p.numel() for module in (vae, wm, controller) if module is not None
             for p in module.parameters()
         )
         print(
@@ -920,13 +952,14 @@ def main():
             "survival_bootstrap_seed": 20260720,
             "checkpoints": {
                 "vae": args.vae_checkpoint if uses_controller else None,
-                "transformer": args.transformer_checkpoint if uses_controller else None,
+                "transformer": args.transformer_checkpoint
+                if uses_controller and wm is not None else None,
                 "controller": args.controller_checkpoint,
             },
             "checkpoint_sha256": {
                 "vae": file_sha256(args.vae_checkpoint) if uses_controller else None,
                 "transformer": file_sha256(args.transformer_checkpoint)
-                if uses_controller else None,
+                if uses_controller and wm is not None else None,
                 "controller": file_sha256(args.controller_checkpoint)
                 if uses_controller else None,
             },

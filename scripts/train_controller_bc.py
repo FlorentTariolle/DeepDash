@@ -1,8 +1,7 @@
-"""Behavioral cloning: pretrain MLPPolicy on expert episodes.
+"""Behavioral cloning: pretrain a controller on recorded actions.
 
-For each frame in expert episodes, feeds context through the world model
-to get h_t, then trains the controller to predict the expert's action
-given h_t with binary cross-entropy.
+Temporal controllers receive both the current token grid and the world-model
+summary h_t. The grid-only ablation receives only the current token grid.
 
 Usage:
     python scripts/train_controller_bc.py
@@ -148,11 +147,15 @@ def main():
     parser.add_argument("--token-embed-dim", type=int, default=None,
                         help="CNNPolicy token embedding dim.")
     parser.add_argument("--policy-class", type=str, default=None,
-                        choices=["cnn", "v3_cnn"],
+                        choices=["cnn", "v3_cnn", "v3_cnn_grid"],
                         help="Controller architecture. 'cnn' (default) is "
                              "the E6.10-era CNNPolicy with h_proj/h_norm. "
                              "'v3_cnn' is the V3-deploy faithful policy "
-                             "(direct h_t concat, ReLU+MaxPool, MTP head).")
+                             "(direct h_t concat, ReLU+MaxPool, MTP head). "
+                             "'v3_cnn_grid' is the matched V7 spatial-only "
+                             "ablation and never receives h_t.")
+    parser.add_argument("--wandb-name", type=str, default=None,
+                        help="Override the W&B run name (default: bc).")
     parser.add_argument("--amp-dtype", type=str, default=None,
                         choices=["bfloat16", "float16", "none"],
                         help="AMP dtype for controller forward/backward. "
@@ -166,6 +169,9 @@ def main():
     from deepdash.config import apply_config
     apply_config(args, section="controller_bc")
 
+    policy_class = (getattr(args, "policy_class", None) or "cnn").lower()
+    uses_temporal_state = policy_class != "v3_cnn_grid"
+
     torch.manual_seed(args.seed)
     rng = np.random.default_rng(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -177,25 +183,30 @@ def main():
     with open(ckpt_dir / "controller_bc_args.json", "w") as f:
         json.dump(vars(args), f, indent=2)
 
-    wandb_init(project="deepdash", name="bc", config=vars(args))
+    wandb_init(project="deepdash", name=args.wandb_name or "bc",
+               config=vars(args))
 
-    # Load world model (frozen, for h_t extraction only)
-    wm = WorldModel(
-        vocab_size=args.vocab_size, embed_dim=args.embed_dim,
-        n_heads=args.n_heads, n_layers=args.n_layers,
-        context_frames=args.context_frames, dropout=args.dropout,
-        tokens_per_frame=args.tokens_per_frame,
-        adaln=getattr(args, 'adaln', False),
-        fsq_dim=len(args.levels) if getattr(args, 'levels', None) else None,
-    ).to(device)
-    state = torch.load(args.transformer_checkpoint, map_location=device,
-                       weights_only=True)
-    state = {k.removeprefix("_orig_mod."): v for k, v in state.items()}
-    wm.load_state_dict(state, strict=False)
-    wm.eval()
-    for p in wm.parameters():
-        p.requires_grad_(False)
-    print("World model loaded")
+    wm = None
+    if uses_temporal_state:
+        # Temporal policies need frozen world-model summaries for BC.
+        wm = WorldModel(
+            vocab_size=args.vocab_size, embed_dim=args.embed_dim,
+            n_heads=args.n_heads, n_layers=args.n_layers,
+            context_frames=args.context_frames, dropout=args.dropout,
+            tokens_per_frame=args.tokens_per_frame,
+            adaln=getattr(args, 'adaln', False),
+            fsq_dim=len(args.levels) if getattr(args, 'levels', None) else None,
+        ).to(device)
+        state = torch.load(args.transformer_checkpoint, map_location=device,
+                           weights_only=True)
+        state = {k.removeprefix("_orig_mod."): v for k, v in state.items()}
+        wm.load_state_dict(state, strict=False)
+        wm.eval()
+        for p in wm.parameters():
+            p.requires_grad_(False)
+        print("World model loaded for temporal-state extraction")
+    else:
+        print("Grid-only BC: world-model temporal states are not computed")
 
     vae = None
     if args.fsq_checkpoint is not None:
@@ -244,14 +255,17 @@ def main():
           f"{target_actions.sum()}/{N} jumps "
           f"({target_actions.mean() * 100:.1f}%)")
 
-    # Precompute h_t for all samples (one-time cost)
-    print("Computing hidden states from world model...")
-    t0 = time.time()
-    all_h_t = compute_hidden_states(wm, ctx_tokens, ctx_actions, device)
-    print(f"  Done in {time.time() - t0:.1f}s")
+    all_h_t = None
+    if uses_temporal_state:
+        # Precompute h_t for all samples (one-time cost).
+        print("Computing hidden states from world model...")
+        t0 = time.time()
+        all_h_t = compute_hidden_states(wm, ctx_tokens, ctx_actions, device)
+        print(f"  Done in {time.time() - t0:.1f}s")
 
     # Free world model memory
-    del wm
+    if wm is not None:
+        del wm
     if device.type == "cuda":
         torch.cuda.empty_cache()
 
@@ -275,7 +289,6 @@ def main():
     #   "cnn"     -- E6.10-era CNNPolicy (h_proj + h_norm + SiLU + spatial_norm)
     #   "v3_cnn"  -- V3-deploy faithful (direct h_t concat, ReLU+MaxPool, MTP head)
     grid_size = int(args.tokens_per_frame ** 0.5)
-    policy_class = (getattr(args, "policy_class", None) or "cnn").lower()
     if policy_class == "v3_cnn":
         from deepdash.controller import V3CNNPolicy
         controller = V3CNNPolicy(
@@ -285,6 +298,14 @@ def main():
             h_dim=args.embed_dim,
         ).to(device)
         policy_label = "V3CNNPolicy"
+    elif policy_class == "v3_cnn_grid":
+        from deepdash.controller import V3CNNGridPolicy
+        controller = V3CNNGridPolicy(
+            vocab_size=args.vocab_size,
+            grid_size=grid_size,
+            token_embed_dim=getattr(args, 'token_embed_dim', 16),
+        ).to(device)
+        policy_label = "V3CNNGridPolicy"
     else:
         controller = CNNPolicy(
             vocab_size=args.vocab_size,
@@ -346,11 +367,14 @@ def main():
             idx = train_idx[batch_perm]
 
             z_t = all_z_t[idx].to(device)
-            h_t = all_h_t[idx].to(device)
             actions = all_target_actions[idx].to(device)
 
             with torch.autocast("cuda", dtype=amp_dtype, enabled=use_amp):
-                features = controller._encode(z_t, h_t)
+                if uses_temporal_state:
+                    h_t = all_h_t[idx].to(device)
+                    features = controller._encode(z_t, h_t)
+                else:
+                    features = controller._encode(z_t)
                 logits = controller.actor(features).squeeze(-1)
                 loss = F.binary_cross_entropy_with_logits(
                     logits, actions, pos_weight=pos_weight)
@@ -379,11 +403,14 @@ def main():
                 idx = val_idx[start:start + args.batch_size]
 
                 z_t = all_z_t[idx].to(device)
-                h_t = all_h_t[idx].to(device)
                 actions = all_target_actions[idx].to(device)
 
                 with torch.autocast("cuda", dtype=amp_dtype, enabled=use_amp):
-                    features = controller._encode(z_t, h_t)
+                    if uses_temporal_state:
+                        h_t = all_h_t[idx].to(device)
+                        features = controller._encode(z_t, h_t)
+                    else:
+                        features = controller._encode(z_t)
                     logits = controller.actor(features).squeeze(-1)
                     loss = F.binary_cross_entropy_with_logits(
                         logits, actions, pos_weight=pos_weight)

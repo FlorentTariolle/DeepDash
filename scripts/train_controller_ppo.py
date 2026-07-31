@@ -12,6 +12,7 @@ Usage:
 import argparse
 import csv
 import re
+import signal
 import sys
 import time
 from pathlib import Path
@@ -62,6 +63,35 @@ def _unwrap(model):
     return model._orig_mod if hasattr(model, "_orig_mod") else model
 
 
+def truncate_log_after_iteration(log_path, last_iteration):
+    """Discard CSV rows newer than the state restored from a checkpoint."""
+    with open(log_path, newline="") as f:
+        rows = list(csv.reader(f))
+    if not rows:
+        return
+
+    kept = [rows[0]]
+    for row in rows[1:]:
+        try:
+            iteration = int(row[0])
+        except (IndexError, ValueError):
+            continue
+        if iteration <= last_iteration:
+            kept.append(row)
+
+    if len(kept) == len(rows):
+        return
+
+    temporary_path = log_path.with_suffix(f"{log_path.suffix}.tmp")
+    with open(temporary_path, "w", newline="") as f:
+        csv.writer(f).writerows(kept)
+    temporary_path.replace(log_path)
+    print(
+        f"Trimmed PPO log to checkpoint iteration {last_iteration} "
+        f"({len(rows) - len(kept)} row(s) removed)"
+    )
+
+
 def sample_contexts(episodes, n, context_frames, rng):
     """Sample n contexts uniformly, excluding last 2*K frames of each episode.
 
@@ -89,7 +119,8 @@ def sample_contexts(episodes, n, context_frames, rng):
 
 def dream_rollout(model, controller, ctx_tokens_np, ctx_actions_np,
                   max_steps, death_threshold, device, warmup_steps,
-                  jump_penalty=0.0, amp_dtype=torch.bfloat16):
+                  jump_penalty=0.0, amp_dtype=torch.bfloat16,
+                  uses_temporal_state=True):
     """Roll out dreams and cache data for PPO updates.
 
     Hard death cutoff: rollout ends for an episode when death_prob > threshold.
@@ -113,7 +144,7 @@ def dream_rollout(model, controller, ctx_tokens_np, ctx_actions_np,
 
     # Cached data for PPO
     all_z_t = []             # (T, B, TPF)
-    all_h_t = []             # (T, B, 512)
+    all_h_t = [] if uses_temporal_state else None
     all_actions = []         # (T, B)
     all_old_log_probs = []   # (T, B)
     all_rewards = []         # (T, B)
@@ -125,8 +156,13 @@ def dream_rollout(model, controller, ctx_tokens_np, ctx_actions_np,
             break
 
         with torch.no_grad(), torch.autocast("cuda", dtype=amp_dtype, enabled=device.type == "cuda"):
-            pred_tokens, death_prob, h_t = model.predict_next_frame(
-                    ctx_t, ctx_a, temperature=0.0, return_hidden=True)
+            prediction = model.predict_next_frame(
+                ctx_t, ctx_a, temperature=0.0,
+                return_hidden=uses_temporal_state)
+            if uses_temporal_state:
+                pred_tokens, death_prob, h_t = prediction
+            else:
+                pred_tokens, death_prob = prediction
 
         died = death_prob > death_threshold
         alive &= ~died
@@ -136,12 +172,16 @@ def dream_rollout(model, controller, ctx_tokens_np, ctx_actions_np,
         z_t = ctx_t[:, -1, :TPF]
 
         with torch.no_grad():
-            action, log_prob, _, value = controller.act(z_t, h_t.float())
+            if uses_temporal_state:
+                action, log_prob, _, value = controller.act(z_t, h_t.float())
+            else:
+                action, log_prob, _, value = controller.act(z_t)
 
         if step >= warmup_steps:
             alive_mask = alive.float()
             all_z_t.append(z_t.clone())
-            all_h_t.append(h_t.float().clone())
+            if uses_temporal_state:
+                all_h_t.append(h_t.float().clone())
             all_actions.append(action)
             all_old_log_probs.append(log_prob)
             reward = alive_mask.clone()
@@ -167,18 +207,23 @@ def dream_rollout(model, controller, ctx_tokens_np, ctx_actions_np,
     if alive.any():
         with torch.no_grad(), torch.autocast(
                 "cuda", dtype=amp_dtype, enabled=device.type == "cuda"):
-            _, _, h_t_boot = model.predict_next_frame(
-                ctx_t, ctx_a, temperature=0.0, return_hidden=True)
+            bootstrap_prediction = model.predict_next_frame(
+                ctx_t, ctx_a, temperature=0.0,
+                return_hidden=uses_temporal_state)
         z_t_boot = ctx_t[:, -1, :TPF]
         with torch.no_grad():
-            _, _, _, bootstrap_value = controller.act(z_t_boot, h_t_boot.float())
+            if uses_temporal_state:
+                _, _, h_t_boot = bootstrap_prediction
+                _, _, _, bootstrap_value = controller.act(
+                    z_t_boot, h_t_boot.float())
+            else:
+                _, _, _, bootstrap_value = controller.act(z_t_boot)
         bootstrap_value = bootstrap_value * alive.float()
     else:
         bootstrap_value = torch.zeros(B, device=device)
 
     rollout = {
         'z_t': torch.stack(all_z_t),                      # (T, B, TPF)
-        'h_t': torch.stack(all_h_t),                      # (T, B, 512)
         'actions': torch.stack(all_actions),              # (T, B)
         'old_log_probs': torch.stack(all_old_log_probs),  # (T, B)
         'rewards': torch.stack(all_rewards),              # (T, B)
@@ -186,6 +231,8 @@ def dream_rollout(model, controller, ctx_tokens_np, ctx_actions_np,
         'alive_masks': torch.stack(all_alive_masks),      # (T, B)
         'bootstrap_value': bootstrap_value,               # (B,)
     }
+    if uses_temporal_state:
+        rollout['h_t'] = torch.stack(all_h_t)             # (T, B, D)
     return rollout, survival
 
 
@@ -280,7 +327,8 @@ def ppo_update(controller, optimizer, rollout, advantages, returns,
 
     # Flatten rollout for minibatch sampling
     z_t_flat = rollout['z_t'].reshape(N, -1)
-    h_t_flat = rollout['h_t'].reshape(N, -1)
+    h_t_flat = rollout['h_t'].reshape(N, -1) \
+        if 'h_t' in rollout else None
     actions_flat = rollout['actions'].reshape(N)
     old_log_probs_flat = rollout['old_log_probs'].reshape(N)
     advantages_flat = advantages.reshape(N)
@@ -319,14 +367,17 @@ def ppo_update(controller, optimizer, rollout, advantages, returns,
             idx = perm[start:start + minibatch_size]
 
             mb_z_t = z_t_flat[idx]
-            mb_h_t = h_t_flat[idx]
             mb_actions = actions_flat[idx]
             mb_advantages = advantages_flat[idx]
             mb_returns = returns_flat[idx]
 
             use_amp = amp_dtype is not None and mb_z_t.is_cuda
             with torch.autocast("cuda", dtype=amp_dtype, enabled=use_amp):
-                prob, value = controller(mb_z_t, mb_h_t)
+                if h_t_flat is None:
+                    prob, value = controller(mb_z_t)
+                else:
+                    mb_h_t = h_t_flat[idx]
+                    prob, value = controller(mb_z_t, mb_h_t)
                 prob = prob.clamp(1e-6, 1 - 1e-6)
                 dist = torch.distributions.Bernoulli(probs=prob)
                 log_prob = dist.log_prob(mb_actions.float())
@@ -356,8 +407,12 @@ def ppo_update(controller, optimizer, rollout, advantages, returns,
                 # _with_logits variant: F.binary_cross_entropy is unsafe
                 # under autocast (see torch warning).
                 if use_mtp:
-                    mtp_logits = controller.predict_future_action_logits(
-                        mb_z_t, mb_h_t)
+                    if h_t_flat is None:
+                        mtp_logits = controller.predict_future_action_logits(
+                            mb_z_t)
+                    else:
+                        mtp_logits = controller.predict_future_action_logits(
+                            mb_z_t, mb_h_t)
                     mtp_loss = F.binary_cross_entropy_with_logits(
                         mtp_logits, mtp_targets_flat[idx], reduction='mean')
                     loss = loss + mtp_coeff * mtp_loss
@@ -390,7 +445,8 @@ def ppo_update(controller, optimizer, rollout, advantages, returns,
 
 
 def evaluate_fixed(model, controller, ctx_tokens_np, ctx_actions_np,
-                    max_steps, death_threshold, device, amp_dtype=torch.bfloat16):
+                    max_steps, death_threshold, device, amp_dtype=torch.bfloat16,
+                    uses_temporal_state=True):
     """Run deterministic evaluation on fixed pre-sampled contexts."""
     m = _unwrap(model)
     B = ctx_tokens_np.shape[0]
@@ -409,8 +465,13 @@ def evaluate_fixed(model, controller, ctx_tokens_np, ctx_actions_np,
             break
 
         with torch.no_grad(), torch.autocast("cuda", dtype=amp_dtype, enabled=device.type == "cuda"):
-            pred_tokens, death_prob, h_t = model.predict_next_frame(
-                    ctx_t, ctx_a, temperature=0.0, return_hidden=True)
+            prediction = model.predict_next_frame(
+                ctx_t, ctx_a, temperature=0.0,
+                return_hidden=uses_temporal_state)
+            if uses_temporal_state:
+                pred_tokens, death_prob, h_t = prediction
+            else:
+                pred_tokens, death_prob = prediction
 
         died = death_prob > death_threshold
         alive &= ~died
@@ -418,7 +479,10 @@ def evaluate_fixed(model, controller, ctx_tokens_np, ctx_actions_np,
 
         TPF = ctx_t.shape[2] - 1  # strip status column
         z_t = ctx_t[:, -1, :TPF]
-        action = controller.act_deterministic(z_t, h_t.float())
+        if uses_temporal_state:
+            action = controller.act_deterministic(z_t, h_t.float())
+        else:
+            action = controller.act_deterministic(z_t)
         total_jumps += (action[alive] == 1).sum().item()
         total_actions += alive.sum().item()
 
@@ -473,11 +537,13 @@ def main():
     parser.add_argument("--token-embed-dim", type=int, default=None)
     parser.add_argument("--temporal-dim", type=int, default=None)
     parser.add_argument("--policy-class", type=str, default=None,
-                        choices=["cnn", "v3_cnn"],
+                        choices=["cnn", "v3_cnn", "v3_cnn_grid"],
                         help="Controller architecture. 'cnn' = E6.10-era "
                              "CNNPolicy (h_proj + temporal_dim). 'v3_cnn' = "
                              "V3-deploy faithful (direct h_t concat, "
-                             "ReLU+MaxPool, MTP head).")
+                             "ReLU+MaxPool, MTP head). 'v3_cnn_grid' is "
+                             "the matched V7 spatial-only ablation and never "
+                             "receives h_t.")
     parser.add_argument("--mtp-coeff", type=float, default=None,
                         help="Coefficient on MTP auxiliary loss in PPO. "
                              "V3 default: 0.1. Set to 0 to disable. Only "
@@ -610,6 +676,7 @@ def main():
     #               MTP head. Use mtp_coeff>0 to activate the MTP loss.
     grid_size = int(args.tokens_per_frame ** 0.5)
     policy_class = (getattr(args, "policy_class", None) or "cnn").lower()
+    uses_temporal_state = policy_class != "v3_cnn_grid"
     if policy_class == "v3_cnn":
         from deepdash.controller import V3CNNPolicy
         controller = V3CNNPolicy(
@@ -621,6 +688,16 @@ def main():
         ).to(device)
         policy_label = "V3CNNPolicy"
         policy_extra = (f" mtp_steps={controller.mtp_steps}")
+    elif policy_class == "v3_cnn_grid":
+        from deepdash.controller import V3CNNGridPolicy
+        controller = V3CNNGridPolicy(
+            vocab_size=args.vocab_size,
+            grid_size=grid_size,
+            token_embed_dim=getattr(args, 'token_embed_dim', 16),
+            mtp_steps=int(getattr(args, "mtp_steps", None) or 8),
+        ).to(device)
+        policy_label = "V3CNNGridPolicy"
+        policy_extra = f" mtp_steps={controller.mtp_steps} spatial_only=true"
     else:
         controller = CNNPolicy(
             vocab_size=args.vocab_size,
@@ -674,6 +751,7 @@ def main():
 
     ckpt_dir = Path(args.checkpoint_dir)
     ckpt_dir.mkdir(parents=True, exist_ok=True)
+    log_path = ckpt_dir / "controller_ppo_log.csv"
 
     # Resume: load latest checkpoint, optimizer state, and find start iteration
     start_iteration = 1
@@ -719,6 +797,8 @@ def main():
             pct_normalizer.high = ckpt["pct_high"]
         print(f"Resumed from iteration {ckpt['iteration']} "
               f"(best_eval={best_eval:.2f})")
+        if log_path.exists():
+            truncate_log_after_iteration(log_path, ckpt["iteration"])
 
     if start_iteration == 1:
         import json
@@ -739,7 +819,6 @@ def main():
     print(f"  Eval: {args.n_eval_episodes} fixed contexts from "
           f"{len(eval_source)} val episodes (seed={args.eval_seed})")
 
-    log_path = ckpt_dir / "controller_ppo_log.csv"
     if args.resume and log_path.exists() and start_iteration > 1:
         log_file = open(log_path, "a", newline="")
         writer = csv.writer(log_file)
@@ -760,20 +839,70 @@ def main():
     print(f"Sampling: uniform (excluding last 2*K frames)")
     print(f"Eval: {args.n_eval_episodes} fixed contexts\n")
 
+    stop_requested = False
+
+    def request_stop(signum, frame):
+        nonlocal stop_requested
+        if not stop_requested:
+            print(
+                f"\nReceived {signal.Signals(signum).name}; "
+                "finishing the current PPO iteration before checkpointing..."
+            )
+        stop_requested = True
+
+    previous_sigterm_handler = signal.signal(signal.SIGTERM, request_stop)
+
+    def save_resume_checkpoint(iteration):
+        """Atomically save the exact state corresponding to the CSV log."""
+        ctrl_clean = {
+            key.removeprefix("_orig_mod."): value
+            for key, value in controller.state_dict().items()
+        }
+        ckpt_payload = {
+            "iteration": iteration,
+            "controller": ctrl_clean,
+            "optimizer": optimizer.state_dict(),
+            "best_eval": best_eval,
+            "rng_state": rng.bit_generator.state,
+            "torch_rng_state": torch.get_rng_state(),
+            "torch_cuda_rng_state_all": (
+                torch.cuda.get_rng_state_all()
+                if torch.cuda.is_available() else None),
+            "ema_controller": ema_controller.state_dict(),
+            "pct_low": pct_normalizer.low,
+            "pct_high": pct_normalizer.high,
+            "wandb_run_id": wandb_run_id(),
+        }
+        if scheduler is not None:
+            ckpt_payload["scheduler"] = scheduler.state_dict()
+
+        latest_path = ckpt_dir / "controller_ppo_latest.pt"
+        temporary_path = latest_path.with_suffix(".pt.tmp")
+        torch.save(ckpt_payload, temporary_path)
+        temporary_path.replace(latest_path)
+
     # Pre-training eval (BC baseline before any PPO updates)
     if start_iteration == 1:
         controller.eval()
         with torch.no_grad():
             bc_surv, bc_jr = evaluate_fixed(
                 model, controller, fixed_eval_tokens, fixed_eval_actions,
-                args.max_dream_steps, args.death_threshold, device, amp_dtype)
+                args.max_dream_steps, args.death_threshold, device, amp_dtype,
+                uses_temporal_state=uses_temporal_state)
         writer.writerow([
             0, "", "", "", "", "", f"{optimizer.param_groups[0]['lr']:.1e}",
             f"{bc_surv:.2f}", f"{bc_jr:.2f}", "0.0"])
         log_file.flush()
         print(f"BC baseline eval: survival={bc_surv:.2f}, jump_ratio={bc_jr:.2f}\n")
 
+    interrupted = False
+    last_completed_iteration = start_iteration - 1
     for iteration in range(start_iteration, args.n_iterations + 1):
+        if stop_requested:
+            save_resume_checkpoint(last_completed_iteration)
+            interrupted = True
+            break
+
         t0 = time.time()
 
         # Uniform training contexts (excluding last 2*K frames)
@@ -789,7 +918,8 @@ def main():
             device=device,
             warmup_steps=args.context_frames,
             jump_penalty=args.jump_penalty,
-            amp_dtype=amp_dtype)
+            amp_dtype=amp_dtype,
+            uses_temporal_state=uses_temporal_state)
 
         if rollout is None:
             print(f"Iter {iteration}: all died during warmup, skipping")
@@ -835,7 +965,8 @@ def main():
             with torch.no_grad():
                 es, jr = evaluate_fixed(
                     model, controller, fixed_eval_tokens, fixed_eval_actions,
-                    args.max_dream_steps, args.death_threshold, device, amp_dtype)
+                    args.max_dream_steps, args.death_threshold, device, amp_dtype,
+                    uses_temporal_state=uses_temporal_state)
             eval_surv = f"{es:.2f}"
             jump_ratio_str = f"{jr:.2f}"
 
@@ -867,30 +998,14 @@ def main():
             log_data["ppo/eval/survival"] = float(eval_surv)
             log_data["ppo/eval/jump_ratio"] = float(jump_ratio_str)
         wandb_log(log_data)
+        last_completed_iteration = iteration
 
         # Save latest checkpoint for resume. Strip _orig_mod. so an
         # uncompiled-controller resume path still loads cleanly.
+        checkpoint_saved = False
         if iteration % args.eval_interval == 0:
-            ctrl_clean = {k.removeprefix("_orig_mod."): v
-                          for k, v in controller.state_dict().items()}
-            ckpt_payload = {
-                "iteration": iteration,
-                "controller": ctrl_clean,
-                "optimizer": optimizer.state_dict(),
-                "best_eval": best_eval,
-                "rng_state": rng.bit_generator.state,
-                "torch_rng_state": torch.get_rng_state(),
-                "torch_cuda_rng_state_all": (
-                    torch.cuda.get_rng_state_all()
-                    if torch.cuda.is_available() else None),
-                "ema_controller": ema_controller.state_dict(),
-                "pct_low": pct_normalizer.low,
-                "pct_high": pct_normalizer.high,
-                "wandb_run_id": wandb_run_id(),
-            }
-            if scheduler is not None:
-                ckpt_payload["scheduler"] = scheduler.state_dict()
-            torch.save(ckpt_payload, ckpt_dir / "controller_ppo_latest.pt")
+            save_resume_checkpoint(iteration)
+            checkpoint_saved = True
 
         eval_str = f" | eval={eval_surv} jmp={jump_ratio_str}" \
             if eval_surv else ""
@@ -899,8 +1014,22 @@ def main():
               f"loss={mean_loss:.3f} | ent={mean_entropy:.3f} | "
               f"lr={lr:.1e}{eval_str} | {elapsed:.1f}s")
 
+        if stop_requested:
+            if not checkpoint_saved:
+                save_resume_checkpoint(iteration)
+            interrupted = True
+            break
+
     log_file.close()
     wandb_finish()
+    signal.signal(signal.SIGTERM, previous_sigterm_handler)
+    if interrupted:
+        print(
+            f"\nStopped cleanly after iteration {last_completed_iteration}; "
+            "the continuation can resume without replaying logged iterations."
+        )
+        return
+
     print(f"\nDone. Best eval survival: {best_eval:.1f}")
     _final = {k.removeprefix("_orig_mod."): v
               for k, v in controller.state_dict().items()}

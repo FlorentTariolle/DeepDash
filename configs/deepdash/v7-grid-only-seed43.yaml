@@ -1,0 +1,66 @@
+# Matched V7 controller ablation: remove the world-model temporal summary h_t
+# from both behavioural cloning and PPO while retaining the current FSQ grid.
+# The frozen tokenizer/world model and all controller optimization settings
+# match configs/deepdash/v7-phase0.yaml. Seed 43 matches the retained H=45
+# baseline controller replication.
+
+model:
+  vocab_size: 1000
+  embed_dim: 384
+  n_heads: 8
+  n_layers: 8
+  tokens_per_frame: 64
+  context_frames: 4
+  levels: [8, 5, 5, 5]
+  dropout: 0.1
+  adaln: false
+
+controller_bc:
+  episodes_dir: data/deepdash/death_episodes
+  expert_episodes_dir: data/deepdash/expert_episodes
+  transformer_checkpoint: checkpoints_v7/transformer_best.pt
+  epochs: 50
+  batch_size: 512
+  lr: 0.001
+  weight_decay: 0.0001
+  jump_class_weight: 1.5
+  controller_dropout: 0.0
+  val_ratio: 0.1
+  token_embed_dim: 16
+  policy_class: v3_cnn_grid
+  amp_dtype: bfloat16
+  compile_mode: reduce-overhead
+  seed: 43
+  checkpoint_dir: checkpoints_v7_controller_seed43_grid_only_h45
+
+controller_ppo:
+  episodes_dir: data/deepdash/death_episodes
+  expert_episodes_dir: data/deepdash/expert_episodes
+  transformer_checkpoint: checkpoints_v7/transformer_best.pt
+  pretrained: checkpoints_v7_controller_seed43_grid_only_h45/controller_bc_best.pt
+  amp_dtype: bfloat16
+  compile_mode: reduce-overhead
+  n_iterations: 15000
+  n_episodes: 512
+  lr: 0.0001
+  gamma: 0.995
+  lam: 0.95
+  clip_eps: 0.2
+  ppo_epochs: 4
+  minibatch_size: 512
+  entropy_coeff: 0.01
+  jump_penalty: 0.25
+  critic_coeff: 0.5
+  max_grad_norm: 0.5
+  max_dream_steps: 45
+  death_threshold: 0.5
+  token_embed_dim: 16
+  policy_class: v3_cnn_grid
+  mtp_coeff: 0.1
+  mtp_steps: 8
+  controller_dropout: 0.0
+  n_eval_episodes: 512
+  eval_interval: 10
+  eval_seed: 42
+  seed: 43
+  checkpoint_dir: checkpoints_v7_controller_seed43_grid_only_h45

@@ -417,14 +417,17 @@ class V3CNNPolicy(nn.Module):
             nn.init.zeros_(layer.bias)
 
     def _encode(self, token_ids, h_t):
+        x = self._encode_grid(token_ids)
+        return torch.cat([x, h_t], dim=1)             # (B, 256 + h_dim)
+
+    def _encode_grid(self, token_ids):
         B = token_ids.shape[0]
         G = self.grid_size
         x = self.token_embed(token_ids)              # (B, 64, E)
         x = x.permute(0, 2, 1).reshape(B, -1, G, G)  # (B, E, 8, 8)
         x = F.relu(F.max_pool2d(self.conv1(x), 2))   # (B, 32, 4, 4)
         x = F.relu(F.max_pool2d(self.conv2(x), 2))   # (B, 64, 2, 2)
-        x = x.flatten(1)                              # (B, 256)
-        return torch.cat([x, h_t], dim=1)             # (B, 256 + h_dim)
+        return x.flatten(1)                           # (B, 256)
 
     def forward(self, token_ids, h_t):
         features = self._encode(token_ids, h_t)
@@ -447,4 +450,49 @@ class V3CNNPolicy(nn.Module):
 
     def act_deterministic(self, token_ids, h_t):
         prob, _ = self.forward(token_ids, h_t)
+        return (prob > 0.5).long()
+
+
+class V3CNNGridPolicy(V3CNNPolicy):
+    """V7 controller ablation that receives only the current token grid.
+
+    The convolutional trunk, pooling, heads, initialization, and MTP objective
+    match :class:`V3CNNPolicy`; only the temporal summary ``h_t`` and its head
+    connections are removed. The world model can therefore still generate PPO
+    transitions without exposing its temporal representation to this policy.
+    """
+
+    def __init__(self, vocab_size=1000, grid_size=8, token_embed_dim=16,
+                 mtp_steps=8):
+        super().__init__(
+            vocab_size=vocab_size,
+            grid_size=grid_size,
+            token_embed_dim=token_embed_dim,
+            h_dim=0,
+            mtp_steps=mtp_steps,
+        )
+
+    def _encode(self, token_ids):
+        return self._encode_grid(token_ids)
+
+    def forward(self, token_ids):
+        features = self._encode(token_ids)
+        prob = self.actor(features).squeeze(-1).sigmoid()
+        value = self.critic(features).squeeze(-1)
+        return prob, value
+
+    def predict_future_action_logits(self, token_ids):
+        return self.mtp_head(self._encode(token_ids))
+
+    def predict_future_actions(self, token_ids):
+        return self.predict_future_action_logits(token_ids).sigmoid()
+
+    def act(self, token_ids):
+        prob, value = self.forward(token_ids)
+        dist = torch.distributions.Bernoulli(probs=prob)
+        action = dist.sample()
+        return action.long(), dist.log_prob(action), dist.entropy(), value
+
+    def act_deterministic(self, token_ids):
+        prob, _ = self.forward(token_ids)
         return (prob > 0.5).long()
