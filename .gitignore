@@ -12,6 +12,11 @@
 !analysis/2026-07-27_v7_controller_replication/*.json
 !analysis/2026-07-30_v7_seed43_h20_live10/*.json
 !analysis/2026-07-21_bc_reconstruction/controller_bc_args.json
+!analysis/world_model_ablation_baseline_matched_20260730/*.json
+!analysis/world_model_ablation_no_sls_matched_20260730/*.json
+!analysis/world_model_ablation_no_cpc_matched_20260730/*.json
+!analysis/world_model_ablation_uniform_smoothing_20260730/*.json
+!analysis/world_model_ablation_uniform_smoothing_20260730/training/*.json
 __pycache__/
 .venv/
 .codex_tmp/

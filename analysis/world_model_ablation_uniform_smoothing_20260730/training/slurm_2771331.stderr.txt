@@ -1,0 +1,42 @@
+wandb: [wandb.login()] Loaded credentials for https://api.wandb.ai from /home/2500001/ftari001/.netrc.
+wandb: Currently logged in as: florent-tariolle (florent-tariolle-insa-rouen-normandie) to https://api.wandb.ai. Use `wandb login --relogin` to force relogin
+wandb: setting up run d9mhe9rd
+wandb: Tracking run with wandb version 0.27.0
+wandb: Run data is saved locally in /home/2500001/ftari001/dash-vmc/wandb/run-20260730_224424-d9mhe9rd
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run wm-v7_ablation_uniform_smoothing
+wandb: ⭐️ View project at https://wandb.ai/florent-tariolle-insa-rouen-normandie/sls-wm-atari
+wandb: 🚀 View run at https://wandb.ai/florent-tariolle-insa-rouen-normandie/sls-wm-atari/runs/d9mhe9rd
+wandb: uploading wandb-summary.json; uploading config.yaml
+wandb: uploading history steps 199-199, summary, console lines 402-403
+wandb: 
+wandb: Run history:
+wandb:                      epoch ▁▁▁▁▂▂▂▂▂▃▃▃▃▃▃▃▄▄▄▄▅▅▅▅▅▅▆▆▆▆▆▇▇▇▇▇▇███
+wandb:            transformer/gap ▁▁▂▃▃▄▄▄▅▅▅▆▆▆▆▆▇▇▇▇▇█████▇█████████████
+wandb:             transformer/lr ▅███████▇▇▇▇▆▆▅▅▅▅▅▅▄▄▃▃▃▃▃▂▂▂▂▂▁▁▁▁▁▁▁▁
+wandb:      transformer/train/acc ▁▆▆▇▇▇▇█████▃▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:      transformer/train/cpc ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▅▇▇▇▇▇▇███████████████████
+wandb: transformer/train/death_f1 ▁▄▆▇██████▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:     transformer/train/loss ▇▄▂▂▂▁▁▁▁▁██▇███████████████████████████
+wandb:    transformer/train/total ▇▂▂▂▂▁▁▁▁▁▁▁▁███████████████████████████
+wandb:        transformer/val/acc ▅▆▆▇▇▇▇▇████▇▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:        transformer/val/cpc ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▇▇▇██████████████████████
+wandb:                         +3 ...
+wandb: 
+wandb: Run summary:
+wandb:                      epoch 200
+wandb:            transformer/gap -0.00448
+wandb:             transformer/lr 5e-05
+wandb:      transformer/train/acc 0.00136
+wandb:      transformer/train/cpc 6.48679
+wandb: transformer/train/death_f1 0.05275
+wandb:     transformer/train/loss 6.89544
+wandb:    transformer/train/total 6.89544
+wandb:        transformer/val/acc 0.00136
+wandb:        transformer/val/cpc 6.22544
+wandb:                         +3 ...
+wandb: 
+wandb: 🚀 View run wm-v7_ablation_uniform_smoothing at: https://wandb.ai/florent-tariolle-insa-rouen-normandie/sls-wm-atari/runs/d9mhe9rd
+wandb: ⭐️ View project at: https://wandb.ai/florent-tariolle-insa-rouen-normandie/sls-wm-atari
+wandb: Synced 5 W&B file(s), 0 media file(s), 0 artifact file(s) and 0 other file(s)
+wandb: Find logs at: ./wandb/run-20260730_224424-d9mhe9rd/logs
