@@ -1,4 +1,77 @@
-% ===== Core contributions =====
+@misc{lecun2022path,
+  title={A Path Towards Autonomous Machine Intelligence},
+  author={LeCun, Yann},
+  howpublished={OpenReview},
+  note={Version 0.9.2},
+  url={https://openreview.net/pdf?id=BZ5a1r-kVsf},
+  year={2022}
+}
+
+@inproceedings{ha2018world,
+  title={Recurrent World Models Facilitate Policy Evolution},
+  author={Ha, David and Schmidhuber, J{\"u}rgen},
+  booktitle={Advances in Neural Information Processing Systems},
+  volume={31},
+  year={2018}
+}
+
+@article{schulman2017ppo,
+  title={Proximal Policy Optimization Algorithms},
+  author={Schulman, John and Wolski, Filip and Dhariwal, Prafulla and Radford, Alec and Klimov, Oleg},
+  journal={arXiv preprint arXiv:1707.06347},
+  year={2017}
+}
+
+@inproceedings{micheli2023iris,
+  title={Transformers are Sample-Efficient World Models},
+  author={Micheli, Vincent and Alonso, Eloi and Fleuret, Fran{\c{c}}ois},
+  booktitle={International Conference on Learning Representations},
+  year={2023}
+}
+
+@inproceedings{micheli2024deltairis,
+  title={Efficient World Models with Context-Aware Tokenization},
+  author={Micheli, Vincent and Alonso, Eloi and Fleuret, Fran{\c{c}}ois},
+  booktitle={Proceedings of the 41st International Conference on Machine Learning},
+  series={Proceedings of Machine Learning Research},
+  volume={235},
+  pages={35623--35638},
+  publisher={PMLR},
+  year={2024}
+}
+
+@inproceedings{alonso2024diamond,
+  title={Diffusion for World Modeling: Visual Details Matter in Atari},
+  author={Alonso, Eloi and Jelley, Adam and Micheli, Vincent and Kanervisto, Anssi and Storkey, Amos and Pearce, Tim and Fleuret, Fran{\c{c}}ois},
+  booktitle={Advances in Neural Information Processing Systems},
+  volume={37},
+  year={2024}
+}
+
+@article{hafner2025dreamerv3,
+  title={Mastering Diverse Control Tasks through World Models},
+  author={Hafner, Danijar and Pasukonis, Jurgis and Ba, Jimmy and Lillicrap, Timothy},
+  journal={Nature},
+  volume={640},
+  pages={647--653},
+  doi={10.1038/s41586-025-08744-2},
+  year={2025}
+}
+
+@inproceedings{burchi2025twister,
+  title={Learning Transformer-based World Models with Contrastive Predictive Coding},
+  author={Burchi, Maxime and Timofte, Radu},
+  booktitle={International Conference on Learning Representations},
+  year={2025}
+}
+
+@misc{li2017geometrydash,
+  title={Playing {Geometry Dash} with Convolutional Neural Networks},
+  author={Li, Ted and Rafferty, Sean},
+  howpublished={Stanford CS231N course report},
+  url={https://cs231n.stanford.edu/reports/2017/pdfs/605.pdf},
+  year={2017}
+}
 
 @inproceedings{mentzer2024fsq,
   title={Finite Scalar Quantization: {VQ-VAE} Made Simple},
@@ -14,209 +87,11 @@
   year={2026}
 }
 
-@article{xu2025gq,
-  title={Training-Free Vector Quantization via Gaussian {VAE}s},
-  author={Xu, Tongda and Zheng, Wendi and He, Jiajun and Hern{\'a}ndez-Lobato, Jos{\'e} Miguel and Wang, Yan and Zhang, Ya-Qin and Tang, Jie},
-  journal={arXiv preprint arXiv:2512.06609},
-  year={2025}
-}
-
-@inproceedings{szegedy2016rethinking,
-  title={Rethinking the {Inception} Architecture},
-  author={Szegedy, Christian and Vanhoucke, Vincent and Ioffe, Sergey and Shlens, Jon and Wojna, Zbigniew},
-  booktitle={Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition},
-  pages={2818--2826},
-  year={2016}
-}
-
-% ===== World models =====
-
-@article{lecun2022path,
-  title={A Path Towards Autonomous Machine Intelligence},
-  author={LeCun, Yann},
-  journal={OpenReview},
-  note={Version 0.9.2},
-  year={2022}
-}
-
-@inproceedings{ha2018world,
-  title={Recurrent World Models Facilitate Policy Evolution},
-  author={Ha, David and Schmidhuber, J{\"u}rgen},
-  booktitle={Advances in Neural Information Processing Systems},
-  volume={31},
-  year={2018}
-}
-
-@inproceedings{micheli2023iris,
-  title={Transformers are Sample-Efficient World Models},
-  author={Micheli, Vincent and Alonso, Eloi and Fleuret, Fran{\c{c}}ois},
-  booktitle={International Conference on Learning Representations},
-  year={2023}
-}
-
-@inproceedings{micheli2024deltairis,
-  title={Efficient World Models with Context-Aware Tokenization},
-  author={Micheli, Vincent and Alonso, Eloi and Fleuret, Fran{\c{c}}ois},
-  booktitle={International Conference on Machine Learning},
-  year={2024}
-}
-
-@inproceedings{alonso2024diamond,
-  title={Diffusion for World Modeling: Visual Details Matter in Atari},
-  author={Alonso, Eloi and Jelley, Adam and Micheli, Vincent and Kanervisto, Anssi and Storkey, Amos and Pearce, Tim and Fleuret, Fran{\c{c}}ois},
-  booktitle={Advances in Neural Information Processing Systems},
-  volume={37},
-  year={2024}
-}
-
-@inproceedings{burchi2025twister,
-  title={{TWISTER}: Learning Transformer-based World Models with Contrastive Predictive Coding},
-  author={Burchi, Maxime and Timofte, Radu},
-  booktitle={International Conference on Learning Representations},
-  year={2025}
-}
-
-@article{oord2018cpc,
-  title={Representation Learning with Contrastive Predictive Coding},
-  author={van den Oord, Aaron and Li, Yazhe and Vinyals, Oriol},
-  journal={arXiv preprint arXiv:1807.03748},
-  year={2018}
-}
-
-@article{hafner2025dreamerv3,
-  title={Mastering Diverse Control Tasks through World Models},
-  author={Hafner, Danijar and Pasukonis, Jurgis and Ba, Jimmy and Lillicrap, Timothy},
-  journal={Nature},
-  year={2025}
-}
-
-@article{hafner2025dreamer4,
-  title={Training Agents Inside of Scalable World Models},
-  author={Hafner, Danijar and Yan, Wilson and Lillicrap, Timothy},
-  journal={arXiv preprint arXiv:2509.24527},
-  year={2025}
-}
-
-@article{hu2026mira,
-  title={Multiplayer Interactive World Models with Representation Autoencoders},
-  author={Hu, Anthony and Volhejn, V{\'a}clav and Ramanana Rahary, Adrien and Mulder, Chris and Makkar, Aditya and Liao, Alyx and Royer, Am{\'e}lie and Orsini, Manu and Jelley, Adam and Alonso, Eloi and Laurent, Florian and Nor{\'e}n, Fredrik and Swingos, James and H{\"u}nermann, Jan and Rollins, Kent and Hosseini, Lucas and Le Cauchois, Matthieu and Peter, Maxim and de Witte, Pim and Brown, Tim and Micheli, Vincent and B{\"o}hle, Moritz and de Marmiesse, Gabriel and Sharmanska, Viktoriia and Specia, Lucia and Black, Michael and P{\'e}rez, Patrick},
-  journal={arXiv preprint arXiv:2607.05352},
-  year={2026}
-}
-
-@article{guo2025mineworld,
-  title={{MineWorld}: A Real-Time and Open-Source Interactive World Model on {Minecraft}},
-  author={Guo, Junliang and Ye, Yang and He, Tianyu and Wu, Haoyu and Jiang, Yushu and Pearce, Tim and Bian, Jiang},
-  journal={arXiv preprint arXiv:2504.08388},
-  year={2025}
-}
-
-@article{he2025matrixgame,
-  title={{Matrix-Game} 2.0: An Open-Source Real-Time and Streaming Interactive World Model},
-  author={He, Xianglong and Peng, Chunli and Liu, Zexiang and Wang, Boyang and Zhang, Yifan and Cui, Qi and Kang, Fei and Jiang, Biao and An, Mengyin and Ren, Yangyang and Xu, Baixin and Guo, Hao-Xiang and Gong, Kaixiong and Wu, Size and Li, Wei and Song, Xuchen and Liu, Yang and Li, Yangguang and Zhou, Yahui},
-  journal={arXiv preprint arXiv:2508.13009},
-  year={2025}
-}
-
-@misc{li2017geometrydash,
-  title={Playing {Geometry Dash} with Convolutional Neural Networks},
-  author={Li, Ted and Rafferty, Sean},
-  howpublished={Stanford CS231N course report},
-  year={2017}
-}
-
-@article{maes2026leworldmodel,
-  title={{LeWorldModel}: Stable End-to-End Joint-Embedding Predictive Architecture from Pixels},
-  author={Maes, Lucas and Le Lidec, Quentin and Scieur, Damien and LeCun, Yann and Balestriero, Randall},
-  journal={arXiv preprint arXiv:2603.19312},
-  year={2026}
-}
-
-@article{vanassel2025joint,
-  title={Joint Embedding vs Reconstruction: Provable Benefits of Latent Space Prediction for Self Supervised Learning},
-  author={Van Assel, Hugues and Ibrahim, Mark and Biancalani, Tommaso and Regev, Aviv and Balestriero, Randall},
-  journal={arXiv preprint arXiv:2505.12477},
-  year={2025}
-}
-
-@article{dupoux2026why,
-  title={Why {AI} Systems Don't Learn and What to Do About It: Lessons on Autonomous Learning from Cognitive Science},
-  author={Dupoux, Emmanuel and LeCun, Yann and Malik, Jitendra},
-  journal={arXiv preprint arXiv:2603.15381},
-  year={2026}
-}
-
-% ===== Learned downsampling =====
-
-@inproceedings{springenberg2015striving,
-  title={Striving for Simplicity: The All Convolutional Net},
-  author={Springenberg, Jost Tobias and Dosovitskiy, Alexey and Brox, Thomas and Riedmiller, Martin},
-  booktitle={International Conference on Learning Representations (Workshop)},
-  year={2015}
-}
-
-% ===== Architecture components =====
-
-@inproceedings{peebles2023dit,
-  title={Scalable Diffusion Models with Transformers},
-  author={Peebles, William and Xie, Saining},
-  booktitle={International Conference on Computer Vision},
-  year={2023}
-}
-
-@inproceedings{esser2024sd3,
-  title={Scaling Rectified Flow Transformers for High-Resolution Image Synthesis},
-  author={Esser, Patrick and Kulal, Sumith and Blattmann, Andreas and Entezari, Rahim and M{\"u}ller, Jonas and Saini, Harry and Levi, Yam and Lorber, Dominik and Sauer, Axel and Boesel, Frederic and others},
-  booktitle={International Conference on Machine Learning},
-  year={2024}
-}
-
-@inproceedings{perez2018film,
-  title={{FiLM}: Visual Reasoning with a General Conditioning Layer},
-  author={Perez, Ethan and Strub, Florian and de Vries, Harm and Dumoulin, Vincent and Courville, Aaron},
-  booktitle={AAAI Conference on Artificial Intelligence},
-  year={2018}
-}
-
-@article{su2024rope,
-  title={RoFormer: Enhanced Transformer with Rotary Position Embedding},
-  author={Su, Jianlin and Ahmed, Murtadha and Lu, Yu and Pan, Shengfeng and Bo, Wen and Liu, Yunfeng},
-  journal={Neurocomputing},
-  volume={568},
-  pages={127063},
-  year={2024}
-}
-
-% ===== Reinforcement learning =====
-
-@article{schulman2015gae,
-  title={High-Dimensional Continuous Control Using Generalized Advantage Estimation},
-  author={Schulman, John and Moritz, Philipp and Levine, Sergey and Jordan, Michael and Abbeel, Pieter},
-  journal={arXiv preprint arXiv:1506.02438},
-  year={2015}
-}
-
-@article{schulman2017ppo,
-  title={Proximal Policy Optimization Algorithms},
-  author={Schulman, John and Wolski, Filip and Dhariwal, Prafulla and Radford, Alec and Klimov, Oleg},
-  journal={arXiv preprint arXiv:1707.06347},
-  year={2017}
-}
-
-@article{silver2016mastering,
-  title={Mastering the Game of {Go} with Deep Neural Networks and Tree Search},
-  author={Silver, David and Huang, Aja and Maddison, Chris J. and Guez, Arthur and Sifre, Laurent and van den Driessche, George and Schrittwieser, Julian and Antonoglou, Ioannis and Panneershelvam, Vedavyas and Lanctot, Marc and Dieleman, Sander and Grewe, Dominik and Nham, John and Kalchbrenner, Nal and Sutskever, Ilya and Lillicrap, Timothy and Leach, Madeleine and Kavukcuoglu, Koray and Graepel, Thore and Hassabis, Demis},
-  journal={Nature},
-  volume={529},
-  number={7587},
-  pages={484--489},
-  year={2016}
-}
-
 @inproceedings{hester2018deep,
   title={Deep Q-learning from Demonstrations},
-  author={Hester, Todd and Vecerik, Matej and Pietquin, Olivier and Lanctot, Marc and Schaul, Tom and Piot, Bilal and Horgan, Dan and Quan, John and Sendonaris, Andrew and Dulac-Arnold, Gabriel and Osband, Ian and Agapiou, John and Leibo, Joel Z. and Gruslys, Audrunas},
+  author={Hester, Todd and Vecerik, Matej and Pietquin, Olivier and Lanctot, Marc and Schaul, Tom and Piot, Bilal and Horgan, Dan and Quan, John and Sendonaris, Andrew and Osband, Ian and Dulac-Arnold, Gabriel and Agapiou, John and Leibo, Joel Z. and Gruslys, Audrunas},
   booktitle={AAAI Conference on Artificial Intelligence},
+  volume={32},
   year={2018}
 }
 
@@ -227,15 +102,19 @@
   year={2022}
 }
 
-@article{agarwal2021precipice,
-  title={Deep Reinforcement Learning at the Edge of the Statistical Precipice},
-  author={Agarwal, Rishabh and Schwarzer, Max and Castro, Pablo Samuel and Courville, Aaron C. and Bellemare, Marc G.},
-  journal={Advances in Neural Information Processing Systems},
-  volume={34},
-  year={2021}
+@article{xia2025grwm,
+  title={Cloning Deterministic Worlds: The Critical Role of Latent Geometry in Long-Horizon World Models},
+  author={Xia, Zaishuo and Lu, Yukuan and Li, Xinyi and Xu, Yifan and Chen, Yubei},
+  journal={arXiv preprint arXiv:2510.26782},
+  year={2025}
 }
 
-% ===== Loss functions =====
+@article{oord2018cpc,
+  title={Representation Learning with Contrastive Predictive Coding},
+  author={van den Oord, Aaron and Li, Yazhe and Vinyals, Oriol},
+  journal={arXiv preprint arXiv:1807.03748},
+  year={2018}
+}
 
 @inproceedings{lin2017focal,
   title={Focal Loss for Dense Object Detection},
@@ -245,19 +124,9 @@
   year={2017}
 }
 
-% ===== Regularization =====
-
-@inproceedings{wang2020uniformity,
-  title={Understanding Contrastive Representation Learning through Alignment and Uniformity on the Hypersphere},
-  author={Wang, Tongzhou and Isola, Phillip},
-  booktitle={International Conference on Machine Learning},
-  pages={9929--9939},
-  year={2020}
-}
-
-@article{xia2025grwm,
-  title={Clone Deterministic 3D Worlds with Geometrically-Regularized World Models},
-  author={Xia, Zaishuo and Lu, Yukuan and Li, Xinyi and Xu, Yifan and Chen, Yubei},
-  journal={arXiv preprint arXiv:2510.26782},
-  year={2025}
+@article{schulman2015gae,
+  title={High-Dimensional Continuous Control Using Generalized Advantage Estimation},
+  author={Schulman, John and Moritz, Philipp and Levine, Sergey and Jordan, Michael and Abbeel, Pieter},
+  journal={arXiv preprint arXiv:1506.02438},
+  year={2015}
 }

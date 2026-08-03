@@ -121,7 +121,7 @@ Diagnostics cover action sensitivity, rollout fidelity, controller input, dynami
 
 \paragraph{World models and imagination.}
 World Models demonstrated that a compact controller optimized in learned dreams can transfer to the real environment~\citep{ha2018world}.
-IRIS combines a discrete autoencoder with an autoregressive transformer for data-efficient Atari learning~\citep{micheli2023iris}; \(\Delta\)-IRIS reduces sequence cost with separate change and context tokens~\citep{micheli2024deltairis}; DIAMOND uses diffusion for imagination-trained control~\citep{alonso2024diamond}; and DreamerV3 scales categorical recurrent latents across domains~\citep{hafner2025dreamerv3}.
+IRIS combines a discrete autoencoder with an autoregressive transformer for data-efficient Atari learning~\citep{micheli2023iris}; \(\Delta\)-IRIS reduces sequence cost with discrete delta tokens and continuous context tokens~\citep{micheli2024deltairis}; DIAMOND uses diffusion for imagination-trained control~\citep{alonso2024diamond}; and DreamerV3 scales categorical recurrent latents across domains~\citep{hafner2025dreamerv3}.
 TWISTER adds action-conditioned CPC to transformer dynamics~\citep{burchi2025twister}, which DashVMC adopts alongside parallel spatial prediction.
 Earlier screenshot-based Geometry Dash control used DQN and imitation under a fabricated timestep~\citep{li2017geometrydash}; here the game clock continues during capture and inference.
 
