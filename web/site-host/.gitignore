@@ -1,0 +1,4 @@
+dist/
+!package.json
+!.openai/
+!.openai/hosting.json

@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <meta
+      name="description"
+      content="Play inside DashVMC's learned Geometry Dash world, locally in your browser."
+    />
+    <title>Dream Player | DashVMC</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;display=swap"
+      rel="stylesheet"
+    />
+    <link rel="icon" type="image/png" href="../static/images/ai-brain-icon.png" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="wordmark" href="../" aria-label="Back to DashVMC home">
+        Dash<span>VMC</span>
+      </a>
+      <a class="back-link" href="../">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M19 12H5m6-6-6 6 6 6" />
+        </svg>
+        Project overview
+      </a>
+    </header>
+
+    <main>
+      <section class="intro" aria-labelledby="player-title">
+        <div>
+          <p class="eyebrow">Interactive world model</p>
+          <h1 id="player-title">Play the <span>dream.</span></h1>
+        </div>
+        <div class="intro-copy">
+          <p>
+            Hold to jump inside a world generated one frame at a time. The model runs
+            entirely on your device.
+          </p>
+          <div class="privacy-note">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 3 5 6v5c0 4.5 2.8 8.3 7 10 4.2-1.7 7-5.5 7-10V6l-7-3Z" />
+              <path d="m9.3 12 1.8 1.8 3.8-4" />
+            </svg>
+            <span>No frames or inputs leave this browser.</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="player-shell" aria-label="Dream player">
+        <div class="stage-column">
+          <div
+            id="stage"
+            class="stage is-loading"
+            tabindex="0"
+            aria-label="Generated dream. Hold Space, Up, or press this area to jump."
+          >
+            <canvas id="dream-canvas" width="64" height="64" role="img"></canvas>
+
+            <div class="stage-vignette" aria-hidden="true"></div>
+
+            <div class="hud" aria-label="Dream telemetry">
+              <div class="hud-group">
+                <div class="metric">
+                  <span>Step</span>
+                  <strong id="hud-step">00</strong>
+                </div>
+                <div class="metric metric-action">
+                  <span>Action</span>
+                  <strong id="hud-action">Idle</strong>
+                </div>
+              </div>
+              <div class="hud-group hud-group-right">
+                <div class="metric">
+                  <span>Death</span>
+                  <strong id="hud-death">0%</strong>
+                </div>
+                <div class="metric">
+                  <span>Tick</span>
+                  <strong id="hud-latency">—</strong>
+                </div>
+              </div>
+            </div>
+
+            <div id="action-flash" class="action-flash" aria-hidden="true">
+              <span></span>
+              Jump held
+            </div>
+
+            <div id="stage-overlay" class="stage-overlay">
+              <div id="loading-panel" class="overlay-panel loading-panel">
+                <div class="loader-mark" aria-hidden="true">
+                  <span></span><span></span><span></span>
+                </div>
+                <p id="loading-kicker" class="overlay-kicker">Checking your browser</p>
+                <h2 id="loading-title">Preparing the dream</h2>
+                <p id="loading-detail" class="overlay-detail">
+                  Looking for a compatible graphics backend.
+                </p>
+                <div class="progress-wrap">
+                  <progress id="load-progress" max="100" value="0">0%</progress>
+                  <div class="progress-labels">
+                    <span id="progress-file">Runtime</span>
+                    <span id="progress-value">0%</span>
+                  </div>
+                </div>
+              </div>
+
+              <div id="start-panel" class="overlay-panel start-panel" hidden>
+                <p class="overlay-kicker">World model ready</p>
+                <h2>Enter the dream</h2>
+                <p class="overlay-detail">
+                  Hold <kbd>Space</kbd>, <kbd>↑</kbd>, or the jump pad to control the next
+                  generated transition.
+                </p>
+                <button id="start-button" class="button button-primary" type="button">
+                  Start playing
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="m9 6 9 6-9 6V6Z" />
+                  </svg>
+                </button>
+              </div>
+
+              <div id="end-panel" class="overlay-panel end-panel" hidden>
+                <p id="end-kicker" class="overlay-kicker">Rollout ended</p>
+                <h2 id="end-title">Dream over</h2>
+                <p id="end-detail" class="overlay-detail">The model predicted a collision.</p>
+                <div class="overlay-actions">
+                  <button id="overlay-retry" class="button button-primary" type="button">
+                    Retry seed
+                  </button>
+                  <button id="overlay-next" class="button button-ghost" type="button">
+                    Next seed
+                  </button>
+                </div>
+              </div>
+
+              <div id="error-panel" class="overlay-panel error-panel" hidden>
+                <p class="overlay-kicker">Could not start</p>
+                <h2>Dream unavailable</h2>
+                <p id="error-detail" class="overlay-detail">
+                  The browser could not initialize the model.
+                </p>
+                <button id="reload-button" class="button button-ghost" type="button">
+                  Reload player
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="stage-caption">
+            <div id="backend-badge" class="backend-badge" data-backend="pending">
+              <span></span>
+              <strong id="backend-label">Detecting</strong>
+            </div>
+            <p id="live-status" role="status" aria-live="polite">Preparing local inference…</p>
+            <span id="step-limit">0 / 45</span>
+          </div>
+        </div>
+
+        <aside class="control-deck" aria-label="Player controls">
+          <section class="deck-section seed-section" aria-labelledby="seed-title">
+            <div class="section-label-row">
+              <h2 id="seed-title">Dream seed</h2>
+              <span id="seed-counter">01 / 04</span>
+            </div>
+            <div class="seed-picker">
+              <button id="seed-previous" class="icon-button" type="button" aria-label="Previous seed">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6" /></svg>
+              </button>
+              <div class="seed-copy">
+                <strong id="seed-name">First Light</strong>
+                <span id="seed-description">A clean opening with room to learn.</span>
+              </div>
+              <button id="seed-next" class="icon-button" type="button" aria-label="Next seed">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg>
+              </button>
+            </div>
+            <div id="seed-dots" class="seed-dots" role="group" aria-label="Select dream seed"></div>
+          </section>
+
+          <section class="deck-section transport-section" aria-labelledby="transport-title">
+            <div class="section-label-row">
+              <h2 id="transport-title">Rollout</h2>
+              <span>30 Hz target</span>
+            </div>
+            <div class="transport-grid">
+              <button id="play-button" class="transport-primary" type="button" disabled>
+                <svg class="play-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m9 6 9 6-9 6V6Z" />
+                </svg>
+                <svg class="pause-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M9 7v10M15 7v10" />
+                </svg>
+                <span>Play</span>
+              </button>
+              <button id="step-button" class="transport-button" type="button" disabled>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m7 6 8 6-8 6V6ZM17 6v12" />
+                </svg>
+                <span>Step</span>
+              </button>
+              <button id="retry-button" class="transport-button" type="button" disabled>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M5 8V4m0 0h4M5 4l3 3a7 7 0 1 1-2 8" />
+                </svg>
+                <span>Retry</span>
+              </button>
+            </div>
+          </section>
+
+          <section class="deck-section input-section" aria-labelledby="input-title">
+            <div class="section-label-row">
+              <h2 id="input-title">Your input</h2>
+              <span>Hold, then release</span>
+            </div>
+            <button id="jump-button" class="jump-button" type="button" disabled aria-pressed="false">
+              <span class="jump-orbit" aria-hidden="true"><i></i></span>
+              <span class="jump-copy">
+                <strong>Hold to jump</strong>
+                <small>Space · ↑ · touch</small>
+              </span>
+              <kbd>SPACE</kbd>
+            </button>
+          </section>
+
+          <section class="deck-section ai-section" aria-labelledby="ai-title">
+            <div>
+              <div class="ai-title-row">
+                <h2 id="ai-title">AI pilot</h2>
+                <span id="ai-availability">Optional model</span>
+              </div>
+              <p>Let the learned controller choose each jump.</p>
+            </div>
+            <button
+              id="ai-toggle"
+              class="toggle"
+              type="button"
+              role="switch"
+              aria-checked="false"
+              aria-label="Toggle AI pilot"
+              disabled
+            >
+              <span></span>
+            </button>
+          </section>
+
+          <section class="runtime-card" aria-label="Runtime details">
+            <div>
+              <span>Execution</span>
+              <strong id="runtime-backend">Waiting</strong>
+            </div>
+            <div>
+              <span>Model</span>
+              <strong>DashVMC V7</strong>
+            </div>
+            <div>
+              <span>Privacy</span>
+              <strong>On-device</strong>
+            </div>
+          </section>
+        </aside>
+      </section>
+
+      <p class="keyboard-note">
+        Keyboard: <kbd>Space</kbd>/<kbd>↑</kbd> jump · <kbd>P</kbd> play or pause ·
+        <kbd>.</kbd> single step · <kbd>R</kbd> retry · <kbd>N</kbd> next seed
+      </p>
+    </main>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

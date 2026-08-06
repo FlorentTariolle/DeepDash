@@ -67,6 +67,20 @@ python scripts/eval_real_game.py --config configs/deepdash/v7-phase0.yaml --vae-
 python scripts/play_dream.py --config configs/deepdash/v7-phase0.yaml --vae-checkpoint checkpoints_v7/fsq_best.pt --transformer-checkpoint checkpoints_v7/transformer_best.pt --controller-checkpoint checkpoints_v7/controller_ppo_best.pt --fps 30 --scale 12 --max-dream-steps 500
 ```
 
+**Export and build the in-browser dream player:**
+
+```bash
+python scripts/export_web_models.py
+cd web/dream-player
+npm install
+npm run build
+```
+
+The export produces fixed-shape ONNX graphs for the world model, FSQ decoder,
+and optional controller under `docs/static/models/v7`. The player uses ONNX
+Runtime Web with WebGPU acceleration and a WASM fallback; all inference stays
+on the viewer's device.
+
 **Deploy to the live game (60 FPS optimized path):**
 ```bash
 python scripts/deploy.py --config configs/deepdash/v7-phase0.yaml --vae-checkpoint checkpoints_v7/fsq_best.pt --transformer-checkpoint checkpoints_v7/transformer_best.pt --controller-checkpoint checkpoints_v7/controller_ppo_best.pt --preprocessor exact-cuda --fps 60

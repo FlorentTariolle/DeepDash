@@ -441,9 +441,15 @@ footer nav a:hover,
 
 .dream-heading p {
   max-width: 510px;
-  margin: 0;
+  margin: 0.45rem 0 0;
   color: var(--muted);
   font-size: 0.92rem;
+}
+
+.dream-player-link {
+  flex: 0 0 auto;
+  align-self: center;
+  white-space: nowrap;
 }
 
 .dream-grid {
@@ -647,6 +653,10 @@ footer nav {
   .dream-heading p {
     display: block;
     margin-top: 0.7rem;
+  }
+
+  .dream-player-link {
+    margin-top: 1.25rem;
   }
 
   .dream-grid {

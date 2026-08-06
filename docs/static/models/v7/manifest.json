@@ -1,0 +1,56 @@
+{
+  "format": 1,
+  "model": "DashVMC V7",
+  "onnx_opset": 18,
+  "onnxruntime_web": "1.26.0",
+  "context_frames": 4,
+  "tokens_per_frame": 64,
+  "block_size": 65,
+  "vocab_size": 1000,
+  "fsq_levels": [
+    8,
+    5,
+    5,
+    5
+  ],
+  "seeds": [
+    {
+      "name": "First Light",
+      "episode": "perfect_run_1",
+      "start_frame": 96
+    },
+    {
+      "name": "The Gauntlet",
+      "episode": "perfect_run_1",
+      "start_frame": 397
+    },
+    {
+      "name": "Inverted Flight",
+      "episode": "perfect_run_7_5",
+      "start_frame": 157
+    },
+    {
+      "name": "Last Chance",
+      "episode": "ep_0044",
+      "start_frame": 33
+    }
+  ],
+  "files": {
+    "world.onnx": {
+      "bytes": 60425724,
+      "sha256": "d52fb22b85df84cfd9525d1b679eacc427fb88a0816f2cacb41764ee5a04f54c"
+    },
+    "decoder.onnx": {
+      "bytes": 3771202,
+      "sha256": "770b3ef7daa73bd7707f50d30f322ab14b9f344641a9584d4a69bc9af08625a1"
+    },
+    "controller.onnx": {
+      "bytes": 161831,
+      "sha256": "107832c56977b0988f8a77b0bb11849dd0bc05f998753035389bf3354e682460"
+    },
+    "seeds.bin": {
+      "bytes": 2120,
+      "sha256": "720316dea49f6aa86d8d1ac3d847edeb3df2fac1fe1cbc1a8deeaa4065304d89"
+    }
+  }
+}
