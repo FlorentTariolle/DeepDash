@@ -76,7 +76,7 @@ export type WorkerToMainMessage =
       deathProbability: number;
       latencyMs: number;
       ended: boolean;
-      endReason?: "death" | "limit";
+      endReason?: "death";
     }
   | {
       type: "playback";

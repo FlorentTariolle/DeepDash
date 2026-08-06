@@ -7,8 +7,6 @@ import type {
   WorkerToMainMessage,
 } from "./runtime/protocol";
 
-const MAX_DREAM_STEPS = 45;
-
 function element<T extends HTMLElement>(id: string): T {
   const node = document.getElementById(id);
   if (!(node instanceof HTMLElement)) {
@@ -213,22 +211,16 @@ function drawFrame(message: Extract<WorkerToMainMessage, { type: "frame" }>): vo
   hudAction.parentElement?.classList.toggle("is-jump", message.action === 1);
   hudDeath.textContent = `${Math.round(message.deathProbability * 100)}%`;
   hudLatency.textContent = message.latencyMs > 0 ? `${message.latencyMs.toFixed(0)} ms` : "—";
-  stepLimit.textContent = `${message.step} / ${MAX_DREAM_STEPS}`;
+  stepLimit.textContent = `${message.step} ${message.step === 1 ? "step" : "steps"}`;
   updateSeedUi(message.seedIndex);
 
   if (message.ended) {
     isEnded = true;
     isPlaying = false;
     releaseAllInputs();
-    if (message.endReason === "limit") {
-      endKicker.textContent = "Horizon reached";
-      endTitle.textContent = "Forty-five steps";
-      endDetail.textContent = "This rollout reached the model's evaluation horizon.";
-    } else {
-      endKicker.textContent = "Rollout ended";
-      endTitle.textContent = "Dream over";
-      endDetail.textContent = `The model predicted a collision at step ${message.step}.`;
-    }
+    endKicker.textContent = "Rollout ended";
+    endTitle.textContent = "Dream over";
+    endDetail.textContent = `The model predicted a collision at step ${message.step}.`;
     showPanel(endPanel);
     updatePlaybackUi();
   }

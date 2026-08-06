@@ -19,7 +19,6 @@ const VOCAB_SIZE = 1000;
 const ALIVE_TOKEN = 1000;
 const DEATH_TOKEN = 1001;
 const GRID_SIZE = 8;
-const MAX_DREAM_STEPS = 45;
 const TARGET_FRAME_MS = 1000 / 30;
 const MAX_HOST_FILE_BYTES = 25 * 1024 * 1024;
 const FSQ_DIVISORS = [125, 25, 5, 1] as const;
@@ -598,7 +597,7 @@ function postPixels(
   action: 0 | 1,
   probability: number,
   latencyMs: number,
-  endReason?: "death" | "limit",
+  endReason?: "death",
 ): void {
   const transferable = pixels.buffer as ArrayBuffer;
   post(
@@ -688,8 +687,7 @@ async function generateStep(generation: number): Promise<void> {
   stepCount += 1;
 
   const died = world.deathProbability > 0.5;
-  const reachedLimit = stepCount >= MAX_DREAM_STEPS;
-  const endReason = died ? "death" : reachedLimit ? "limit" : undefined;
+  const endReason = died ? "death" : undefined;
   const latencyMs = performance.now() - startedAt;
 
   if (endReason) {
@@ -713,11 +711,8 @@ async function generateStep(generation: number): Promise<void> {
     post({
       type: "status",
       phase: "ended",
-      title: endReason === "death" ? "Dream over" : "Horizon reached",
-      detail:
-        endReason === "death"
-          ? "The model predicted a collision."
-          : `This rollout reached its ${MAX_DREAM_STEPS}-step horizon.`,
+      title: "Dream over",
+      detail: "The model predicted a collision.",
     });
   } else if (playing && generation === loopGeneration) {
     scheduleNextTick(generation, latencyMs);
