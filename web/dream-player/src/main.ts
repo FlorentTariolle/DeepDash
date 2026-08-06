@@ -76,6 +76,7 @@ let aiEnabled = false;
 let activeBackend: RuntimeBackend | undefined;
 let currentSeedIndex = 0;
 let seedCount = 1;
+let nextSeedTimer: number | undefined;
 const heldInputs = new Set<string>();
 
 function send(message: MainToWorkerMessage): void {
@@ -149,6 +150,21 @@ function updateSeedUi(index: number): void {
   seedCounter.textContent = `${String(normalized + 1).padStart(2, "0")} / ${String(seedCount).padStart(2, "0")}`;
 }
 
+function cancelNextSeed(): void {
+  if (nextSeedTimer !== undefined) {
+    window.clearTimeout(nextSeedTimer);
+    nextSeedTimer = undefined;
+  }
+}
+
+function scheduleNextSeed(): void {
+  cancelNextSeed();
+  nextSeedTimer = window.setTimeout(() => {
+    nextSeedTimer = undefined;
+    selectSeed(currentSeedIndex + 1, true);
+  }, 1000);
+}
+
 function setBackend(backend: RuntimeBackend): void {
   activeBackend = backend;
   backendBadge.dataset.backend = backend;
@@ -182,9 +198,10 @@ function drawFrame(message: Extract<WorkerToMainMessage, { type: "frame" }>): vo
     releaseAllInputs();
     endKicker.textContent = "Rollout ended";
     endTitle.textContent = "Dream over";
-    endDetail.textContent = `The model predicted a collision at step ${message.step}.`;
+    endDetail.textContent = `The model predicted a collision at step ${message.step}. Next seed in 1 second.`;
     showPanel(endPanel);
     updatePlaybackUi();
+    scheduleNextSeed();
   }
 }
 
@@ -244,6 +261,7 @@ function selectSeed(index: number, autoplay: boolean): void {
   if (!isReady || seedCount < 1) {
     return;
   }
+  cancelNextSeed();
   const normalized = ((index % seedCount) + seedCount) % seedCount;
   releaseAllInputs();
   isEnded = false;
@@ -255,6 +273,7 @@ function selectSeed(index: number, autoplay: boolean): void {
 }
 
 function showError(message: string): void {
+  cancelNextSeed();
   isReady = false;
   isPlaying = false;
   releaseAllInputs();
@@ -309,6 +328,7 @@ function handleWorkerMessage(message: WorkerToMainMessage): void {
       isReady = true;
       isEnded = false;
       hasController = message.hasController;
+      aiEnabled = hasController;
       seedCount = message.seedCount;
       setBackend(message.backend);
       aiAvailability.textContent = hasController ? "Model loaded" : "Not included";
@@ -316,8 +336,10 @@ function handleWorkerMessage(message: WorkerToMainMessage): void {
       updatePlaybackUi();
       stage.classList.remove("is-loading");
       stage.setAttribute("aria-busy", "false");
-      liveStatus.textContent = `${message.backend === "webgpu" ? "GPU" : "CPU"} runtime ready. Choose when to begin.`;
-      showPanel(startPanel);
+      liveStatus.textContent = `${message.backend === "webgpu" ? "GPU" : "CPU"} runtime ready. AI pilot running.`;
+      showPanel(null);
+      send({ type: "set-ai", enabled: hasController });
+      startPlayback();
       break;
     case "frame":
       drawFrame(message);
@@ -360,8 +382,8 @@ stepButton.addEventListener("click", () => {
 retryButton.addEventListener("click", () => selectSeed(currentSeedIndex, true));
 overlayRetry.addEventListener("click", () => selectSeed(currentSeedIndex, true));
 overlayNext.addEventListener("click", () => selectSeed(currentSeedIndex + 1, true));
-seedPrevious.addEventListener("click", () => selectSeed(currentSeedIndex - 1, false));
-seedNext.addEventListener("click", () => selectSeed(currentSeedIndex + 1, false));
+seedPrevious.addEventListener("click", () => selectSeed(currentSeedIndex - 1, true));
+seedNext.addEventListener("click", () => selectSeed(currentSeedIndex + 1, true));
 reloadButton.addEventListener("click", () => window.location.reload());
 aiToggle.addEventListener("click", () => {
   if (!hasController || !isReady) {
@@ -429,7 +451,20 @@ window.addEventListener("keydown", (event) => {
     return;
   }
 
-  if (event.repeat || isControlTarget(event.target) || !isReady) {
+  if (event.repeat || !isReady) {
+    return;
+  }
+  if (event.code === "KeyR") {
+    event.preventDefault();
+    selectSeed(currentSeedIndex, true);
+    return;
+  }
+  if (event.code === "KeyT") {
+    event.preventDefault();
+    selectSeed(currentSeedIndex + 1, true);
+    return;
+  }
+  if (isControlTarget(event.target)) {
     return;
   }
   switch (event.code) {
@@ -444,13 +479,9 @@ window.addEventListener("keydown", (event) => {
         send({ type: "step" });
       }
       break;
-    case "KeyR":
-      event.preventDefault();
-      selectSeed(currentSeedIndex, true);
-      break;
     case "KeyN":
       event.preventDefault();
-      selectSeed(currentSeedIndex + 1, false);
+      selectSeed(currentSeedIndex + 1, true);
       break;
     case "KeyA":
       if (hasController) {
@@ -477,7 +508,10 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 
-window.addEventListener("beforeunload", () => worker.terminate());
+window.addEventListener("beforeunload", () => {
+  cancelNextSeed();
+  worker.terminate();
+});
 
 updateSeedUi(0);
 setControlsEnabled(false);
