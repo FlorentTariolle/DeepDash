@@ -125,18 +125,9 @@
                 </button>
               </div>
 
-              <div id="end-panel" class="overlay-panel end-panel" hidden>
-                <p id="end-kicker" class="overlay-kicker">Rollout ended</p>
-                <h2 id="end-title">Dream over</h2>
-                <p id="end-detail" class="overlay-detail">The model predicted a collision.</p>
-                <div class="overlay-actions">
-                  <button id="overlay-retry" class="button button-primary" type="button">
-                    Retry seed
-                  </button>
-                  <button id="overlay-next" class="button button-ghost" type="button">
-                    Next seed
-                  </button>
-                </div>
+              <div id="end-panel" class="death-panel" hidden role="status" aria-live="assertive">
+                <strong>Dead</strong>
+                <span class="death-spinner" aria-hidden="true"></span>
               </div>
 
               <div id="error-panel" class="overlay-panel error-panel" hidden>

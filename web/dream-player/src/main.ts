@@ -33,9 +33,6 @@ const loadingDetail = element<HTMLParagraphElement>("loading-detail");
 const loadProgress = element<HTMLProgressElement>("load-progress");
 const progressFile = element<HTMLSpanElement>("progress-file");
 const progressValue = element<HTMLSpanElement>("progress-value");
-const endKicker = element<HTMLParagraphElement>("end-kicker");
-const endTitle = element<HTMLHeadingElement>("end-title");
-const endDetail = element<HTMLParagraphElement>("end-detail");
 const errorDetail = element<HTMLParagraphElement>("error-detail");
 
 const backendBadge = element<HTMLDivElement>("backend-badge");
@@ -56,8 +53,6 @@ const playButton = element<HTMLButtonElement>("play-button");
 const playButtonLabel = playButton.querySelector("span");
 const stepButton = element<HTMLButtonElement>("step-button");
 const retryButton = element<HTMLButtonElement>("retry-button");
-const overlayRetry = element<HTMLButtonElement>("overlay-retry");
-const overlayNext = element<HTMLButtonElement>("overlay-next");
 const reloadButton = element<HTMLButtonElement>("reload-button");
 const jumpButton = element<HTMLButtonElement>("jump-button");
 const aiToggle = element<HTMLButtonElement>("ai-toggle");
@@ -76,6 +71,7 @@ let aiEnabled = false;
 let activeBackend: RuntimeBackend | undefined;
 let currentSeedIndex = 0;
 let seedCount = 1;
+let deathExitTimer: number | undefined;
 let nextSeedTimer: number | undefined;
 const heldInputs = new Set<string>();
 
@@ -151,18 +147,28 @@ function updateSeedUi(index: number): void {
 }
 
 function cancelNextSeed(): void {
+  if (deathExitTimer !== undefined) {
+    window.clearTimeout(deathExitTimer);
+    deathExitTimer = undefined;
+  }
   if (nextSeedTimer !== undefined) {
     window.clearTimeout(nextSeedTimer);
     nextSeedTimer = undefined;
   }
+  stageOverlay.classList.remove("is-death-transition", "is-exiting");
 }
 
 function scheduleNextSeed(): void {
   cancelNextSeed();
+  stageOverlay.classList.add("is-death-transition");
+  deathExitTimer = window.setTimeout(() => {
+    deathExitTimer = undefined;
+    stageOverlay.classList.add("is-exiting");
+  }, 1180);
   nextSeedTimer = window.setTimeout(() => {
     nextSeedTimer = undefined;
     selectSeed(currentSeedIndex + 1, true);
-  }, 1000);
+  }, 1400);
 }
 
 function setBackend(backend: RuntimeBackend): void {
@@ -196,9 +202,6 @@ function drawFrame(message: Extract<WorkerToMainMessage, { type: "frame" }>): vo
     isEnded = true;
     isPlaying = false;
     releaseAllInputs();
-    endKicker.textContent = "Rollout ended";
-    endTitle.textContent = "Dream over";
-    endDetail.textContent = `The model predicted a collision at step ${message.step}. Next seed in 1 second.`;
     showPanel(endPanel);
     updatePlaybackUi();
     scheduleNextSeed();
@@ -380,8 +383,6 @@ stepButton.addEventListener("click", () => {
   send({ type: "step" });
 });
 retryButton.addEventListener("click", () => selectSeed(currentSeedIndex, true));
-overlayRetry.addEventListener("click", () => selectSeed(currentSeedIndex, true));
-overlayNext.addEventListener("click", () => selectSeed(currentSeedIndex + 1, true));
 seedPrevious.addEventListener("click", () => selectSeed(currentSeedIndex - 1, true));
 seedNext.addEventListener("click", () => selectSeed(currentSeedIndex + 1, true));
 reloadButton.addEventListener("click", () => window.location.reload());
