@@ -227,14 +227,17 @@ footer nav a:hover,
   width: var(--page);
 }
 
-.player-kicker {
-  display: inline-block;
-  margin-bottom: 0.8rem;
-  color: var(--cyan);
-  font-size: 0.78rem;
-  font-weight: 700;
-  letter-spacing: 0.11em;
-  text-transform: uppercase;
+.dream-player-section .section-heading {
+  max-width: none;
+}
+
+.dream-player-section .section-heading h2 {
+  font-size: clamp(1.75rem, 6.8vw, 4.8rem);
+  white-space: nowrap;
+}
+
+.dream-player-section .section-heading > p {
+  max-width: 760px;
 }
 
 .dream-player-embed {
