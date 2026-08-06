@@ -533,5 +533,5 @@ stage.setAttribute("aria-busy", "true");
 showPanel(loadingPanel);
 
 const modelOverride = new URLSearchParams(window.location.search).get("models");
-const modelBaseUrl = new URL(modelOverride ?? "../static/models/v7/", window.location.href).href;
+const modelBaseUrl = new URL(modelOverride ?? "./static/models/v7/", window.location.href).href;
 send({ type: "init", modelBaseUrl });
