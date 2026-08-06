@@ -133,31 +133,6 @@
         </div>
       </figure>
 
-      <div id="dreams" class="dream-heading">
-        <h3>Dreams from the world model</h3>
-        <p>The world model predicts what follows each action, letting the action model practice without interacting with the live game.</p>
-      </div>
-
-      <div class="dream-grid">
-        <figure>
-          <video autoplay loop muted playsinline preload="metadata" poster="static/videos/dream_rollouts/long-coherent-horizon.jpg">
-            <source src="static/videos/dream_rollouts/long-coherent-horizon-featured.mp4" type="video/mp4" />
-          </video>
-          <figcaption>A long generated continuation</figcaption>
-        </figure>
-        <figure>
-          <video autoplay loop muted playsinline preload="metadata" poster="static/videos/dream_rollouts/height-transitions.jpg">
-            <source src="static/videos/dream_rollouts/height-transitions.mp4" type="video/mp4" />
-          </video>
-          <figcaption>Changing height</figcaption>
-        </figure>
-        <figure>
-          <video autoplay loop muted playsinline preload="metadata" poster="static/videos/dream_rollouts/transformation.jpg">
-            <source src="static/videos/dream_rollouts/transformation.mp4" type="video/mp4" />
-          </video>
-          <figcaption>Changing form</figcaption>
-        </figure>
-      </div>
     </section>
 
     <section id="play-dream" class="dream-player-section section-shell" aria-labelledby="play-dream-title">
@@ -208,6 +183,34 @@
           if (frame.contentDocument?.readyState === "complete") connect();
         })();
       </script>
+    </section>
+
+    <section id="dreams" class="dreams-section section-shell" aria-labelledby="dreams-title">
+      <div class="dream-heading">
+        <h3 id="dreams-title">Dreams from the world model</h3>
+        <p>The world model predicts what follows each action, letting the action model practice without interacting with the live game.</p>
+      </div>
+
+      <div class="dream-grid">
+        <figure>
+          <video autoplay loop muted playsinline preload="metadata" poster="static/videos/dream_rollouts/long-coherent-horizon.jpg">
+            <source src="static/videos/dream_rollouts/long-coherent-horizon-featured.mp4" type="video/mp4" />
+          </video>
+          <figcaption>A long generated continuation</figcaption>
+        </figure>
+        <figure>
+          <video autoplay loop muted playsinline preload="metadata" poster="static/videos/dream_rollouts/height-transitions.jpg">
+            <source src="static/videos/dream_rollouts/height-transitions.mp4" type="video/mp4" />
+          </video>
+          <figcaption>Changing height</figcaption>
+        </figure>
+        <figure>
+          <video autoplay loop muted playsinline preload="metadata" poster="static/videos/dream_rollouts/transformation.jpg">
+            <source src="static/videos/dream_rollouts/transformation.mp4" type="video/mp4" />
+          </video>
+          <figcaption>Changing form</figcaption>
+        </figure>
+      </div>
     </section>
 
     <section id="results" class="results section-shell" aria-labelledby="results-title">

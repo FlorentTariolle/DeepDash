@@ -11,12 +11,6 @@ export type LoadingPhase =
   | "paused"
   | "ended";
 
-export interface SeedSummary {
-  index: number;
-  name: string;
-  description: string;
-}
-
 export type MainToWorkerMessage =
   | {
       type: "init";
@@ -62,7 +56,7 @@ export type WorkerToMainMessage =
       type: "ready";
       backend: RuntimeBackend;
       hasController: boolean;
-      seeds: SeedSummary[];
+      seedCount: number;
       seedIndex: number;
     }
   | {

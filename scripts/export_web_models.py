@@ -44,13 +44,8 @@ DEFAULT_CONFIG = REPO_ROOT / "configs" / "deepdash" / "v7-phase0.yaml"
 DEFAULT_OUTPUT = REPO_ROOT / "docs" / "static" / "models" / "v7"
 MAX_EXTERNAL_SHARD_BYTES = 20 * 1024 * 1024
 
-# The order is part of the seeds.bin browser contract.
-SEEDS = (
-    ("First Light", "expert_episodes", "perfect_run_1", 96),
-    ("The Gauntlet", "expert_episodes", "perfect_run_1", 397),
-    ("Inverted Flight", "expert_episodes", "perfect_run_7_5", 157),
-    ("Last Chance", "death_episodes", "ep_0044", 33),
-)
+SEED_COUNT = 64
+SEED_COLLECTION = "expert_episodes"
 
 
 def _clean_state_dict(state: object) -> dict[str, torch.Tensor]:
@@ -172,15 +167,19 @@ class BrowserController(nn.Module):
         return probability.float()
 
 
+def load_vae(config: dict, fsq_checkpoint: Path) -> FSQVAE:
+    levels = list(config["model"]["levels"])
+    vae = FSQVAE(levels=levels)
+    vae.load_state_dict(_load_checkpoint(fsq_checkpoint))
+    return vae.eval()
+
+
 def build_models(
     config: dict, fsq_checkpoint: Path, world_checkpoint: Path,
     controller_checkpoint: Path,
 ) -> tuple[FSQVAE, BrowserWorldPredictor, BrowserDecoder, BrowserController]:
     model_cfg = config["model"]
-    levels = list(model_cfg["levels"])
-    vae = FSQVAE(levels=levels)
-    vae.load_state_dict(_load_checkpoint(fsq_checkpoint))
-    vae.eval()
+    vae = load_vae(config, fsq_checkpoint)
 
     world = WorldModel(
         vocab_size=int(model_cfg["vocab_size"]),
@@ -344,17 +343,58 @@ def shard_external_initializers(model_path: Path) -> None:
     onnx.save_model(model, model_path)
 
 
+def select_seed_sources(context_frames: int) -> list[tuple[str, str, int]]:
+    """Choose anonymous, evenly distributed starts from recorded expert play."""
+    collection_dir = REPO_ROOT / "data" / "deepdash" / SEED_COLLECTION
+    episode_ranges: list[tuple[str, int, int]] = []
+    total_starts = 0
+
+    for episode_dir in sorted(collection_dir.iterdir()):
+        frames_path = episode_dir / "frames.npy"
+        actions_path = episode_dir / "actions.npy"
+        if not frames_path.exists() or not actions_path.exists():
+            continue
+        frame_count = len(np.load(frames_path, mmap_mode="r"))
+        action_count = len(np.load(actions_path, mmap_mode="r"))
+        valid_starts = min(frame_count, action_count) - context_frames + 1
+        if valid_starts <= 0:
+            continue
+        episode_ranges.append(
+            (episode_dir.name, total_starts, total_starts + valid_starts)
+        )
+        total_starts += valid_starts
+
+    if total_starts < SEED_COUNT:
+        raise ValueError(
+            f"only {total_starts} valid seed starts are available; "
+            f"{SEED_COUNT} are required"
+        )
+
+    targets = [
+        ((2 * index + 1) * total_starts) // (2 * SEED_COUNT)
+        for index in range(SEED_COUNT)
+    ]
+    sources: list[tuple[str, str, int]] = []
+    range_index = 0
+    for target in targets:
+        while target >= episode_ranges[range_index][2]:
+            range_index += 1
+        episode, range_start, _ = episode_ranges[range_index]
+        sources.append((SEED_COLLECTION, episode, target - range_start))
+    return sources
+
+
 def export_seeds(
     output_dir: Path,
     vae: FSQVAE,
     context_frames: int,
     block_size: int,
-) -> list[dict[str, object]]:
+) -> int:
     all_tokens: list[np.ndarray] = []
     all_actions: list[np.ndarray] = []
-    metadata: list[dict[str, object]] = []
+    sources = select_seed_sources(context_frames)
 
-    for name, collection, episode, start in SEEDS:
+    for collection, episode, start in sources:
         episode_dir = (
             REPO_ROOT / "data" / "deepdash" / collection / episode
         )
@@ -362,7 +402,9 @@ def export_seeds(
         actions = np.load(episode_dir / "actions.npy", mmap_mode="r")
         stop = start + context_frames
         if stop > len(frames) or stop > len(actions):
-            raise ValueError(f"seed {name!r} is shorter than its context window")
+            raise ValueError(
+                f"seed source {episode}:{start} is shorter than its context window"
+            )
 
         frame_batch = np.asarray(frames[start:stop], dtype=np.float32) / 255.0
         with torch.inference_mode():
@@ -371,15 +413,11 @@ def export_seeds(
         status = np.full((context_frames, 1), 1000, dtype=np.int64)
         tokens = np.concatenate((visual_tokens, status), axis=1)
         if tokens.shape != (context_frames, block_size):
-            raise ValueError(f"unexpected seed shape for {name}: {tokens.shape}")
+            raise ValueError(f"unexpected seed shape: {tokens.shape}")
         all_tokens.append(tokens.astype("<u2", copy=False))
         all_actions.append(
             np.asarray(actions[start:stop], dtype=np.uint8).reshape(context_frames)
         )
-        metadata.append(
-            {"name": name, "episode": episode, "start_frame": int(start)}
-        )
-
     token_array = np.stack(all_tokens)
     action_array = np.stack(all_actions)
     path = output_dir / "seeds.bin"
@@ -387,12 +425,12 @@ def export_seeds(
         handle.write(b"DVMCSEED")
         handle.write(
             struct.pack(
-                "<IIII", 1, len(SEEDS), context_frames, block_size
+                "<IIII", 1, len(sources), context_frames, block_size
             )
         )
         handle.write(token_array.tobytes(order="C"))
         handle.write(action_array.tobytes(order="C"))
-    return metadata
+    return len(sources)
 
 
 def sha256(path: Path) -> str:
@@ -403,9 +441,7 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def write_manifest(
-    output_dir: Path, metadata: list[dict[str, object]], config: dict
-) -> None:
+def write_manifest(output_dir: Path, seed_count: int, config: dict) -> None:
     files = {}
     artifact_paths = [
         output_dir / "world.onnx",
@@ -430,7 +466,7 @@ def write_manifest(
         "block_size": int(model_cfg["tokens_per_frame"]) + 1,
         "vocab_size": int(model_cfg["vocab_size"]),
         "fsq_levels": list(model_cfg["levels"]),
-        "seeds": metadata,
+        "seed_count": seed_count,
         "files": files,
     }
     (output_dir / "manifest.json").write_text(
@@ -550,6 +586,11 @@ def parse_args() -> argparse.Namespace:
         default=REPO_ROOT / "checkpoints_v7" / "controller_ppo_best.pt",
     )
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument(
+        "--seeds-only",
+        action="store_true",
+        help="refresh seeds.bin and manifest.json without re-exporting ONNX graphs",
+    )
     return parser.parse_args()
 
 
@@ -557,15 +598,26 @@ def main() -> None:
     args = parse_args()
     with args.config.open("r", encoding="utf-8") as handle:
         config = yaml.safe_load(handle)
+    model_cfg = config["model"]
+    context_frames = int(model_cfg["context_frames"])
+    block_size = int(model_cfg["tokens_per_frame"]) + 1
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+
+    if args.seeds_only:
+        vae = load_vae(config, args.fsq_checkpoint)
+        seed_count = export_seeds(
+            args.output_dir, vae, context_frames, block_size
+        )
+        write_manifest(args.output_dir, seed_count, config)
+        print(f"Exported {seed_count} anonymous browser seeds to {args.output_dir}")
+        return
+
     vae, world, decoder, controller = build_models(
         config,
         args.fsq_checkpoint,
         args.world_checkpoint,
         args.controller_checkpoint,
     )
-    model_cfg = config["model"]
-    context_frames = int(model_cfg["context_frames"])
-    block_size = int(model_cfg["tokens_per_frame"]) + 1
     export_graphs(
         args.output_dir,
         world,
@@ -574,10 +626,10 @@ def main() -> None:
         context_frames,
         block_size,
     )
-    metadata = export_seeds(
+    seed_count = export_seeds(
         args.output_dir, vae, context_frames, block_size
     )
-    write_manifest(args.output_dir, metadata, config)
+    write_manifest(args.output_dir, seed_count, config)
     print("Validating PyTorch / ONNX parity ...", flush=True)
     validate_exports(args.output_dir, world, decoder, controller)
     total = sum(path.stat().st_size for path in args.output_dir.iterdir())

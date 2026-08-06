@@ -464,6 +464,12 @@ footer nav a:hover,
   border-top: 1px solid var(--line);
 }
 
+.dreams-section .dream-heading {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
 .dream-heading h3 {
   margin: 0;
   font-family: var(--display);

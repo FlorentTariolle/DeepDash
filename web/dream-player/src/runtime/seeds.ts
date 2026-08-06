@@ -1,31 +1,11 @@
-import type { SeedSummary } from "./protocol";
-
 const MAGIC = "DVMCSEED";
 const HEADER_BYTES = 24;
 const EXPECTED_VERSION = 1;
 const EXPECTED_CONTEXT_FRAMES = 4;
 const EXPECTED_BLOCK_SIZE = 65;
 
-const SEED_METADATA = [
-  {
-    name: "First Light",
-    description: "A clean opening with room to learn.",
-  },
-  {
-    name: "The Gauntlet",
-    description: "Tight geometry and unforgiving timing.",
-  },
-  {
-    name: "Inverted Flight",
-    description: "A transformed section with shifting height.",
-  },
-  {
-    name: "Last Chance",
-    description: "A late-run recovery on unstable ground.",
-  },
-] as const;
-
-export interface DreamSeed extends SeedSummary {
+export interface DreamSeed {
+  index: number;
   frameTokens: Int32Array;
   actions: Int32Array;
 }
@@ -60,10 +40,8 @@ export function parseSeedBundle(buffer: ArrayBuffer): SeedBundle {
   if (version !== EXPECTED_VERSION) {
     throw new Error(`Unsupported seeds.bin version ${version}.`);
   }
-  if (count !== SEED_METADATA.length) {
-    throw new Error(
-      `Expected ${SEED_METADATA.length} dream seeds, received ${count}.`,
-    );
+  if (count < 1) {
+    throw new Error("The dream seed bundle is empty.");
   }
   if (contextFrames !== EXPECTED_CONTEXT_FRAMES || blockSize !== EXPECTED_BLOCK_SIZE) {
     throw new Error(
@@ -107,14 +85,8 @@ export function parseSeedBundle(buffer: ArrayBuffer): SeedBundle {
       actions[index] = action;
     }
 
-    const metadata = SEED_METADATA[seedIndex];
-    if (!metadata) {
-      throw new Error(`Missing metadata for seed ${seedIndex + 1}.`);
-    }
     seeds.push({
       index: seedIndex,
-      name: metadata.name,
-      description: metadata.description,
       frameTokens,
       actions,
     });

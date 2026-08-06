@@ -43,6 +43,7 @@ interface ManifestFileEntry {
 
 interface WebModelManifest {
   format: 1;
+  seedCount: number;
   files: Record<string, ManifestFileEntry>;
   weightFiles: string[];
 }
@@ -218,9 +219,7 @@ function parseManifest(bytes: Uint8Array): WebModelManifest {
   ) {
     throw new Error("manifest.json FSQ levels do not match [8, 5, 5, 5].");
   }
-  if (!Array.isArray(parsed.seeds) || parsed.seeds.length !== 4) {
-    throw new Error("manifest.json must describe exactly four dream seeds.");
-  }
+  const seedCount = readPositiveInteger(parsed, "seed_count");
   if (!isRecord(parsed.files)) {
     throw new Error("manifest.json field 'files' must be an object.");
   }
@@ -258,10 +257,14 @@ function parseManifest(bytes: Uint8Array): WebModelManifest {
     files[fileName] = entry;
   }
 
-  return { format: 1, files, weightFiles };
+  return { format: 1, seedCount, files, weightFiles };
 }
 
-async function downloadAssets(): Promise<{ models: ModelBytes; seeds: ArrayBuffer }> {
+async function downloadAssets(): Promise<{
+  models: ModelBytes;
+  seeds: ArrayBuffer;
+  seedCount: number;
+}> {
   post({
     type: "status",
     phase: "downloading",
@@ -309,6 +312,7 @@ async function downloadAssets(): Promise<{ models: ModelBytes; seeds: ArrayBuffe
       seedBytes.byteOffset,
       seedBytes.byteOffset + seedBytes.byteLength,
     ) as ArrayBuffer,
+    seedCount: manifest.seedCount,
   };
 }
 
@@ -786,6 +790,11 @@ async function initialize(baseUrl: string): Promise<void> {
 
   const assets = await downloadAssets();
   seedBundle = parseSeedBundle(assets.seeds);
+  if (seedBundle.seeds.length !== assets.seedCount) {
+    throw new Error(
+      `Seed bundle count ${seedBundle.seeds.length} does not match manifest count ${assets.seedCount}.`,
+    );
+  }
   const firstSeed = seedBundle.seeds[0];
   if (!firstSeed) {
     throw new Error("The seed bundle is empty.");
@@ -800,11 +809,7 @@ async function initialize(baseUrl: string): Promise<void> {
     type: "ready",
     backend,
     hasController: Boolean(sessions.controller),
-    seeds: seedBundle.seeds.map(({ index, name, description }) => ({
-      index,
-      name,
-      description,
-    })),
+    seedCount: seedBundle.seeds.length,
     seedIndex: currentSeedIndex,
   });
 }

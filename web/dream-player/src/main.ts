@@ -3,7 +3,6 @@ import "./styles.css";
 import type {
   MainToWorkerMessage,
   RuntimeBackend,
-  SeedSummary,
   WorkerToMainMessage,
 } from "./runtime/protocol";
 
@@ -49,9 +48,6 @@ const hudDeath = element<HTMLElement>("hud-death");
 const hudLatency = element<HTMLElement>("hud-latency");
 
 const seedCounter = element<HTMLSpanElement>("seed-counter");
-const seedName = element<HTMLElement>("seed-name");
-const seedDescription = element<HTMLSpanElement>("seed-description");
-const seedDots = element<HTMLDivElement>("seed-dots");
 const seedPrevious = element<HTMLButtonElement>("seed-previous");
 const seedNext = element<HTMLButtonElement>("seed-next");
 
@@ -79,12 +75,7 @@ let hasController = false;
 let aiEnabled = false;
 let activeBackend: RuntimeBackend | undefined;
 let currentSeedIndex = 0;
-let seeds: SeedSummary[] = [
-  { index: 0, name: "First Light", description: "A clean opening with room to learn." },
-  { index: 1, name: "The Gauntlet", description: "Tight geometry and unforgiving timing." },
-  { index: 2, name: "Inverted Flight", description: "A transformed section with shifting height." },
-  { index: 3, name: "Last Chance", description: "A late-run recovery on unstable ground." },
-];
+let seedCount = 1;
 const heldInputs = new Set<string>();
 
 function send(message: MainToWorkerMessage): void {
@@ -137,9 +128,6 @@ function setControlsEnabled(enabled: boolean): void {
   seedPrevious.disabled = !enabled;
   seedNext.disabled = !enabled;
   aiToggle.disabled = !enabled || !hasController;
-  for (const dot of seedDots.querySelectorAll<HTMLButtonElement>("button")) {
-    dot.disabled = !enabled;
-  }
 }
 
 function updatePlaybackUi(): void {
@@ -156,33 +144,9 @@ function updatePlaybackUi(): void {
 }
 
 function updateSeedUi(index: number): void {
-  const normalized = ((index % seeds.length) + seeds.length) % seeds.length;
-  const seed = seeds[normalized];
-  if (!seed) {
-    return;
-  }
+  const normalized = ((index % seedCount) + seedCount) % seedCount;
   currentSeedIndex = normalized;
-  seedCounter.textContent = `${String(normalized + 1).padStart(2, "0")} / ${String(seeds.length).padStart(2, "0")}`;
-  seedName.textContent = seed.name;
-  seedDescription.textContent = seed.description;
-  for (const dot of seedDots.querySelectorAll<HTMLButtonElement>("button")) {
-    dot.setAttribute("aria-pressed", String(Number(dot.dataset.seedIndex) === normalized));
-  }
-}
-
-function renderSeedDots(): void {
-  seedDots.replaceChildren();
-  for (const seed of seeds) {
-    const dot = document.createElement("button");
-    dot.type = "button";
-    dot.className = "seed-dot";
-    dot.dataset.seedIndex = String(seed.index);
-    dot.setAttribute("aria-label", `Select ${seed.name}`);
-    dot.setAttribute("aria-pressed", String(seed.index === currentSeedIndex));
-    dot.addEventListener("click", () => selectSeed(seed.index, false));
-    seedDots.append(dot);
-  }
-  setControlsEnabled(isReady);
+  seedCounter.textContent = `${String(normalized + 1).padStart(2, "0")} / ${String(seedCount).padStart(2, "0")}`;
 }
 
 function setBackend(backend: RuntimeBackend): void {
@@ -277,10 +241,10 @@ function togglePlayback(): void {
 }
 
 function selectSeed(index: number, autoplay: boolean): void {
-  if (!isReady || seeds.length === 0) {
+  if (!isReady || seedCount < 1) {
     return;
   }
-  const normalized = ((index % seeds.length) + seeds.length) % seeds.length;
+  const normalized = ((index % seedCount) + seedCount) % seedCount;
   releaseAllInputs();
   isEnded = false;
   isPlaying = false;
@@ -345,10 +309,9 @@ function handleWorkerMessage(message: WorkerToMainMessage): void {
       isReady = true;
       isEnded = false;
       hasController = message.hasController;
-      seeds = message.seeds;
+      seedCount = message.seedCount;
       setBackend(message.backend);
       aiAvailability.textContent = hasController ? "Model loaded" : "Not included";
-      renderSeedDots();
       updateSeedUi(message.seedIndex);
       updatePlaybackUi();
       stage.classList.remove("is-loading");
@@ -516,7 +479,6 @@ document.addEventListener("visibilitychange", () => {
 
 window.addEventListener("beforeunload", () => worker.terminate());
 
-renderSeedDots();
 updateSeedUi(0);
 setControlsEnabled(false);
 stage.setAttribute("aria-busy", "true");
