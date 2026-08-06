@@ -30,6 +30,7 @@ import onnxruntime as ort
 import torch
 import torch.nn as nn
 import yaml
+from onnx.external_data_helper import set_external_data
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
@@ -41,6 +42,7 @@ from deepdash.world_model import WorldModel
 
 DEFAULT_CONFIG = REPO_ROOT / "configs" / "deepdash" / "v7-phase0.yaml"
 DEFAULT_OUTPUT = REPO_ROOT / "docs" / "static" / "models" / "v7"
+MAX_EXTERNAL_SHARD_BYTES = 20 * 1024 * 1024
 
 # The order is part of the seeds.bin browser contract.
 SEEDS = (
@@ -240,6 +242,8 @@ def export_graphs(
     block_size: int,
 ) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
+    for stale_shard in output_dir.glob("world.weights.*.bin"):
+        stale_shard.unlink()
     dummy_tokens = torch.zeros(
         (1, context_frames, block_size), dtype=torch.int32
     )
@@ -287,8 +291,57 @@ def export_graphs(
                 do_constant_folding=True,
                 keep_initializers_as_inputs=False,
             )
+        if path.name == "world.onnx":
+            shard_external_initializers(path)
         model = onnx.load(path, load_external_data=True)
         onnx.checker.check_model(model)
+
+
+def shard_external_initializers(model_path: Path) -> None:
+    """Move world weights into provider-friendly files below 25 MiB each.
+
+    OpenAI Sites enforces a 25 MiB per-file deployment limit. ONNX external
+    data lets the browser load the unchanged graph while keeping every static
+    asset comfortably below that boundary. Initializers are never split in the
+    middle; the largest V7 tensor is well below the 20 MiB shard target.
+    """
+    model = onnx.load(model_path, load_external_data=False)
+    shard_index = 0
+    shard_name = f"world.weights.{shard_index}.bin"
+    shard = bytearray()
+
+    def flush() -> None:
+        nonlocal shard_index, shard_name, shard
+        if not shard:
+            return
+        (model_path.parent / shard_name).write_bytes(shard)
+        shard_index += 1
+        shard_name = f"world.weights.{shard_index}.bin"
+        shard = bytearray()
+
+    for tensor in model.graph.initializer:
+        if not tensor.raw_data:
+            continue
+        payload = bytes(tensor.raw_data)
+        if len(payload) > MAX_EXTERNAL_SHARD_BYTES:
+            raise RuntimeError(
+                f"initializer {tensor.name!r} is too large for one external shard: "
+                f"{len(payload)} bytes"
+            )
+        if shard and len(shard) + len(payload) > MAX_EXTERNAL_SHARD_BYTES:
+            flush()
+        offset = len(shard)
+        shard.extend(payload)
+        set_external_data(
+            tensor,
+            location=shard_name,
+            offset=offset,
+            length=len(payload),
+        )
+        tensor.ClearField("raw_data")
+
+    flush()
+    onnx.save_model(model, model_path)
 
 
 def export_seeds(
@@ -354,9 +407,18 @@ def write_manifest(
     output_dir: Path, metadata: list[dict[str, object]], config: dict
 ) -> None:
     files = {}
-    for filename in ("world.onnx", "decoder.onnx", "controller.onnx", "seeds.bin"):
-        path = output_dir / filename
-        files[filename] = {"bytes": path.stat().st_size, "sha256": sha256(path)}
+    artifact_paths = [
+        output_dir / "world.onnx",
+        *sorted(output_dir.glob("world.weights.*.bin")),
+        output_dir / "decoder.onnx",
+        output_dir / "controller.onnx",
+        output_dir / "seeds.bin",
+    ]
+    for path in artifact_paths:
+        files[path.name] = {
+            "bytes": path.stat().st_size,
+            "sha256": sha256(path),
+        }
     model_cfg = config["model"]
     manifest = {
         "format": 1,

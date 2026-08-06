@@ -37,8 +37,24 @@
   ],
   "files": {
     "world.onnx": {
-      "bytes": 60425724,
-      "sha256": "d52fb22b85df84cfd9525d1b679eacc427fb88a0816f2cacb41764ee5a04f54c"
+      "bytes": 67829,
+      "sha256": "d4efa47314cb3ade3e101fe999b27b0a4e601c3f0c9bb647ec38d8ba6879823f"
+    },
+    "world.weights.0.bin": {
+      "bytes": 18717700,
+      "sha256": "54f1140deccebada0f52be518295001e589639100a7a842fe28879b1eaac2ed1"
+    },
+    "world.weights.1.bin": {
+      "bytes": 20643840,
+      "sha256": "1c3ee490a2637c23afbe0334666b9df441fb3c3f74a588ca10344b9829c7f67b"
+    },
+    "world.weights.2.bin": {
+      "bytes": 19464192,
+      "sha256": "63b8990870e42eca326ee21b1155130f89d6d8232c8f521dc7d733f053799f3a"
+    },
+    "world.weights.3.bin": {
+      "bytes": 1539072,
+      "sha256": "c6b4ecc006d4a3f8899c46e1c83183621feecf72c33ab89dbb53e952ad288c1c"
     },
     "decoder.onnx": {
       "bytes": 3771202,

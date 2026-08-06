@@ -1,9 +1,7 @@
 /// <reference lib="webworker" />
 
-// The base 1.26 entrypoint is the JSEP build that powers the WebGPU EP.
-// The narrower `/webgpu` entrypoint uses the separate Asyncify runtime.
-import * as ort from "onnxruntime-web";
-import jsepWasmUrl from "onnxruntime-web/ort-wasm-simd-threaded.jsep.wasm?url";
+import * as ort from "onnxruntime-web/webgpu";
+import asyncifyWasmUrl from "onnxruntime-web/ort-wasm-simd-threaded.asyncify.wasm?url";
 
 import type {
   MainToWorkerMessage,
@@ -23,13 +21,31 @@ const DEATH_TOKEN = 1001;
 const GRID_SIZE = 8;
 const MAX_DREAM_STEPS = 45;
 const TARGET_FRAME_MS = 1000 / 30;
+const MAX_HOST_FILE_BYTES = 25 * 1024 * 1024;
 const FSQ_DIVISORS = [125, 25, 5, 1] as const;
 const FSQ_HALF_LEVELS = [4, 2, 2, 2] as const;
 
+interface ExternalWeightFile {
+  path: string;
+  data: Uint8Array;
+}
+
 interface ModelBytes {
   world: Uint8Array;
+  worldExternalData: ExternalWeightFile[];
   decoder: Uint8Array;
   controller?: Uint8Array;
+}
+
+interface ManifestFileEntry {
+  bytes: number;
+  sha256: string;
+}
+
+interface WebModelManifest {
+  format: 1;
+  files: Record<string, ManifestFileEntry>;
+  weightFiles: string[];
 }
 
 interface RuntimeSessions {
@@ -74,7 +90,11 @@ function assetUrl(fileName: string): string {
   return new URL(fileName, modelBaseUrl).href;
 }
 
-async function fetchBytes(fileName: string, required: boolean): Promise<Uint8Array | undefined> {
+async function fetchBytes(
+  fileName: string,
+  required: boolean,
+  expectedBytes?: number,
+): Promise<Uint8Array | undefined> {
   const response = await fetch(assetUrl(fileName), { cache: "force-cache" });
   if (!response.ok) {
     if (!required && response.status === 404) {
@@ -83,11 +103,22 @@ async function fetchBytes(fileName: string, required: boolean): Promise<Uint8Arr
     throw new Error(`Could not download ${fileName} (HTTP ${response.status}).`);
   }
 
-  const contentLength = Number(response.headers.get("content-length") ?? 0);
+  const headerLength = Number(response.headers.get("content-length") ?? 0);
+  const contentLength = headerLength > 0 ? headerLength : (expectedBytes ?? 0);
   const reader = response.body?.getReader();
   if (!reader) {
     const bytes = new Uint8Array(await response.arrayBuffer());
-    post({ type: "progress", file: fileName, loaded: bytes.byteLength, total: bytes.byteLength });
+    if (expectedBytes !== undefined && bytes.byteLength !== expectedBytes) {
+      throw new Error(
+        `${fileName} has ${bytes.byteLength} bytes; manifest declares ${expectedBytes}.`,
+      );
+    }
+    post({
+      type: "progress",
+      file: fileName,
+      loaded: bytes.byteLength,
+      total: expectedBytes ?? bytes.byteLength,
+    });
     return bytes;
   }
 
@@ -109,8 +140,126 @@ async function fetchBytes(fileName: string, required: boolean): Promise<Uint8Arr
     bytes.set(chunk, offset);
     offset += chunk.byteLength;
   }
+  if (expectedBytes !== undefined && bytes.byteLength !== expectedBytes) {
+    throw new Error(
+      `${fileName} has ${bytes.byteLength} bytes; manifest declares ${expectedBytes}.`,
+    );
+  }
   post({ type: "progress", file: fileName, loaded, total: contentLength || loaded });
   return bytes;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readPositiveInteger(record: Record<string, unknown>, key: string): number {
+  const value = record[key];
+  if (!Number.isSafeInteger(value) || Number(value) <= 0) {
+    throw new Error(`manifest.json field '${key}' must be a positive integer.`);
+  }
+  return Number(value);
+}
+
+function validateFileEntry(
+  files: Record<string, unknown>,
+  fileName: string,
+  required: boolean,
+): ManifestFileEntry | undefined {
+  const value = files[fileName];
+  if (value === undefined && !required) {
+    return undefined;
+  }
+  if (!isRecord(value)) {
+    throw new Error(`manifest.json is missing file metadata for '${fileName}'.`);
+  }
+  const bytes = readPositiveInteger(value, "bytes");
+  const sha256 = value.sha256;
+  if (typeof sha256 !== "string" || !/^[a-f0-9]{64}$/i.test(sha256)) {
+    throw new Error(`manifest.json has an invalid SHA-256 for '${fileName}'.`);
+  }
+  if (bytes > MAX_HOST_FILE_BYTES) {
+    throw new Error(
+      `${fileName} is ${bytes} bytes, above the host's ${MAX_HOST_FILE_BYTES}-byte limit.`,
+    );
+  }
+  return { bytes, sha256 };
+}
+
+function parseManifest(bytes: Uint8Array): WebModelManifest {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+  } catch (error) {
+    throw new Error(`manifest.json is not valid UTF-8 JSON: ${describeError(error)}`);
+  }
+  if (!isRecord(parsed)) {
+    throw new Error("manifest.json must contain a JSON object.");
+  }
+  if (parsed.format !== 1) {
+    throw new Error(`Unsupported manifest format '${String(parsed.format)}'.`);
+  }
+  if (parsed.onnxruntime_web !== "1.26.0") {
+    throw new Error(
+      `manifest.json requires ONNX Runtime Web '${String(parsed.onnxruntime_web)}'; expected 1.26.0.`,
+    );
+  }
+  if (
+    parsed.context_frames !== CONTEXT_FRAMES ||
+    parsed.tokens_per_frame !== VISUAL_TOKENS ||
+    parsed.block_size !== BLOCK_SIZE ||
+    parsed.vocab_size !== VOCAB_SIZE
+  ) {
+    throw new Error("manifest.json model dimensions do not match the dream-player contract.");
+  }
+  if (
+    !Array.isArray(parsed.fsq_levels) ||
+    parsed.fsq_levels.length !== 4 ||
+    parsed.fsq_levels.some((value, index) => value !== [8, 5, 5, 5][index])
+  ) {
+    throw new Error("manifest.json FSQ levels do not match [8, 5, 5, 5].");
+  }
+  if (!Array.isArray(parsed.seeds) || parsed.seeds.length !== 4) {
+    throw new Error("manifest.json must describe exactly four dream seeds.");
+  }
+  if (!isRecord(parsed.files)) {
+    throw new Error("manifest.json field 'files' must be an object.");
+  }
+
+  const rawFiles = parsed.files;
+  const requiredNames = ["world.onnx", "decoder.onnx", "seeds.bin"] as const;
+  const files: Record<string, ManifestFileEntry> = {};
+  for (const fileName of requiredNames) {
+    const entry = validateFileEntry(rawFiles, fileName, true);
+    if (!entry) {
+      throw new Error(`manifest.json is missing '${fileName}'.`);
+    }
+    files[fileName] = entry;
+  }
+  const controller = validateFileEntry(rawFiles, "controller.onnx", false);
+  if (controller) {
+    files["controller.onnx"] = controller;
+  }
+
+  const weightFiles = Object.keys(rawFiles)
+    .filter((fileName) => /^world\.weights\.\d+\.bin$/.test(fileName))
+    .sort((left, right) => {
+      const leftIndex = Number(left.match(/\d+/)?.[0] ?? 0);
+      const rightIndex = Number(right.match(/\d+/)?.[0] ?? 0);
+      return leftIndex - rightIndex;
+    });
+  if (weightFiles.length === 0) {
+    throw new Error("manifest.json does not list any world.weights.<n>.bin files.");
+  }
+  for (const fileName of weightFiles) {
+    const entry = validateFileEntry(rawFiles, fileName, true);
+    if (!entry) {
+      throw new Error(`manifest.json is missing '${fileName}'.`);
+    }
+    files[fileName] = entry;
+  }
+
+  return { format: 1, files, weightFiles };
 }
 
 async function downloadAssets(): Promise<{ models: ModelBytes; seeds: ArrayBuffer }> {
@@ -121,17 +270,42 @@ async function downloadAssets(): Promise<{ models: ModelBytes; seeds: ArrayBuffe
     detail: "The model is cached by your browser after the first visit.",
   });
 
-  const world = await fetchBytes("world.onnx", true);
-  const decoder = await fetchBytes("decoder.onnx", true);
-  const seedBytes = await fetchBytes("seeds.bin", true);
-  const controller = await fetchBytes("controller.onnx", false);
+  const manifestBytes = await fetchBytes("manifest.json", true);
+  if (!manifestBytes) {
+    throw new Error("manifest.json is missing.");
+  }
+  const manifest = parseManifest(manifestBytes);
+  const world = await fetchBytes("world.onnx", true, manifest.files["world.onnx"]?.bytes);
+  const worldExternalData: ExternalWeightFile[] = [];
+  for (const fileName of manifest.weightFiles) {
+    const data = await fetchBytes(fileName, true, manifest.files[fileName]?.bytes);
+    if (!data) {
+      throw new Error(`Required external weight file '${fileName}' is missing.`);
+    }
+    worldExternalData.push({ path: fileName, data });
+  }
+  const decoder = await fetchBytes(
+    "decoder.onnx",
+    true,
+    manifest.files["decoder.onnx"]?.bytes,
+  );
+  const seedBytes = await fetchBytes("seeds.bin", true, manifest.files["seeds.bin"]?.bytes);
+  const controllerEntry = manifest.files["controller.onnx"];
+  const controller = controllerEntry
+    ? await fetchBytes("controller.onnx", false, controllerEntry.bytes)
+    : undefined;
 
   if (!world || !decoder || !seedBytes) {
     throw new Error("A required dream-player asset is missing.");
   }
 
   return {
-    models: { world, decoder, ...(controller ? { controller } : {}) },
+    models: {
+      world,
+      worldExternalData,
+      decoder,
+      ...(controller ? { controller } : {}),
+    },
     seeds: seedBytes.buffer.slice(
       seedBytes.byteOffset,
       seedBytes.byteOffset + seedBytes.byteLength,
@@ -157,7 +331,10 @@ async function createCoreSessions(
   executionProviders: ExecutionProviders,
 ): Promise<RuntimeSessions> {
   const options = sessionOptions(executionProviders);
-  const world = await ort.InferenceSession.create(models.world, options);
+  const world = await ort.InferenceSession.create(models.world, {
+    ...options,
+    externalData: models.worldExternalData,
+  });
   try {
     const decoder = await ort.InferenceSession.create(models.decoder, options);
     return { world, decoder };
@@ -602,7 +779,7 @@ async function initialize(baseUrl: string): Promise<void> {
   ort.env.wasm.numThreads = workerScope.crossOriginIsolated ? 0 : 1;
   ort.env.wasm.proxy = false;
   ort.env.wasm.wasmPaths = {
-    wasm: new URL(jsepWasmUrl, workerScope.location.href).href,
+    wasm: new URL(asyncifyWasmUrl, workerScope.location.href).href,
   };
 
   post({
