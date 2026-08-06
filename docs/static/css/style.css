@@ -273,6 +273,19 @@ footer nav a:hover,
   padding-top: clamp(3.5rem, 5vw, 5rem);
 }
 
+.story.section-shell {
+  padding-bottom: clamp(2.5rem, 3.5vw, 3.5rem);
+}
+
+.dream-player-section.section-shell {
+  padding-top: clamp(2.5rem, 3.5vw, 3.5rem);
+  padding-bottom: clamp(2.5rem, 3.5vw, 3.5rem);
+}
+
+.results.section-shell {
+  padding-top: clamp(2.5rem, 3.5vw, 3.5rem);
+}
+
 .section-heading {
   max-width: 760px;
 }
