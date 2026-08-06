@@ -43,7 +43,7 @@ interface ManifestFileEntry {
 
 interface WebModelManifest {
   format: 1;
-  seedCount: number;
+  seedCount?: number;
   files: Record<string, ManifestFileEntry>;
   weightFiles: string[];
 }
@@ -95,7 +95,11 @@ async function fetchBytes(
   required: boolean,
   expectedBytes?: number,
 ): Promise<Uint8Array | undefined> {
-  const response = await fetch(assetUrl(fileName), { cache: "force-cache" });
+  const cache =
+    fileName === "manifest.json" || fileName === "seeds.bin"
+      ? "no-store"
+      : "force-cache";
+  const response = await fetch(assetUrl(fileName), { cache });
   if (!response.ok) {
     if (!required && response.status === 404) {
       return undefined;
@@ -219,7 +223,10 @@ function parseManifest(bytes: Uint8Array): WebModelManifest {
   ) {
     throw new Error("manifest.json FSQ levels do not match [8, 5, 5, 5].");
   }
-  const seedCount = readPositiveInteger(parsed, "seed_count");
+  const seedCount =
+    parsed.seed_count === undefined
+      ? undefined
+      : readPositiveInteger(parsed, "seed_count");
   if (!isRecord(parsed.files)) {
     throw new Error("manifest.json field 'files' must be an object.");
   }
@@ -257,13 +264,18 @@ function parseManifest(bytes: Uint8Array): WebModelManifest {
     files[fileName] = entry;
   }
 
-  return { format: 1, seedCount, files, weightFiles };
+  return {
+    format: 1,
+    ...(seedCount === undefined ? {} : { seedCount }),
+    files,
+    weightFiles,
+  };
 }
 
 async function downloadAssets(): Promise<{
   models: ModelBytes;
   seeds: ArrayBuffer;
-  seedCount: number;
+  seedCount?: number;
 }> {
   post({
     type: "status",
@@ -312,7 +324,7 @@ async function downloadAssets(): Promise<{
       seedBytes.byteOffset,
       seedBytes.byteOffset + seedBytes.byteLength,
     ) as ArrayBuffer,
-    seedCount: manifest.seedCount,
+    ...(manifest.seedCount === undefined ? {} : { seedCount: manifest.seedCount }),
   };
 }
 
@@ -790,7 +802,10 @@ async function initialize(baseUrl: string): Promise<void> {
 
   const assets = await downloadAssets();
   seedBundle = parseSeedBundle(assets.seeds);
-  if (seedBundle.seeds.length !== assets.seedCount) {
+  if (
+    assets.seedCount !== undefined &&
+    seedBundle.seeds.length !== assets.seedCount
+  ) {
     throw new Error(
       `Seed bundle count ${seedBundle.seeds.length} does not match manifest count ${assets.seedCount}.`,
     );
