@@ -965,53 +965,21 @@ progress::-moz-progress-bar {
   text-align: center;
 }
 
-.project-brief {
-  margin-top: clamp(4.5rem, 9vw, 8rem);
-  padding: clamp(2rem, 5vw, 4rem) 0;
-  display: grid;
-  grid-template-columns: minmax(260px, 0.75fr) minmax(320px, 1fr);
-  gap: clamp(2.5rem, 8vw, 8rem);
-  border-top: 1px solid var(--line);
+html.is-embed,
+html.is-embed body {
+  min-width: 0;
+  background: transparent;
 }
 
-.project-brief h2 {
-  margin: 0.7rem 0 0;
-  font-size: clamp(2.6rem, 6vw, 5.4rem);
-  line-height: 0.98;
-  letter-spacing: -0.055em;
+html.is-embed .site-header,
+html.is-embed .intro,
+html.is-embed .keyboard-note {
+  display: none;
 }
 
-.project-brief-copy > p {
-  margin: 0;
-  color: var(--muted);
-  font-size: clamp(1rem, 1.6vw, 1.2rem);
-  line-height: 1.65;
-}
-
-.project-brief ul {
-  margin: 2rem 0 0;
+html.is-embed main {
+  width: 100%;
   padding: 0;
-  list-style: none;
-  border-top: 1px solid var(--line);
-}
-
-.project-brief li {
-  padding: 0.8rem 0;
-  color: var(--text);
-  border-bottom: 1px solid var(--line);
-}
-
-.project-brief li::before {
-  content: "—";
-  margin-right: 0.75rem;
-  color: var(--cyan);
-}
-
-.project-links {
-  margin-top: 2rem;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.8rem;
 }
 
 @media (max-width: 1120px) {
@@ -1070,11 +1038,6 @@ progress::-moz-progress-bar {
   .runtime-card {
     grid-column: 1 / -1;
   }
-
-  .project-brief {
-    grid-template-columns: 1fr;
-    gap: 1.75rem;
-  }
 }
 
 @media (max-width: 620px) {
@@ -1091,7 +1054,7 @@ progress::-moz-progress-bar {
   }
 
   .back-link::after {
-    content: "About";
+    content: "Overview";
     font-size: 0.8rem;
   }
 

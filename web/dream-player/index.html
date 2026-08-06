@@ -9,26 +9,30 @@
       content="Play inside DashVMC's learned Geometry Dash world, locally in your browser."
     />
     <title>Dream Player | DashVMC</title>
-    <link rel="canonical" href="https://tariolle.github.io/dash-vmc/" />
-    <meta property="og:title" content="DashVMC | Play inside the world model" />
-    <meta property="og:description" content="Control a Geometry Dash dream generated locally in your browser by the DashVMC world model." />
-    <meta property="og:image" content="https://tariolle.github.io/dash-vmc/static/images/og.png" />
-    <meta property="og:type" content="website" />
-    <meta name="twitter:card" content="summary_large_image" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;display=swap"
       rel="stylesheet"
     />
-    <link rel="icon" type="image/png" href="./static/images/ai-brain-icon.png" />
+    <link rel="icon" type="image/png" href="../static/images/ai-brain-icon.png" />
+    <script>
+      if (new URLSearchParams(window.location.search).has("embed")) {
+        document.documentElement.classList.add("is-embed");
+      }
+    </script>
   </head>
   <body>
     <header class="site-header">
-      <a class="wordmark" href="./" aria-label="DashVMC dream player home">
+      <a class="wordmark" href="../" aria-label="Back to DashVMC home">
         Dash<span>VMC</span>
       </a>
-      <a class="back-link" href="#about">About the project</a>
+      <a class="back-link" href="../">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M19 12H5m6-6-6 6 6 6" />
+        </svg>
+        Project overview
+      </a>
     </header>
 
     <main>
@@ -271,29 +275,6 @@
         Keyboard: <kbd>Space</kbd>/<kbd>↑</kbd> jump · <kbd>P</kbd> play or pause ·
         <kbd>.</kbd> single step · <kbd>R</kbd> retry · <kbd>N</kbd> next seed
       </p>
-
-      <section id="about" class="project-brief" aria-labelledby="about-title">
-        <div>
-          <p class="eyebrow">About DashVMC</p>
-          <h2 id="about-title">Watch. Imagine. Play.</h2>
-        </div>
-        <div class="project-brief-copy">
-          <p>
-            DashVMC learns a discrete world from recorded Geometry Dash play, then
-            practices entirely inside that imagined world before controlling the live
-            game from screen pixels.
-          </p>
-          <ul aria-label="Project highlights">
-            <li>About two hours of recorded play</li>
-            <li>On-device browser inference</li>
-            <li>60 FPS live-game control</li>
-          </ul>
-          <div class="project-links">
-            <a class="button button-primary" href="./static/pdfs/dashvmc.pdf" target="_blank" rel="noopener">Read the paper</a>
-            <a class="button button-ghost" href="https://github.com/Tariolle/dash-vmc" target="_blank" rel="noopener">View the code</a>
-          </div>
-        </div>
-      </section>
     </main>
 
     <script type="module" src="/src/main.ts"></script>

@@ -223,6 +223,37 @@ footer nav a:hover,
   font-size: 0.82rem;
 }
 
+.dream-player-section {
+  width: var(--page);
+}
+
+.player-kicker {
+  display: inline-block;
+  margin-bottom: 0.8rem;
+  color: var(--cyan);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.dream-player-embed {
+  margin-top: clamp(2.5rem, 5vw, 4rem);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.32);
+}
+
+.dream-player-embed iframe {
+  width: 100%;
+  height: 820px;
+  display: block;
+  border: 0;
+  color-scheme: dark;
+}
+
 .hero-media figcaption {
   margin-top: 0.7rem;
   text-align: right;
@@ -441,15 +472,9 @@ footer nav a:hover,
 
 .dream-heading p {
   max-width: 510px;
-  margin: 0.45rem 0 0;
+  margin: 0;
   color: var(--muted);
   font-size: 0.92rem;
-}
-
-.dream-player-link {
-  flex: 0 0 auto;
-  align-self: center;
-  white-space: nowrap;
 }
 
 .dream-grid {
@@ -588,6 +613,10 @@ footer nav {
 }
 
 @media (max-width: 1020px) {
+  .dream-player-embed iframe {
+    height: 1320px;
+  }
+
   :root {
     --page: min(100% - 40px, 1380px);
     --content: min(100% - 40px, 1240px);
@@ -614,6 +643,10 @@ footer nav {
 }
 
 @media (max-width: 760px) {
+  .dream-player-embed iframe {
+    height: 1500px;
+  }
+
   :root {
     --page: calc(100% - 28px);
     --content: calc(100% - 28px);
@@ -653,10 +686,6 @@ footer nav {
   .dream-heading p {
     display: block;
     margin-top: 0.7rem;
-  }
-
-  .dream-player-link {
-    margin-top: 1.25rem;
   }
 
   .dream-grid {
@@ -703,6 +732,10 @@ footer nav {
 }
 
 @media (max-width: 420px) {
+  .dream-player-embed iframe {
+    height: 1700px;
+  }
+
   :root {
     --page: calc(100% - 28px);
     --content: calc(100% - 28px);

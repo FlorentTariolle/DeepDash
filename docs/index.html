@@ -1,302 +1,226 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="color-scheme" content="dark" />
-    <meta
-      name="description"
-      content="Play inside DashVMC's learned Geometry Dash world, locally in your browser."
-    />
-    <title>Dream Player | DashVMC</title>
-    <link rel="canonical" href="https://tariolle.github.io/dash-vmc/" />
-    <meta property="og:title" content="DashVMC | Play inside the world model" />
-    <meta property="og:description" content="Control a Geometry Dash dream generated locally in your browser by the DashVMC world model." />
-    <meta property="og:image" content="https://tariolle.github.io/dash-vmc/static/images/og.png" />
-    <meta property="og:type" content="website" />
-    <meta name="twitter:card" content="summary_large_image" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;display=swap"
-      rel="stylesheet"
-    />
-    <link rel="icon" type="image/png" href="./static/images/ai-brain-icon.png" />
-    <script type="module" crossorigin src="./assets/index-CL6wvTMn.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-Dghax7jS.css">
-  </head>
-  <body>
-    <header class="site-header">
-      <a class="wordmark" href="./" aria-label="DashVMC dream player home">
-        Dash<span>VMC</span>
-      </a>
-      <a class="back-link" href="#about">About the project</a>
-    </header>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="dark" />
+  <title>DashVMC | An AI agent that learns to play Geometry Dash</title>
 
-    <main>
-      <section class="intro" aria-labelledby="player-title">
-        <div>
-          <p class="eyebrow">Interactive world model</p>
-          <h1 id="player-title">Play the <span>dream.</span></h1>
-        </div>
-        <div class="intro-copy">
-          <p>
-            Hold to jump inside a world generated one frame at a time. The model runs
-            entirely on your device.
-          </p>
-          <div class="privacy-note">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M12 3 5 6v5c0 4.5 2.8 8.3 7 10 4.2-1.7 7-5.5 7-10V6l-7-3Z" />
-              <path d="m9.3 12 1.8 1.8 3.8-4" />
+  <meta name="description" content="DashVMC learns from recorded Geometry Dash play, practices in its own imagined world, and controls the live game at 60 FPS." />
+  <meta name="author" content="Florent Tariolle" />
+  <link rel="canonical" href="https://tariolle.github.io/dash-vmc/" />
+
+  <meta property="og:title" content="DashVMC | Learning to play Geometry Dash in imagination" />
+  <meta property="og:description" content="An AI agent that learns from recorded play, practices in its own imagined world, and controls the live game in real time." />
+  <meta property="og:image" content="https://tariolle.github.io/dash-vmc/static/images/og.png" />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://tariolle.github.io/dash-vmc/" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="DashVMC | Learning to play Geometry Dash in imagination" />
+  <meta name="twitter:description" content="Watch an AI agent practice in an imagined world and play the live game at 60 FPS." />
+  <meta name="twitter:image" content="https://tariolle.github.io/dash-vmc/static/images/og.png" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&display=swap" rel="stylesheet" />
+  <link rel="icon" type="image/png" href="static/images/ai-brain-icon.png" />
+  <link rel="apple-touch-icon" href="static/images/ai-brain-icon.png" />
+  <link rel="stylesheet" href="static/css/style.css?v=20260728-input-slate" />
+</head>
+
+<body>
+  <main>
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <h1 id="hero-title">Dash<span class="accent-cyan">VMC</span></h1>
+        <p class="hero-lead">An AI agent that learns to play Geometry Dash in its imagination.</p>
+        <p class="hero-note">
+          It learns from recorded play, practices without touching the live game,
+          then takes control from screen pixels alone.
+        </p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="#story">
+            <span>See how it works</span>
+            <svg aria-hidden="true" viewBox="0 0 24 24">
+              <path d="M5 12h14M13 6l6 6-6 6" />
             </svg>
-            <span>No frames or inputs leave this browser.</span>
+          </a>
+          <a class="text-link" href="static/pdfs/dashvmc.pdf" target="_blank" rel="noopener">Read the paper</a>
+        </div>
+      </div>
+
+      <figure class="hero-media">
+        <video autoplay loop muted playsinline controls poster="static/images/demo_poster.jpg" preload="metadata">
+          <source src="demo_preview.mp4" type="video/mp4" />
+          <source src="demo.mp4" type="video/mp4" />
+        </video>
+        <figcaption>Live Geometry Dash control</figcaption>
+      </figure>
+    </section>
+
+    <section id="story" class="story section-shell" aria-labelledby="story-title">
+      <div class="section-heading">
+        <h2 id="story-title">Watch. Imagine. Play.</h2>
+        <p>About two hours of recorded gameplay are enough to build a world the agent can practice in.</p>
+      </div>
+
+      <figure id="architecture" class="architecture-card">
+        <div class="architecture-flow" role="list" aria-label="Recorded play trains a world model where the action model practices before controlling the live game.">
+          <div class="architecture-node architecture-input" role="listitem">
+            <span class="architecture-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <rect x="3.5" y="5.5" width="17" height="13" rx="1.5" />
+                <path d="m10 9 5 3-5 3Z" />
+              </svg>
+            </span>
+            <small>Input</small>
+            <strong>Recorded play</strong>
+            <p>Game frames and actions</p>
+          </div>
+          <span class="architecture-connector" aria-hidden="true">
+            <svg viewBox="0 0 68 24">
+              <path d="M3 12h61M56 4l8 8-8 8" />
+            </svg>
+          </span>
+          <div class="architecture-node" role="listitem">
+            <span class="architecture-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <path d="M7.5 17.5h9a4 4 0 0 0 .5-7.97A5.5 5.5 0 0 0 6.4 8.4a4.6 4.6 0 0 0 1.1 9.1Z" />
+                <circle cx="7" cy="20" r="1" />
+              </svg>
+            </span>
+            <small>Learn</small>
+            <strong>World model</strong>
+            <p>Imagines what comes next</p>
+          </div>
+          <span class="architecture-connector" aria-hidden="true">
+            <svg viewBox="0 0 68 24">
+              <path d="M3 12h61M56 4l8 8-8 8" />
+            </svg>
+          </span>
+          <div class="architecture-node" role="listitem">
+            <span class="architecture-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <path d="M12 3v3M5.6 5.6l2.1 2.1M18.4 5.6l-2.1 2.1" />
+                <rect x="5" y="8" width="14" height="11" rx="2" />
+                <circle cx="9" cy="13" r="1" />
+                <circle cx="15" cy="13" r="1" />
+                <path d="M9.5 16h5" />
+              </svg>
+            </span>
+            <small>Practice</small>
+            <strong>Action model</strong>
+            <p>Learns when to jump</p>
+          </div>
+          <span class="architecture-connector" aria-hidden="true">
+            <svg viewBox="0 0 68 24">
+              <path d="M3 12h61M56 4l8 8-8 8" />
+            </svg>
+          </span>
+          <div class="architecture-node architecture-live" role="listitem">
+            <span class="architecture-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <rect x="5" y="5" width="14" height="14" rx="1" />
+                <rect x="8" y="9" width="2" height="2" />
+                <rect x="14" y="9" width="2" height="2" />
+                <path d="M9 15h6" />
+              </svg>
+            </span>
+            <small>Play</small>
+            <strong>Live game</strong>
+            <p>Frames in, controls out</p>
           </div>
         </div>
-      </section>
+      </figure>
 
-      <section class="player-shell" aria-label="Dream player">
-        <div class="stage-column">
-          <div
-            id="stage"
-            class="stage is-loading"
-            tabindex="0"
-            aria-label="Generated dream. Hold Space, Up, or press this area to jump."
-          >
-            <canvas id="dream-canvas" width="64" height="64" role="img"></canvas>
+      <div id="dreams" class="dream-heading">
+        <h3>Dreams from the world model</h3>
+        <p>The world model predicts what follows each action, letting the action model practice without interacting with the live game.</p>
+      </div>
 
-            <div class="stage-vignette" aria-hidden="true"></div>
+      <div class="dream-grid">
+        <figure>
+          <video autoplay loop muted playsinline preload="metadata" poster="static/videos/dream_rollouts/long-coherent-horizon.jpg">
+            <source src="static/videos/dream_rollouts/long-coherent-horizon-featured.mp4" type="video/mp4" />
+          </video>
+          <figcaption>A long generated continuation</figcaption>
+        </figure>
+        <figure>
+          <video autoplay loop muted playsinline preload="metadata" poster="static/videos/dream_rollouts/height-transitions.jpg">
+            <source src="static/videos/dream_rollouts/height-transitions.mp4" type="video/mp4" />
+          </video>
+          <figcaption>Changing height</figcaption>
+        </figure>
+        <figure>
+          <video autoplay loop muted playsinline preload="metadata" poster="static/videos/dream_rollouts/transformation.jpg">
+            <source src="static/videos/dream_rollouts/transformation.mp4" type="video/mp4" />
+          </video>
+          <figcaption>Changing form</figcaption>
+        </figure>
+      </div>
+    </section>
 
-            <div class="hud" aria-label="Dream telemetry">
-              <div class="hud-group">
-                <div class="metric">
-                  <span>Step</span>
-                  <strong id="hud-step">00</strong>
-                </div>
-                <div class="metric metric-action">
-                  <span>Action</span>
-                  <strong id="hud-action">Idle</strong>
-                </div>
-              </div>
-              <div class="hud-group hud-group-right">
-                <div class="metric">
-                  <span>Death</span>
-                  <strong id="hud-death">0%</strong>
-                </div>
-                <div class="metric">
-                  <span>Tick</span>
-                  <strong id="hud-latency">—</strong>
-                </div>
-              </div>
-            </div>
+    <section id="play-dream" class="dream-player-section section-shell" aria-labelledby="play-dream-title">
+      <div class="section-heading">
+        <span class="player-kicker">Interactive world model</span>
+        <h2 id="play-dream-title">Play inside the dream</h2>
+        <p>Hold Space, Up, or the touch control to jump. The trained model generates every next frame locally in your browser and keeps going until it predicts death.</p>
+      </div>
 
-            <div id="action-flash" class="action-flash" aria-hidden="true">
-              <span></span>
-              Jump held
-            </div>
+      <div class="dream-player-embed">
+        <iframe
+          src="player/?embed=1"
+          title="Interactive DashVMC dream player"
+          loading="eager"
+        ></iframe>
+      </div>
+    </section>
 
-            <div id="stage-overlay" class="stage-overlay">
-              <div id="loading-panel" class="overlay-panel loading-panel">
-                <div class="loader-mark" aria-hidden="true">
-                  <span></span><span></span><span></span>
-                </div>
-                <p id="loading-kicker" class="overlay-kicker">Checking your browser</p>
-                <h2 id="loading-title">Preparing the dream</h2>
-                <p id="loading-detail" class="overlay-detail">
-                  Looking for a compatible graphics backend.
-                </p>
-                <div class="progress-wrap">
-                  <progress id="load-progress" max="100" value="0">0%</progress>
-                  <div class="progress-labels">
-                    <span id="progress-file">Runtime</span>
-                    <span id="progress-value">0%</span>
-                  </div>
-                </div>
-              </div>
-
-              <div id="start-panel" class="overlay-panel start-panel" hidden>
-                <p class="overlay-kicker">World model ready</p>
-                <h2>Enter the dream</h2>
-                <p class="overlay-detail">
-                  Hold <kbd>Space</kbd>, <kbd>↑</kbd>, or the jump pad to control the next
-                  generated transition.
-                </p>
-                <button id="start-button" class="button button-primary" type="button">
-                  Start playing
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="m9 6 9 6-9 6V6Z" />
-                  </svg>
-                </button>
-              </div>
-
-              <div id="end-panel" class="overlay-panel end-panel" hidden>
-                <p id="end-kicker" class="overlay-kicker">Rollout ended</p>
-                <h2 id="end-title">Dream over</h2>
-                <p id="end-detail" class="overlay-detail">The model predicted a collision.</p>
-                <div class="overlay-actions">
-                  <button id="overlay-retry" class="button button-primary" type="button">
-                    Retry seed
-                  </button>
-                  <button id="overlay-next" class="button button-ghost" type="button">
-                    Next seed
-                  </button>
-                </div>
-              </div>
-
-              <div id="error-panel" class="overlay-panel error-panel" hidden>
-                <p class="overlay-kicker">Could not start</p>
-                <h2>Dream unavailable</h2>
-                <p id="error-detail" class="overlay-detail">
-                  The browser could not initialize the model.
-                </p>
-                <button id="reload-button" class="button button-ghost" type="button">
-                  Reload player
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div class="stage-caption">
-            <div id="backend-badge" class="backend-badge" data-backend="pending">
-              <span></span>
-              <strong id="backend-label">Detecting</strong>
-            </div>
-            <p id="live-status" role="status" aria-live="polite">Preparing local inference…</p>
-            <span id="step-limit">0 steps</span>
-          </div>
+    <section id="results" class="results section-shell" aria-labelledby="results-title">
+      <div class="results-intro">
+        <div class="section-heading results-heading">
+          <h2 id="results-title">What changed after practice</h2>
+          <p>After practicing in its dreams, the world model agent survives longer in the live game.</p>
         </div>
-
-        <aside class="control-deck" aria-label="Player controls">
-          <section class="deck-section seed-section" aria-labelledby="seed-title">
-            <div class="section-label-row">
-              <h2 id="seed-title">Dream seed</h2>
-              <span id="seed-counter">01 / 04</span>
-            </div>
-            <div class="seed-picker">
-              <button id="seed-previous" class="icon-button" type="button" aria-label="Previous seed">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6" /></svg>
-              </button>
-              <div class="seed-copy">
-                <strong id="seed-name">First Light</strong>
-                <span id="seed-description">A clean opening with room to learn.</span>
-              </div>
-              <button id="seed-next" class="icon-button" type="button" aria-label="Next seed">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg>
-              </button>
-            </div>
-            <div id="seed-dots" class="seed-dots" role="group" aria-label="Select dream seed"></div>
-          </section>
-
-          <section class="deck-section transport-section" aria-labelledby="transport-title">
-            <div class="section-label-row">
-              <h2 id="transport-title">Rollout</h2>
-              <span>30 Hz target</span>
-            </div>
-            <div class="transport-grid">
-              <button id="play-button" class="transport-primary" type="button" disabled>
-                <svg class="play-icon" viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="m9 6 9 6-9 6V6Z" />
-                </svg>
-                <svg class="pause-icon" viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M9 7v10M15 7v10" />
-                </svg>
-                <span>Play</span>
-              </button>
-              <button id="step-button" class="transport-button" type="button" disabled>
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="m7 6 8 6-8 6V6ZM17 6v12" />
-                </svg>
-                <span>Step</span>
-              </button>
-              <button id="retry-button" class="transport-button" type="button" disabled>
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M5 8V4m0 0h4M5 4l3 3a7 7 0 1 1-2 8" />
-                </svg>
-                <span>Retry</span>
-              </button>
-            </div>
-          </section>
-
-          <section class="deck-section input-section" aria-labelledby="input-title">
-            <div class="section-label-row">
-              <h2 id="input-title">Your input</h2>
-              <span>Hold, then release</span>
-            </div>
-            <button id="jump-button" class="jump-button" type="button" disabled aria-pressed="false">
-              <span class="jump-orbit" aria-hidden="true"><i></i></span>
-              <span class="jump-copy">
-                <strong>Hold to jump</strong>
-                <small>Space · ↑ · touch</small>
-              </span>
-              <kbd>SPACE</kbd>
-            </button>
-          </section>
-
-          <section class="deck-section ai-section" aria-labelledby="ai-title">
-            <div>
-              <div class="ai-title-row">
-                <h2 id="ai-title">AI pilot</h2>
-                <span id="ai-availability">Optional model</span>
-              </div>
-              <p>Let the learned controller choose each jump.</p>
-            </div>
-            <button
-              id="ai-toggle"
-              class="toggle"
-              type="button"
-              role="switch"
-              aria-checked="false"
-              aria-label="Toggle AI pilot"
-              disabled
-            >
-              <span></span>
-            </button>
-          </section>
-
-          <section class="runtime-card" aria-label="Runtime details">
-            <div>
-              <span>Execution</span>
-              <strong id="runtime-backend">Waiting</strong>
-            </div>
-            <div>
-              <span>Model</span>
-              <strong>DashVMC V7</strong>
-            </div>
-            <div>
-              <span>Privacy</span>
-              <strong>On-device</strong>
-            </div>
-          </section>
+        <aside class="ship-note">
+          <span>Policy refinement</span>
+          <p>After learning to imitate human play, the action model improves by practicing independently inside the world model.</p>
         </aside>
-      </section>
+      </div>
 
-      <p class="keyboard-note">
-        Keyboard: <kbd>Space</kbd>/<kbd>↑</kbd> jump · <kbd>P</kbd> play or pause ·
-        <kbd>.</kbd> single step · <kbd>R</kbd> retry · <kbd>N</kbd> next seed
-      </p>
+      <ol class="proof-list">
+        <li>
+          <span>01</span>
+          <p>Improved on all three official levels</p>
+        </li>
+        <li>
+          <span>02</span>
+          <p>Transferred to an unseen level</p>
+        </li>
+        <li>
+          <span>03</span>
+          <p>Strong control in ship form</p>
+        </li>
+        <li>
+          <span>04</span>
+          <p>Keeps up with the game at <span class="accent-cyan">60 FPS</span></p>
+        </li>
+      </ol>
 
-      <section id="about" class="project-brief" aria-labelledby="about-title">
-        <div>
-          <p class="eyebrow">About DashVMC</p>
-          <h2 id="about-title">Watch. Imagine. Play.</h2>
-        </div>
-        <div class="project-brief-copy">
-          <p>
-            DashVMC learns a discrete world from recorded Geometry Dash play, then
-            practices entirely inside that imagined world before controlling the live
-            game from screen pixels.
-          </p>
-          <ul aria-label="Project highlights">
-            <li>About two hours of recorded play</li>
-            <li>On-device browser inference</li>
-            <li>60 FPS live-game control</li>
-          </ul>
-          <div class="project-links">
-            <a class="button button-primary" href="./static/pdfs/dashvmc.pdf" target="_blank" rel="noopener">Read the paper</a>
-            <a class="button button-ghost" href="https://github.com/Tariolle/dash-vmc" target="_blank" rel="noopener">View the code</a>
-          </div>
-        </div>
-      </section>
-    </main>
+      <div class="closing-actions">
+        <a class="button button-primary" href="static/pdfs/dashvmc.pdf" target="_blank" rel="noopener">Read the paper</a>
+        <a class="button button-secondary" href="https://github.com/Tariolle/dash-vmc" target="_blank" rel="noopener">View the code</a>
+      </div>
+    </section>
+  </main>
 
-  </body>
+  <footer>
+    <a class="wordmark" href="#">Dash<span>VMC</span></a>
+    <p><a href="https://tariolle.github.io/" target="_blank" rel="noopener">Florent Tariolle</a> · INSA Rouen Normandy</p>
+    <nav aria-label="Footer navigation">
+      <a href="static/pdfs/dashvmc.pdf" target="_blank" rel="noopener">Paper</a>
+      <a href="https://github.com/Tariolle/dash-vmc" target="_blank" rel="noopener">Code</a>
+    </nav>
+  </footer>
+</body>
 </html>
