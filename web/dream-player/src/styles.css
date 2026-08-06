@@ -327,41 +327,6 @@ main {
   color: var(--lime);
 }
 
-.action-flash {
-  position: absolute;
-  bottom: 1.15rem;
-  left: 50%;
-  z-index: 2;
-  padding: 0.45rem 0.7rem;
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  border: 1px solid rgba(184, 248, 47, 0.38);
-  border-radius: 999px;
-  color: var(--lime);
-  background: rgba(5, 10, 7, 0.78);
-  font-size: 0.7rem;
-  font-weight: 650;
-  letter-spacing: 0.05em;
-  opacity: 0;
-  pointer-events: none;
-  transform: translate(-50%, 8px);
-  transition: opacity 130ms ease, transform 130ms ease;
-}
-
-.action-flash span {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-  box-shadow: 0 0 11px currentColor;
-}
-
-.stage.is-input-held .action-flash {
-  opacity: 1;
-  transform: translate(-50%, 0);
-}
-
 .stage-overlay {
   position: absolute;
   inset: 0;
@@ -923,41 +888,6 @@ progress::-moz-progress-bar {
   transform: translateX(17px);
 }
 
-.runtime-card {
-  padding: 1rem 1.25rem;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.7rem;
-  background: rgba(7, 11, 14, 0.55);
-}
-
-.runtime-card > div:not(:first-child) {
-  padding-left: 0.7rem;
-  border-left: 1px solid var(--line);
-}
-
-.runtime-card span,
-.runtime-card strong {
-  display: block;
-}
-
-.runtime-card span {
-  color: var(--quiet);
-  font-size: 0.58rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.runtime-card strong {
-  margin-top: 0.22rem;
-  overflow: hidden;
-  color: var(--muted);
-  font-size: 0.68rem;
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .keyboard-note {
   margin: 1.7rem 0 0;
   color: var(--quiet);
@@ -988,6 +918,8 @@ html.is-embed main {
 }
 
 html.is-embed .player-shell {
+  grid-template-columns: minmax(0, 640px) minmax(320px, 1fr);
+  gap: 1rem;
   align-items: stretch;
 }
 
@@ -1001,7 +933,7 @@ html.is-embed .stage-caption {
 
 html.is-embed .control-deck {
   display: grid;
-  grid-template-rows: 1.1fr 1fr 1.1fr 0.8fr auto;
+  grid-template-rows: 1.1fr 1fr 1.1fr 0.8fr;
 }
 
 html.is-embed .deck-section:not(.ai-section) {
@@ -1026,6 +958,12 @@ html.is-embed .deck-section:not(.ai-section) {
 }
 
 @media (max-width: 900px) {
+  html.is-embed .player-shell {
+    grid-template-columns: 1fr;
+    max-width: 720px;
+    margin: 0 auto;
+  }
+
   html.is-embed .control-deck {
     grid-template-rows: none;
   }
@@ -1071,9 +1009,6 @@ html.is-embed .deck-section:not(.ai-section) {
     border-bottom: 1px solid var(--line);
   }
 
-  .runtime-card {
-    grid-column: 1 / -1;
-  }
 }
 
 @media (max-width: 620px) {
@@ -1154,10 +1089,6 @@ html.is-embed .deck-section:not(.ai-section) {
 
   .ai-section {
     border-bottom: 1px solid var(--line);
-  }
-
-  .runtime-card {
-    grid-column: auto;
   }
 
   .keyboard-note {

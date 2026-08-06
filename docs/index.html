@@ -180,17 +180,26 @@
           if (!frame) return;
 
           let observer;
+          let resizeFrame;
           const resize = () => {
-            const root = frame.contentDocument?.documentElement;
-            if (root) frame.style.height = `${Math.ceil(root.scrollHeight)}px`;
+            cancelAnimationFrame(resizeFrame);
+            resizeFrame = requestAnimationFrame(() => {
+              const player = frame.contentDocument?.querySelector(".player-shell");
+              if (!player) return;
+
+              const height = Math.ceil(player.getBoundingClientRect().bottom);
+              if (height > 0 && Math.abs(frame.offsetHeight - height) > 1) {
+                frame.style.height = `${height}px`;
+              }
+            });
           };
           const connect = () => {
             observer?.disconnect();
-            const root = frame.contentDocument?.documentElement;
-            if (!root) return;
+            const player = frame.contentDocument?.querySelector(".player-shell");
+            if (!player) return;
             resize();
             observer = new ResizeObserver(resize);
-            observer.observe(root);
+            observer.observe(player);
             frame.contentDocument?.fonts?.ready.then(resize);
           };
 

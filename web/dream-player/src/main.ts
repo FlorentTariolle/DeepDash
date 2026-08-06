@@ -41,7 +41,6 @@ const errorDetail = element<HTMLParagraphElement>("error-detail");
 
 const backendBadge = element<HTMLDivElement>("backend-badge");
 const backendLabel = element<HTMLElement>("backend-label");
-const runtimeBackend = element<HTMLElement>("runtime-backend");
 const liveStatus = element<HTMLParagraphElement>("live-status");
 const stepLimit = element<HTMLSpanElement>("step-limit");
 const hudStep = element<HTMLElement>("hud-step");
@@ -191,7 +190,6 @@ function setBackend(backend: RuntimeBackend): void {
   backendBadge.dataset.backend = backend;
   const label = backend === "webgpu" ? "WebGPU" : "WASM CPU";
   backendLabel.textContent = label;
-  runtimeBackend.textContent = label;
 }
 
 function drawFrame(message: Extract<WorkerToMainMessage, { type: "frame" }>): void {
