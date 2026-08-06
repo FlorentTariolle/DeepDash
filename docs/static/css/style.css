@@ -613,10 +613,6 @@ footer nav {
 }
 
 @media (max-width: 1020px) {
-  .dream-player-embed iframe {
-    height: 1320px;
-  }
-
   :root {
     --page: min(100% - 40px, 1380px);
     --content: min(100% - 40px, 1240px);
@@ -643,10 +639,6 @@ footer nav {
 }
 
 @media (max-width: 760px) {
-  .dream-player-embed iframe {
-    height: 1500px;
-  }
-
   :root {
     --page: calc(100% - 28px);
     --content: calc(100% - 28px);
@@ -732,10 +724,6 @@ footer nav {
 }
 
 @media (max-width: 420px) {
-  .dream-player-embed iframe {
-    height: 1700px;
-  }
-
   :root {
     --page: calc(100% - 28px);
     --content: calc(100% - 28px);

@@ -968,7 +968,12 @@ progress::-moz-progress-bar {
 html.is-embed,
 html.is-embed body {
   min-width: 0;
+  min-height: 0;
   background: transparent;
+}
+
+html.is-embed body {
+  overflow: hidden;
 }
 
 html.is-embed .site-header,
@@ -980,6 +985,29 @@ html.is-embed .keyboard-note {
 html.is-embed main {
   width: 100%;
   padding: 0;
+}
+
+html.is-embed .player-shell {
+  align-items: stretch;
+}
+
+html.is-embed .stage {
+  width: 100%;
+}
+
+html.is-embed .stage-caption {
+  display: none;
+}
+
+html.is-embed .control-deck {
+  display: grid;
+  grid-template-rows: 1.1fr 1fr 1.1fr 0.8fr auto;
+}
+
+html.is-embed .deck-section:not(.ai-section) {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 @media (max-width: 1120px) {
@@ -998,6 +1026,14 @@ html.is-embed main {
 }
 
 @media (max-width: 900px) {
+  html.is-embed .control-deck {
+    grid-template-rows: none;
+  }
+
+  html.is-embed .deck-section:not(.ai-section) {
+    display: block;
+  }
+
   .intro {
     grid-template-columns: 1fr;
     gap: 1.5rem;
