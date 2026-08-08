@@ -357,7 +357,7 @@ footer nav a:hover,
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(300px, 0.55fr);
   gap: clamp(3rem, 8vw, 8rem);
-  align-items: end;
+  align-items: center;
 }
 
 .ship-note {
