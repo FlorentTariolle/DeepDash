@@ -38,18 +38,23 @@
           It learns from recorded play, practices without touching the live game,
           then takes control from screen pixels alone.
         </p>
-        <div class="hero-actions">
-          <a class="button button-primary" href="#story">
-            <span>See how it works</span>
+        <div class="hero-actions" aria-label="Explore DashVMC">
+          <a class="hero-action hero-action-primary" href="#play-dream">
+            <span>Play the dreams</span>
             <svg aria-hidden="true" viewBox="0 0 24 24">
               <path d="M5 12h14M13 6l6 6-6 6" />
             </svg>
           </a>
-          <a class="text-link" href="static/pdfs/dashvmc.pdf" target="_blank" rel="noopener">Read the paper</a>
-          <a class="button button-secondary" href="#play-dream">
-            <span>Play the dreams</span>
+          <a class="hero-action hero-action-link" href="#story">
+            <span>How it works</span>
             <svg aria-hidden="true" viewBox="0 0 24 24">
-              <path d="M12 5v14M6 13l6 6 6-6" />
+              <path d="M5 12h14M13 6l6 6-6 6" />
+            </svg>
+          </a>
+          <a class="hero-action hero-action-link" href="static/pdfs/dashvmc.pdf" target="_blank" rel="noopener">
+            <span>Read the paper</span>
+            <svg aria-hidden="true" viewBox="0 0 24 24">
+              <path d="M8 16 16 8M10 8h6v6" />
             </svg>
           </a>
         </div>
@@ -144,7 +149,6 @@
     <section id="play-dream" class="dream-player-section section-shell" aria-labelledby="play-dream-title">
       <div class="section-heading">
         <h2 id="play-dream-title">Play inside the dreams</h2>
-        <p>The world model predicts each next state from the previous state and an action—chosen by the action model or by you.</p>
       </div>
 
       <div class="dream-player-embed">

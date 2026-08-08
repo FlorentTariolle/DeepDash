@@ -136,9 +136,60 @@ footer nav a:hover,
 
 .hero-actions {
   margin-top: 2rem;
-  display: flex;
+  width: fit-content;
+  max-width: 100%;
+  display: grid;
+  grid-template-columns: auto repeat(2, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: rgba(12, 18, 22, 0.72);
+}
+
+.hero-action {
+  min-height: 52px;
+  padding: 0.8rem 1.05rem;
+  display: inline-flex;
   align-items: center;
-  gap: 1.6rem;
+  justify-content: center;
+  gap: 0.65rem;
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 600;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.hero-action + .hero-action {
+  border-left: 1px solid var(--line);
+}
+
+.hero-action:hover {
+  color: var(--text);
+  background: var(--surface-raised);
+}
+
+.hero-action-primary {
+  color: #0b0f08;
+  background: var(--lime);
+}
+
+.hero-action-primary:hover {
+  color: #0b0f08;
+  background: #c6ff47;
+  transform: translateY(-2px);
+}
+
+.hero-action svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
 }
 
 .button {
@@ -621,6 +672,7 @@ footer nav {
   }
 
   .button,
+  .hero-action,
   footer nav a,
   footer p a,
   .text-link {
@@ -674,9 +726,17 @@ footer nav {
   }
 
   .hero-actions {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 1rem;
+    width: 100%;
+    grid-template-columns: 1fr;
+  }
+
+  .hero-action {
+    justify-content: space-between;
+  }
+
+  .hero-action + .hero-action {
+    border-top: 1px solid var(--line);
+    border-left: 0;
   }
 
   .section-shell {

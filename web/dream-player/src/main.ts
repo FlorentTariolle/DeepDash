@@ -56,7 +56,6 @@ const retryButton = element<HTMLButtonElement>("retry-button");
 const reloadButton = element<HTMLButtonElement>("reload-button");
 const jumpButton = element<HTMLButtonElement>("jump-button");
 const aiToggle = element<HTMLButtonElement>("ai-toggle");
-const aiAvailability = element<HTMLSpanElement>("ai-availability");
 
 const worker = new Worker(new URL("./runtime/dream-worker.ts", import.meta.url), {
   type: "module",
@@ -334,7 +333,6 @@ function handleWorkerMessage(message: WorkerToMainMessage): void {
       aiEnabled = hasController;
       seedCount = message.seedCount;
       setBackend(message.backend);
-      aiAvailability.textContent = hasController ? "Model loaded" : "Not included";
       updateSeedUi(message.seedIndex);
       updatePlaybackUi();
       stage.classList.remove("is-loading");
@@ -396,6 +394,7 @@ aiToggle.addEventListener("click", () => {
   }
   updatePlaybackUi();
   send({ type: "set-ai", enabled: aiEnabled });
+  aiToggle.blur();
 });
 
 function isControlTarget(target: EventTarget | null): boolean {
