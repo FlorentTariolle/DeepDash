@@ -397,8 +397,16 @@ aiToggle.addEventListener("click", () => {
   aiToggle.blur();
 });
 
+for (const button of [startButton, playButton, stepButton, retryButton, reloadButton, seedPrevious, seedNext, aiToggle]) {
+  button.addEventListener("click", () => button.blur());
+}
+
 function isControlTarget(target: EventTarget | null): boolean {
   return target instanceof Element && Boolean(target.closest("button, a, input, select, textarea"));
+}
+
+function isJumpButtonTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest("#jump-button") === jumpButton;
 }
 
 function bindPointerHold(target: HTMLElement, prefix: string): void {
@@ -440,7 +448,7 @@ for (const eventName of ["pointerup", "pointercancel", "lostpointercapture"] as 
 
 window.addEventListener("keydown", (event) => {
   const jumpKey = event.code === "Space" || event.code === "ArrowUp";
-  if (jumpKey && !isControlTarget(event.target)) {
+  if (jumpKey && (!isControlTarget(event.target) || isJumpButtonTarget(event.target))) {
     event.preventDefault();
     if (!event.repeat && isReady && !isEnded && !aiEnabled) {
       setInputHeld(`key:${event.code}`, true);

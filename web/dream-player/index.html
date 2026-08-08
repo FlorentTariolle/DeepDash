@@ -117,7 +117,7 @@
                   Hold <kbd>Space</kbd>, <kbd>↑</kbd>, or the jump pad to control the next
                   generated transition.
                 </p>
-                <button id="start-button" class="button button-primary" type="button">
+                <button id="start-button" class="button button-primary" type="button" tabindex="-1">
                   Start playing
                   <svg viewBox="0 0 24 24" aria-hidden="true">
                     <path d="m9 6 9 6-9 6V6Z" />
@@ -136,7 +136,7 @@
                 <p id="error-detail" class="overlay-detail">
                   The browser could not initialize the model.
                 </p>
-                <button id="reload-button" class="button button-ghost" type="button">
+                <button id="reload-button" class="button button-ghost" type="button" tabindex="-1">
                   Reload player
                 </button>
               </div>
@@ -160,12 +160,13 @@
               <span id="seed-counter">01 / 04</span>
             </div>
             <div class="seed-picker">
-              <button id="seed-previous" class="seed-nav-button" type="button">
+              <button id="seed-previous" class="seed-nav-button" type="button" tabindex="-1">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6" /></svg>
                 <span>Previous</span>
               </button>
-              <button id="seed-next" class="seed-nav-button seed-nav-next" type="button">
+              <button id="seed-next" class="seed-nav-button seed-nav-next" type="button" tabindex="-1" aria-keyshortcuts="T">
                 <span>Next</span>
+                <kbd>T</kbd>
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg>
               </button>
             </div>
@@ -177,7 +178,7 @@
               <span>30 Hz target</span>
             </div>
             <div class="transport-grid">
-              <button id="play-button" class="transport-primary" type="button" disabled>
+              <button id="play-button" class="transport-primary" type="button" tabindex="-1" disabled>
                 <svg class="play-icon" viewBox="0 0 24 24" aria-hidden="true">
                   <path d="m9 6 9 6-9 6V6Z" />
                 </svg>
@@ -186,17 +187,18 @@
                 </svg>
                 <span>Play</span>
               </button>
-              <button id="step-button" class="transport-button" type="button" disabled>
+              <button id="step-button" class="transport-button" type="button" tabindex="-1" disabled>
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path d="m7 6 8 6-8 6V6ZM17 6v12" />
                 </svg>
                 <span>Step</span>
               </button>
-              <button id="retry-button" class="transport-button" type="button" disabled>
+              <button id="retry-button" class="transport-button" type="button" tabindex="-1" aria-keyshortcuts="R" disabled>
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M5 8V4m0 0h4M5 4l3 3a7 7 0 1 1-2 8" />
                 </svg>
                 <span>Retry</span>
+                <kbd>R</kbd>
               </button>
             </div>
           </section>
